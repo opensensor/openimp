@@ -314,6 +314,7 @@ struct openimp_fs_channel {
     IMPFSChnAttr attr;
     uint32_t i2d_on;                /* EnableChn armed the I2D pass */
     uint32_t i2d_errors;
+    uint32_t i2d_busy;              /* a GetFrame runs the I2D unlocked */
     IMPFSI2DAttr i2d_attr;          /* the attribute EnableChn applied */
     struct p1_i2d_geometry i2d_geom;
     struct openimp_fs_buffer buffers[OPENIMP_FS_BUFFERS];
@@ -1962,9 +1963,11 @@ static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_atte
         /* vendor: the consumers get the I2D output, not the capture */
         int ok;
 
+        chn->i2d_busy++;
         unlock_p1();
         ok = p1_i2d_run(chn, buffer) == 0;
         lock_p1();
+        chn->i2d_busy--;
         if (!chn->enabled || !chn->i2d_on || !buffer->i2d_physical) {
             unlock_p1();
             openimp_profile_end(OPENIMP_PROFILE_FRAME_SOURCE_WAIT,
@@ -2273,6 +2276,14 @@ int IMP_FrameSource_DisableChn(int channel)
     }
     chn->snap.waiting = 0;
 #endif
+    /* An I2D pass runs without the P1 lock and DMA-writes its output
+     * buffer: never free the buffers underneath (bounded by the driver's
+     * 2 s frame-done timeout). */
+    while (chn->i2d_busy) {
+        unlock_p1();
+        usleep(1000);
+        lock_p1();
+    }
     if (chn->enabled) {
         type = TISP_BUF_TYPE_VIDEO_CAPTURE;
         result = record_ioctl(chn->fd, TISP_VIDIOC_STREAMOFF, &type);
