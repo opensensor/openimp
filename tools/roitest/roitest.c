@@ -43,14 +43,14 @@
 #include <imp/imp_isp.h>
 #include <imp/imp_framesource.h>
 #include <imp/imp_encoder.h>
-#ifdef PLATFORM_T41
-#include <imp/imp_osd.h>
-#endif
-
 #if defined(PLATFORM_T40)
 # define PLATFORM_T41 1   /* same API shape (IMPVI_NUM, family B ROI) */
 # define SOC_T40 1
 #endif
+#ifdef PLATFORM_T41
+#include <imp/imp_osd.h>
+#endif
+
 #if defined(PLATFORM_T31) || defined(PLATFORM_T41)
 # define ENC_NEW 1
 #endif
