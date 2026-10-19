@@ -38,6 +38,7 @@
 #define V2_BIG_DIV    10        /* an object of 1/10 of the grid needs no travel (camera pan) */
 #define V2_SCENE_SHIFT 2        /* background rate of moving cells during a scene change */
 #define V2_UNIF_MIN   (256 * 45 / 100) /* cells within +-6 % of the global ratio */
+#define V2_DIR_MIN   (256 * 90 / 100)  /* cells changed the same way */
 #define V2_TEX_FLOOR  (14 << 2) /* minimum texture change (2 per difference) */
 
 struct v2_comp {
@@ -88,6 +89,7 @@ struct IvsMoveV2 {
     int min_cells;              /* effective: config, vendor-sense area */
     uint16_t next_id;
     uint32_t seq;
+    uint32_t g_dir;             /* share of cells changed in the median's direction, Q8 */
     uint32_t g_unif;            /* share of cells that follow the global ratio, Q8 */
     int dump_fd;                /* OPENIMP_MOTION_V2_DUMPFD: analysis input trace, -1 off */
 };
@@ -444,6 +446,16 @@ static int32_t v2_gain_ratio(IvsMoveV2 *v2)
         for (k = bin > 2 ? bin - 2 : 0; k <= bin + 2 && k < V2_HIST_BINS; k++)
             near += hist[k];
         v2->g_unif = near * 256 / n;
+        /* share of the cells that changed in the direction of the median (outside +-6 %):
+         * lamp, AE and IR-cut changes move (nearly) every cell the same way, a pan mixes */
+        near = 0;
+        if (bin > 32)
+            for (k = 34; k < V2_HIST_BINS; k++)
+                near += hist[k];
+        else if (bin < 32)
+            for (k = 0; k <= 30; k++)
+                near += hist[k];
+        v2->g_dir = near * 256 / n;
     }
     /* sums stay below 2^32: at most 80x60/3 cells of at most 65280 */
     for (c = 0; c < v2->ncell; c += V2_RATIO_STEP) {
@@ -787,7 +799,7 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
      * median too, but the cells scatter and real motion must not be held
      * off (the 300-step pans of the Eufy were lost to this). */
     if ((int64_t)(g > 4096 ? g - 4096 : 4096 - g) * 100 >
-            (int64_t)cfg->jump_pct * 4096 && v2->g_unif >= V2_UNIF_MIN)
+            (int64_t)cfg->jump_pct * 4096 && (v2->g_unif >= V2_UNIF_MIN || v2->g_dir >= V2_DIR_MIN))
         reason |= OPENIMP_MOVE_SUPP_LUMA;
     if ((cfg->features & OPENIMP_MOVE_F_SUPPRESS) && reason) {
         if (now_ms >= v2->supp_until && !v2->supp_frames)
