@@ -605,7 +605,7 @@ int openimp_tp_sensor_hold(int on, int ae, int awb)
                 return -1;
             tp_hold_saved.expr_mode = e.g_attr.mode;
             tp_hold_saved.expr_time = e.g_attr.integration_time;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31) || (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
             tp_hold_saved.freeze = IMP_ISP_Tuning_SetAeFreeze(1) == 0;
 #endif
             /* ev[3]/ev[4]: current again/dgain in the units of Set/GetMaxAgain/Dgain (log2); a ceiling
@@ -661,7 +661,7 @@ int openimp_tp_sensor_hold(int on, int ae, int awb)
         (void)IMP_ISP_Tuning_SetExpr(&e);
         (void)IMP_ISP_Tuning_SetMaxAgain(tp_hold_saved.max_again);
         (void)IMP_ISP_Tuning_SetMaxDgain(tp_hold_saved.max_dgain);
-#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31) || (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
         if (tp_hold_saved.freeze)
             (void)IMP_ISP_Tuning_SetAeFreeze(0);
 #endif
