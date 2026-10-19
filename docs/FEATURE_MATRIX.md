@@ -619,7 +619,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** ? not measured
 - **T31:** ✅+ 711 KB stripped (was 859; vendor 829; claude/open-tx-isp-size2, device-tested on cam-A)
 - **T40:** ⚠️ open `tx_isp_t40` 3015 KB file / 484 KB xz / 5267 KB RAM vs the vendor module 980 / 230 / 746 KB (size audit 2026-10-19): still built `-O0` without gc; a `-Os` + gc trial gives 1084 KB / 1946 KB RAM (queued, must be re-proven on the camera)
-- **T41:** ⚠️ `tx_isp_t41` 1004 KB file / 328 KB xz / 840 KB RAM vs the vendor module 779 / 227 / 555 KB (size audit 2026-10-19; +343 KB since 2026-10-18 from the translated vendor AE, 277 KB of text)
+- **T41:** ⚠️ `tx_isp_t41` 798 KB file vs the vendor module 779 KB (2026-10-19, open-tx-isp next 6bc6ebfe: generated vendor-AE code 284 -> 98 KB text, host A/B harness identical; was 1004 KB). Still ~2 % larger than the vendor; RAM/xz to be re-measured.
 
 ##### 36. Video memory (rmem) / MemFree
 

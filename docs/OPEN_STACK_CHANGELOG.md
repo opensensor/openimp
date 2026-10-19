@@ -7,6 +7,12 @@ Last update: 2026-10-19 (I2D follow-ups, T40 device tests, test-image results: f
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
+## Housekeeping and tooling (2026-10-19, in next)
+
+- `avpu/`: the duplicated top-level copy of the AVPU kernel driver is gone; the only source is `avpu/t31/` (`t40`/`t41` stay symlinks, same Allegro IP). `build-avpu.sh` builds from `avpu/t31`; `avpu.ko` for T31/T40/T41 has identical size and symbols.
+- `docs/feature-matrix.html` is generated from `FEATURE_MATRIX.md` by `tools/gen_feature_matrix_html.py`; the T40/T41 columns were re-evaluated row by row.
+- open-tx-isp: `tx-isp-t41.ko` 1029 -> 798 KB with identical behaviour (see the open-tx-isp changelog).
+
 ## 2026-10-19: I2D follow-ups, T40 PTS, device tests and test-image results (OpenIMP next 648daf1)
 
 - **I2D merged into next (30f88d5) after review:** the first review found a real defect on the T41 .34 (with a 90/270 I2D on ch0 the ch1 encoder broke from its second IDR); fixed in the branch (output pitch ALIGN32, `i2d_busy` guard so `DisableChn` cannot free a buffer the block is still writing) before the merge.
