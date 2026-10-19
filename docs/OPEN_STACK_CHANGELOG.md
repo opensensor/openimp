@@ -7,6 +7,12 @@ Last update: 2026-10-19 (I2D follow-ups, T40 device tests, test-image results: f
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
+## 2026-10-19: SnapFrame NV12 fix and test-image tools (claude/testbild)
+
+- Fix (T20/T21/T23/T30/T31): `IMP_FrameSource_SnapFrame` NV12 copied the first w*h*3/2 bytes of the capture buffer, but the chroma sits after ALIGN16(height) luma lines; for heights not divisible by 16 (1080) the snapshot chroma was 8 lines late and the bottom was cut. Luma and chroma are now packed separately (heights divisible by 16 unchanged). Checked on cam-D (T21) and cam-C (T20) at 1080p: snapshot chroma equals the capture chroma at line 1088 (before: offset 1080).
+- Test hook `OPENIMP_TEST_PATTERN=1/2/3` (pattern / moving square with frame counter / motion test picture), off by default; the mode is read once. The hook uses pitch = width like the FrameSource capture (was ALIGN16(width), only differs for widths not divisible by 16).
+- Tools: `tools/testpattern` (tbcmp, tbmotion, ana scripts, logo generator), `tools/rawcheck` (rawcheck, rawana layout check), `tools/motiontest`; `roitest` got a classic-API JPEG snapshot.
+
 ## Housekeeping and tooling (2026-10-19, in next)
 
 - `avpu/`: the duplicated top-level copy of the AVPU kernel driver is gone; the only source is `avpu/t31/` (`t40`/`t41` stay symlinks, same Allegro IP). `build-avpu.sh` builds from `avpu/t31`; `avpu.ko` for T31/T40/T41 has identical size and symbols.
