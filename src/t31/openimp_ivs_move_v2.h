@@ -35,6 +35,10 @@ int ivs_move_v2_next_frame(IvsMoveV2 *v2);
 void ivs_move_v2_feed(IvsMoveV2 *v2, const uint8_t *luma, uint32_t stride,
                       int64_t timestamp);
 
+/* Test/replay entry: cells as produced by feed (ncell = grid_w * grid_h). */
+void ivs_move_v2_feed_cells(IvsMoveV2 *v2, const uint16_t *cur, const uint16_t *tex,
+                            int64_t timestamp);
+
 /* IVS thread: analyse the frame fed last (no-op when none was fed).
  * isp_mode: ISP running mode or -1 if unknown; total_gain: sensor total
  * gain (any linear unit) or 0 if unknown; now_ms: monotonic clock;
