@@ -33,3 +33,4 @@ __pycache__/
 /prudynt-t-*/
 /driver/
 tools/roitest/roitest_t*
+tests/t30/isp_t31_movestate_test

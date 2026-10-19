@@ -21,11 +21,11 @@ fi
 # Kernels without CONFIG_DMA_SHARED_BUFFER may need AVPU_NO_DMABUF=1.
 AVPU_NO_DMABUF="${AVPU_NO_DMABUF:-0}"
 # Module source directory (an out-of-tree copy keeps the tracked one clean).
-AVPU_SRC="${AVPU_SRC:-$PWD/avpu}"
+AVPU_SRC="${AVPU_SRC:-$PWD/avpu/t31}"   # t40/t41 are symlinks to t31
 
 # Configuration
 TARGET="${TARGET:-t31}"                 # Default target, can be overridden
-KERNEL_VERSION="${KERNEL_VERSION:-3.10}"  # Default kernel version
+unset KERNEL_VERSION  # SDK-layout switch in avpu/t31/Kbuild; this script builds flat
 
 # Colors for output
 RED='\033[0;31m'
@@ -89,7 +89,6 @@ show_help() {
     echo ""
     echo "Environment variables:"
     echo "  TARGET               Override default target"
-    echo "  KERNEL_VERSION       Override default kernel version (default: 3.10)"
     echo "  KDIR                 Kernel build tree (required)"
     echo "  CROSS_COMPILE        Toolchain prefix (default: mipsel-linux-)"
     echo "  TOOLCHAIN_BIN        Directory prepended to PATH for the toolchain"

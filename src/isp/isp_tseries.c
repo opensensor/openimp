@@ -1156,6 +1156,10 @@ enum {
      * and open tx-isp-t21 g_ctrl dispatch tisp_g_ae_luma there; the stock
      * dispatcher rejects 0x8000033.  Same id as claude/t21-bringup c1bd3b0. */
     TISP_CID_AE_LUMA = 0x8000031,
+#elif defined(PLATFORM_T20)
+    /* T10/T20 (beyond vendor, open driver only): 0x8000033 is the AeMin id
+     * here, the AE luma has its own */
+    TISP_CID_AE_LUMA = 0x80001a0,
 #else
     TISP_CID_AE_LUMA = 0x8000033,
 #endif

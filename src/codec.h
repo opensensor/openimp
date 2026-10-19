@@ -151,7 +151,7 @@ int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset);
 int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,
                                   uint32_t i_bits, uint32_t p_bits);
 #endif
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 /* CappedVBR/CappedQuality: the PSNR cap (uMaxPSNR, dB) of the OEM capped
  * rate-control modes.  rcMode is the IMP mode; any other mode clears it. */
 int AL_Codec_Encode_SetRcQualityCap(void *codec, int rcMode,

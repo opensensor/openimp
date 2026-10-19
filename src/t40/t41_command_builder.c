@@ -369,7 +369,8 @@ int openimp_t41_build_command(void *slot, size_t slot_size,
 
     cmd[40] = params->source_y;
     cmd[42] = params->source_uv;
-    cmd[52] = openimp_t41_align_up(params->width, 16u);
+    cmd[52] = params->source_pitch ? params->source_pitch :
+        openimp_t41_align_up(params->width, 16u);
     cmd[53] = cmd[52];
 
     if (!params->is_idr) {

@@ -115,6 +115,91 @@ static int run(const char *name, int cbr, uint32_t kbps, uint32_t w,
     return 0;
 }
 
+/* CappedVBR (AL 4 -> core mode 8) and CappedQuality (AL 8 -> 9), as the
+ * T40 (libimp 1.3.1) and T41 (1.2.6) channels run them: the VBR core with
+ * the uMaxPSNR cap fed from the picture SSE.  Synthetic picture quality:
+ * PSNR = 52 - 0.45 * QP dB.  core_mode 1 = plain VBR for comparison. */
+static int run_capped(const char *name, uint32_t core_mode, uint32_t kbps,
+                      uint32_t max_kbps, double bpp26, uint32_t cap_db,
+                      double *out_kbps, double *out_psnr)
+{
+    const uint32_t fps = 20u, seconds = 30u, w = 1920u, h = 1080u;
+    T31AlRcParam p;
+    T31AlGopParam g;
+    T31AlRc rc;
+    uint64_t total = 0;
+    double psnr_sum = 0.0;
+    uint32_t n, frames = fps * seconds;
+
+    fill_param(&p, &g, 0, kbps * 1000u, w, h, fps);
+    p.mode = core_mode == 8u ? 4u : core_mode == 9u ? 8u : 2u;
+    p.max_bitrate = max_kbps * 1000u;
+    p.max_psnr_x100 = (uint16_t)(cap_db * 100u);
+    memset(&rc, 0, sizeof(rc));
+    if (t31_al_rc_init(&rc, core_mode, &p, &g) != 0) {
+        fprintf(stderr, "%s: init failed\n", name);
+        return 1;
+    }
+    for (n = 0; n < frames; ++n) {
+        int idr = (n % g.length) == 0u;
+        T31AlRcPicture pic;
+        T31AlRcStatus st;
+        int16_t qp;
+        uint32_t bits;
+        double psnr, sse;
+        uint64_t isse;
+        int32_t filler;
+
+        memset(&pic, 0, sizeof(pic));
+        pic.type = idr ? 2u : 1u;
+        pic.flags = idr ? 3u : 2u;
+        qp = t31_al_rc_picture_qp(&rc, &pic);
+        bits = model_bits(bpp26, w * h, qp, idr);
+        psnr = 52.0 - 0.45 * qp;
+        sse = (double)w * h * 255.0 * 255.0 / pow(10.0, psnr / 10.0);
+        isse = (uint64_t)sse;
+        memset(&st, 0, sizeof(st));
+        st.sse_lo = (uint32_t)isse;
+        st.sse_hi = (uint32_t)(isse >> 32);
+        st.bits = bits;
+        st.qp = qp;
+        filler = t31_al_rc_picture_start(&rc, &pic, &st, bits);
+        t31_al_rc_update(&rc, &pic, &st, bits, 0u,
+                         filler > 0 ? (uint32_t)(filler < 8 ? 8 : filler) * 8u : 0u);
+        total += bits;
+        psnr_sum += psnr;
+    }
+    *out_kbps = (double)total / 1000.0 / seconds;
+    *out_psnr = psnr_sum / frames;
+    printf("%-30s target %5u max %5u cap %2u dB -> %7.1f kbit/s psnr %.2f dB last qp %d\n",
+           name, kbps, max_kbps, cap_db, *out_kbps, *out_psnr, rc.st.qp);
+    return 0;
+}
+
+static int capped_tests(void)
+{
+    double vbr_k, vbr_p, cv_k, cv_p, cq_k, cq_p;
+    int fail = 0;
+
+    /* static scene: VBR walks the QP down to iMinQP; both capped modes stop
+     * where the picture reaches the cap and save bit rate */
+    fail |= run_capped("static vbr", 1u, 2000, 2666, 0.01, 40, &vbr_k, &vbr_p);
+    fail |= run_capped("static cappedvbr", 8u, 2000, 2666, 0.01, 40, &cv_k, &cv_p);
+    fail |= run_capped("static cappedquality", 9u, 2000, 2666, 0.01, 40, &cq_k, &cq_p);
+    if (!fail && (cv_k > 0.8 * vbr_k || cq_k > 0.8 * vbr_k ||
+                  cv_p < 39.0 || cq_p < 39.0 || cv_p > 41.5 || cq_p > 41.5)) {
+        fprintf(stderr, "capped static: no saving or quality off cap\n");
+        fail = 1;
+    }
+    /* detailed scene: CappedVBR stays at or below uMaxBitRate */
+    fail |= run_capped("detailed cappedvbr", 8u, 2000, 2666, 0.3, 45, &cv_k, &cv_p);
+    if (!fail && cv_k > 2666.0 * 1.10) {
+        fprintf(stderr, "capped detailed: %.1f kbit/s above max\n", cv_k);
+        fail = 1;
+    }
+    return fail;
+}
+
 int main(void)
 {
     int fail = 0;
@@ -132,6 +217,7 @@ int main(void)
      * with the vendor library.  The old open-loop QP for this geometry was
      * 38, about 6 % of this model's 2.5 Mbit/s at QP 15. */
     fail |= run("ch0 cbr 6000 static", 1, 6000, 3840, 2160, 0.004, 0.35, 1.10);
+    fail |= capped_tests();
     if (fail)
         return 1;
     printf("t40 frame rc: PASS\n");

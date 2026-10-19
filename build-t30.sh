@@ -102,7 +102,7 @@ compile core_imp_log src/core/imp_log.c -Werror
 compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
-compile framesource src/framesource/framesource_tseries.c $hot_flags
+compile framesource src/framesource/framesource_tseries.c
 compile isp src/isp/isp_tseries.c
 compile t23_compat src/t31/openimp_t31_compat.c
 compile t23_state src/t31/openimp_t31_state.c -Werror
@@ -112,14 +112,14 @@ compile t30_ivs_move src/t31/openimp_t31_ivs_move.c $hot_flags -Werror
 compile t30_ivs_move_v2 src/t31/openimp_ivs_move_v2.c $hot_flags -Werror
 compile t23_platform_services src/t23/openimp_t23_services.c -Werror
 compile t23_persist src/t23/openimp_t23_persist.c -Werror
-compile t30_helix src/t30/t30_helix_encoder.c $hot_flags -Werror
+compile t30_helix src/t30/t30_helix_encoder.c -Werror
 compile t30_h264_descriptor src/t30/t30_h264_descriptor.c -Werror
-compile t30_h264_common src/t30/h264enc/common.c $hot_flags -Werror
-compile t30_h264_cabac src/t30/h264enc/cabac.c $hot_flags -Werror
-compile t30_h264_set src/t30/h264enc/set.c $hot_flags -Werror
-compile t30_h264_slice src/t30/h264enc/slice.c $hot_flags -Werror
-compile t30_rate_control src/t40/t31_rate_control.c $hot_flags -Werror
-compile t30_helix_jpeg src/t30/helix_jpeg.c $hot_flags -Werror
+compile t30_h264_common src/t30/h264enc/common.c -Werror
+compile t30_h264_cabac src/t30/h264enc/cabac.c -Werror
+compile t30_h264_set src/t30/h264enc/set.c -Werror
+compile t30_h264_slice src/t30/h264enc/slice.c -Werror
+compile t30_rate_control src/t40/t31_rate_control.c -Werror
+compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
 # Audio: the T21 path (src/t31/openimp_t31_audio.c without PLATFORM_T23).
 # The ingenic-sdk T21 and T30 oss2/oss3 audio drivers are byte-identical.
 compile t30_audio src/t31/openimp_t31_audio.c -Werror

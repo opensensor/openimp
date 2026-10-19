@@ -1,6 +1,8 @@
 # Open stack vs vendor stack: feature matrix
 
-As of: 2026-10-12 (T40 night branch, see the first update below), 2026-10-11 aggregate agg-36 after RC1 (OpenIMP and open-tx-isp `claude/agg-36`; build and host tests, no soak yet; device results only where a cell says so). Before that: RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); overnight soak clean. Detail: 2026-10-10 evening (release candidate agg-35, see the update paragraph in the summary; before that agg-34: OpenIMP `agg-34` 2a1b1cd and open-tx-isp `agg-34` b15ef235 on top of `next`, mandatory device tests of the night 2026-10-09/10 included; the per-cell details below are a chronological test log, newest results win). Camera mapping of the older sections: cam-A = T31, cam-B = T23, cam-C = T20, cam-D = T21, cam-E = T10, cam-F = T41; cam-G and cam-H are further T23 cameras (other sensors) that run the same stack. The agg-32 soak has its own letters (see the changelog). Addendum 2026-10-10 afternoon: front crop vs flip, AeComp T20/T31, agg-34.1 (T31 WDR statistics ring, regression fix, T21/T23/T20/T10 not affected), T41 experimental notes; T20/T21 encoder ROI QA flake is timing only (ROI applies at the next IDR).
+<!-- docs/feature-matrix.html is generated from this file: python3 tools/gen_feature_matrix_html.py (stdlib only; do not edit the HTML by hand, regenerate after every change here) -->
+
+As of: 2026-10-19 (T40/T41 columns re-evaluated row by row against the newest device evidence, see the first Summary entry; T40/T41 I2D, JPEG pitch, OSD after I2D, T40 PTS and device tests: see the #20-#29 entries marked 2026-10-19), before that 2026-10-12 (T40 night branch, see the first update below), 2026-10-11 aggregate agg-36 after RC1 (OpenIMP and open-tx-isp `claude/agg-36`; build and host tests, no soak yet; device results only where a cell says so). Before that: RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs); overnight soak clean. Detail: 2026-10-10 evening (release candidate agg-35, see the update paragraph in the summary; before that agg-34: OpenIMP `agg-34` 2a1b1cd and open-tx-isp `agg-34` b15ef235 on top of `next`, mandatory device tests of the night 2026-10-09/10 included; the per-cell details below are a chronological test log, newest results win). Camera mapping of the older sections: cam-A = T31, cam-B = T23, cam-C = T20, cam-D = T21, cam-E = T10, cam-F = T41; cam-G and cam-H are further T23 cameras (other sensors) that run the same stack. The agg-32 soak has its own letters (see the changelog). Addendum 2026-10-10 afternoon: front crop vs flip, AeComp T20/T31, agg-34.1 (T31 WDR statistics ring, regression fix, T21/T23/T20/T10 not affected), T41 experimental notes; T20/T21 encoder ROI QA flake is timing only (ROI applies at the next IDR).
 
 Branch names in brackets (`claude/...`) and the tags `[-all-N]` are historic: those branches were merged into `next` and deleted. Where a cell says "not yet in an aggregate", "device test pending" or "opt-in", check the summary below and the defaults table in [OPENIMP_BEYOND_VENDOR.md](OPENIMP_BEYOND_VENDOR.md) first.
 
@@ -10,6 +12,8 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 
 ## Summary
 
+- **Update 2026-10-19 (T40/T41 column audit, docs only):** all 45 rows of the T40 and T41 columns were re-evaluated against the newest device evidence (open-tx-isp and OpenIMP `next`, audit notes of 2026-10-17..19); older T40/T41 paragraphs below are history, the cells and the detail bullets of #1-#45 are current. T40 (Eufy T40XP / sc830ai, open driver `tx_isp_t40`; the H.265, mask and first-run results of 2026-10-10/11 come from the vendor ISP driver and say so): 2 ✅+, 13 ✅, 8 ⚠️, 10 🔧, 4 —, 8 ?, 0 ❌ (before: 1 / 7 / 2 / 7 / 6 / 19 / 3). Newly device-proven on the open driver: anti-flicker, vendor AE per frame with the sensor limits (20 fps under timps), AutoZoom/crop, I2D rotation, ch1 sub-stream, H.264 300 s regression, restart cycles, JPEG, OSD, capped rate control, PTS. T40 AWB (gray-world default, `ct_detect` behind `t40_awb_ctd`) and the per-frame AE (needs `enable_core_ops_cb=1`, gain 4-5x above the vendor) are ⚠️; #26 and #29 (rate control, motion) are owned by the T40 CBR/motion re-measurement and were not touched. T41 (Vanhua .32 gc5603, Cinnado .34 sc5336): 3 ✅+, 24 ✅, 9 ⚠️, 2 🔧, 1 ❌, 5 —, 1 ? (before: 3 / 27 / 4 / 0 / 6 / 4 / 1). The T41 "not supported" cells were checked against the driver: CCM, gamma, CSC and module control are implemented and device-tested (✅), DPC and DRC ratio exist in the driver without a device measurement (🔧), crop/AutoZoom works (⚠️), defog is still refused (❌), scene/colour effects do not exist in the vendor T41 library (—). Corrections the other way: module size (#35, T40 3015 KB and T41 1004 KB against 980/779 KB vendor), module reload (#2 T41, heap bug), day/night (#10 T41, night bank not swapped), ROI under FixQP (#45 T41), stability (#41). The table-versus-detail inconsistencies (rows 10, 12, 13, 19, 20, 41, 44) are resolved; the generator reports none.
+- **Update 2026-10-15 (agg-39 candidates, device-tested on their branches, aggregate `claude/agg39` built and host-tested, no soak yet):** T41 `ISP_Tuning_WaitFrameDone` returns -1/`ETIMEDOUT` when no frame arrives (deviation from the vendor, which returns 0), runs outside the library lock (a parallel `GetBrightness` took up to 1780 ms before, now < 0.1 ms) and logs no syslog line for timeouts; frames are counted while frame source channel 0 runs, so timps without a client makes every wait time out (cam-F, 2026-10-14) [claude/t41-wfd-timeout]. T40 `PollingStream` returns within its deadline without frames (Eufy T40, 35 results as before) [claude/t40-poll-timeout]. T21: sensor exposure/gain written only on change in open-tx-isp, i2c IRQs 50–51/s → 0–2/s, picture unchanged (cam-D, 2026-10-14) [open-tx-isp claude/t21-i2c-cache]; libimp Helix per-frame path back to `-Os`, no CPU difference (cam-D, 2026-10-14) [claude/t21-os-revert]; `OPENIMP_EPRC_MBRC=1` device-tested on cam-D (2026-10-15): macroblock QP spread like the vendor, P-frames within scene drift, default still off in `next` [claude/t21-mbrc-default, not in agg39]. The T21 "CBR substream overshoot" was a measurement artefact (whole pull incl. audio; video track 528 kbit/s at 512).
 - **Update 2026-10-12 (agg-38, build and host tests, no soak):** OpenIMP `claude/agg-38` = agg-37 + `claude/awbstats`/`awbzone`, `claude/t31-rc-collapse`, `claude/oimp-thread-names`, `claude/t21-cpu-fix`, `claude/t40-night`, `claude/t41-isp-handlers`, `claude/funcsearch-run4`; T40 `ISP_StartNightMode` and `ISP_Bypass_Bind` dev from the Eufy T40 run of `claude/funcsearch-run5` (same requests as the merged code). The cells of the branch updates below are merged; progress table recounted.
 - **Update 2026-10-12 (`claude/awbstats`, device-tested on the Eufy T40 and the T41, not in an aggregate):** `ISP_Tuning_GetAwbStatistics` is dev on T40 and T41: vendor ABI and semantics verified (2700-byte block of three 15x15 u32 planes, zone means of the raw pre-WB R, G, B statistics), 0 only with a block that holds statistics (T41 open driver `-EAGAIN` unless fresh; all-zero block -1), new symbol `OpenIMP_Cap_AwbStatistics`; T40 gives the same numbers as the vendor libimp on the same scene. Needs the open-tx-isp `claude/awbstats` driver on T41. Used by timps 1.10.2 (night colour trigger).
 - **Update 2026-10-12 (`claude/awbzone`, device-tested on T31 and T23, not in an aggregate):** `ISP_Tuning_GetAwbZone` is dev on T23 and T31 with the vendor block and scaling (truncated zone means of the AWB statistics, stock `Tiziano_awb_fpga`), returns 0 only with fresh statistics (open driver `-EAGAIN` otherwise) and exports `OpenIMP_Cap_AwbZone`; T40/T41 stay n.a. (no vendor `GetAwbZone`, per-zone AWB statistics are `GetAwbStatistics`). Needs the open-tx-isp `claude/awbzone` driver. Used by timps 1.10.2 (night colour trigger).
@@ -32,7 +36,7 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 - Final agg-34 after the review fixes (S1 T31 front crop survives the ISP session, S2 T31 zoom only with a scaled main stream, S3 Helix absolute ROI no longer worse than the slice QP): OpenIMP 2a1b1cd, open-tx-isp b15ef235 (test images with these on all 10 test cameras since 2026-10-09 night). The first state of the candidate was:
 - State: OpenIMP `agg-34` (838f8147) = agg-32 (8980cae) + the encoder ROI clamp (fec3e69, 8545fb9) + the reviewed DeepSeek patches (11abe42 and 17 patches); open-tx-isp `agg-34` (da9baf1e) = agg-32 (3cf9bdac) + front-crop fixes for T31, T23, T20 and T10 (d940ba20 to 10bac52f, 164225e5) + T20 `isp-m0` reports the reachable analog gain cap (da9baf1e). The first release still covers T10, T20, T21, T23 and T31; T41 is experimental and not part of it.
 - Soak of agg-32 (2026-10-07 16:07 to 2026-10-09 11:31, 43.4 h, stopped early by the user): 0 unplanned reboots, 0 oopses, 0 guard trips, 0 snapshot failures and no memory trend on the cameras without user interaction. The only reboots were a planned OTA and two crashes from enabling a front crop on T31 (fixed in agg-34, see below). The numeric picture check found the T20 day/night regression, the T10 black frame in the dark and the T41 channel-1 colour/exposure problem (known issues below).
-- Encoder ROI (region QP): **T31** has an ROI that the vendor library does not have (`IMP_Encoder_SetChnRoiAttr` through the AVPU QP table, beyond vendor): device-tested, delta -10 gives 2.7x the bit rate, a relative -20 becomes -19 (clamped), 0 decoder errors in 20 VA-API checks; the night run of 2026-10-10 went through 20 phases (deltas, absolute QPs, clamp, off/on) with the stream valid in VA-API and in strict ffmpeg (`-err_detect`). Known deviation: under FixQP 42 a window of absolute 5 or relative -25 drives the P-frames to QP about 14 almost frame-wide (bit rate about x4, stream stays valid). **T10/T20/T21** apply `SetChnROI` on the Helix/NVPU: device-tested (T21 by default, beyond vendor); T20/T10 absolute ROI re-tested on 2026-10-10: valid H.264, no inversion (fix S3). All ROI paths now keep the stream valid H.264: every `mb_qp_delta` lies in -25..+25 (a relative -26 or an absolute QP far from the picture QP produced broken pictures in hardware decoders such as VA-API, VLC and browsers), picture QP plus delta stays inside the rate control's min/max QP. **T23**: regions on the native Helix encoder, device-tested on 2026-10-10 (QP map shows the window, streams valid in VA-API and strict ffmpeg). **T41**: code only, off by default, not device-tested. Rules and numbers: `docs/ROI.md`, `docs/OPENIMP_BEYOND_VENDOR.md`.
+- Encoder ROI (region QP): **T31** has an ROI that the vendor library does not have (`IMP_Encoder_SetChnRoiAttr` through the AVPU QP table, beyond vendor): device-tested, delta -10 gives 2.7x the bit rate, a relative -20 becomes -19 (clamped), 0 decoder errors in 20 VA-API checks; the night run of 2026-10-10 went through 20 phases (deltas, absolute QPs, clamp, off/on) with the stream valid in VA-API and in strict ffmpeg (`-err_detect`). Known deviation: under FixQP 42 a window of absolute 5 or relative -25 drives the P-frames to QP about 14 almost frame-wide (bit rate about x4, stream stays valid). **T10/T20/T21** apply `SetChnROI` on the Helix/NVPU: device-tested (T21 by default, beyond vendor); T20/T10 absolute ROI re-tested on 2026-10-10: valid H.264, no inversion (fix S3). All ROI paths now keep the stream valid H.264: every `mb_qp_delta` lies in -25..+25 (a relative -26 or an absolute QP far from the picture QP produced broken pictures in hardware decoders such as VA-API, VLC and browsers), picture QP plus delta stays inside the rate control's min/max QP. **T23**: regions on the native Helix encoder, device-tested on 2026-10-10 (QP map shows the window, streams valid in VA-API and strict ffmpeg). **T40/T41**: on by default since 2026-10-18 (T40 FixQP and CBR, T41 CBR/VBR only; no effect under FixQP on T41). Rules and numbers: `docs/ROI.md`, `docs/OPENIMP_BEYOND_VENDOR.md`.
 - Front crop: **T10/T20/T21/T23** device-tested on 2026-10-09 after the fixes (T23: crop off unlocks the window, a window that does not fit is dropped instead of hanging the MSCA, the lock is released with the ISP session, module parameter `fcrop_upscale_pct`; T20/T10: a window set before stream-on is kept while no downscaled channel is open, is applied at stream on and survives substream restarts (device-tested 2026-10-10); the release of the window at tuning-session close is **not verified**). **T31**: the crash is fixed (the kernel refuses a window the MSCA would have to upscale with -EINVAL; scaler steps and latch are written; module parameter `fcrop_upscale_pct`); device-tested on 2026-10-10: a valid window zooms both streams (**proven**), too-small windows are rejected without a hang, and the window survives a restart and a flip.
 - DeepSeek patches (17, reviewed, plus one corrected): struct sizes and layouts of the vendor ABI (T40/T41 encoder stream, channel attributes, frame info, sensor info, OSD attributes), encoder group bounds (6 like the vendor on T20/T21/T30/T31/T41, 8 kept on T23/T40), T31 IVS channel 64, `OSD_SetPoolSize(0)`, `GetDefaultBinPath`, idempotent IVS group create/destroy, polling-stream guards. Host tests and `make check` are green on all SoCs and the cross-builds pass; the combined agg-34 ran on the test cameras in the night 2026-10-09/10 (mandatory tests passed, streamer smoke on 9 cameras 50 of 50 without a `PollingStream` spin); not yet checked separately on cameras: OSD groups, IVS, T31 `SnapFrame` offsets and the T41 OSD size.
 - T20 day/night: the driver reported an analog gain cap of 158 in `isp-m0` while the AE stops at 128, so a streamer waiting for the cap never saw it reached and stayed in Day mode in the dark. `isp-m0` now reports the smaller of the two: device-tested on T20 on 2026-10-10 (maximum analog gain 128). The streamer needs its matching change (timps 5bc4eff) for the switch to work; day/night with both is **not yet confirmed**. On T10 (jxh42) `isp-m0` still reports 144 at boot (128 once it is set explicitly): open finding.
@@ -74,14 +78,14 @@ Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx
 **Open items from 2026-10-04** (still valid unless the release-candidate section above says otherwise)
 
 - T23: the frequent Helix frame drops had a fixed cause (a residual interrupt treated as an error by the bounded-wait kernel patch; 60 min with 0 errors after the fix); the sporadic single encode error (errno 5): 0 errors in 6 days on cam-B since the 0102 fix (syslog: 342, 32, 37 and 419 errors on 10-01..10-04, then 0 from 10-05 to 10-10); provisionally closed, still observed. The root cause of the cold-start snapshot 503 on a second channel (stale MSCA FIFOs) is fixed in the driver (`msca_fifo_rearm`, 260 cold-start cycles without a failure) and awaits its soak before it enters `next`. Real WDR is missing (dynamic ADR is lifted, no WDR sensor mode).
-- T41 (cam-F): runs the fully open stack with H.264 (main stream High 1080p ok) and H.265; AE compensation, gain/exposure caps and 2D noise reduction work through OpenIMP; DRC, DPC, defog, WDR, CCM, gamma, HLC and BLC are not supported on T41 (the driver says so). Open: crop/rotation (I2D), temper effect, ioctl hardening awaits its device test, live flip (timps does not call `SetHVFLIP` live), night column noise of the gc5603 (ISP), short IVS gaps (~1.2 s), OOM with three parallel streams and 30 MB rmem (26 MB works in the current image; the kernel command line needs an environment-partition image), `AddSensor` EBUSY after an OOM kill; day/night, AE/AWB quality, audio untested.
+- T41 (cam-F): runs the fully open stack with H.264 (main stream High 1080p ok) and H.265; AE compensation, gain/exposure caps and 2D noise reduction work through OpenIMP; DRC, DPC, defog, WDR, CCM, gamma, HLC and BLC are not supported on T41 (the driver says so). Open: crop, temper effect, ioctl hardening awaits its device test, live flip (timps does not call `SetHVFLIP` live), night column noise of the gc5603 (ISP), short IVS gaps (~1.2 s), OOM with three parallel streams and 30 MB rmem (26 MB works in the current image; the kernel command line needs an environment-partition image), `AddSensor` EBUSY after an OOM kill; day/night, AE/AWB quality, audio untested.
 - T10 (cam-E): AE/AWB quality and image controls only partly documented.
 - T21: a 4th module reload in one boot crashed once (under investigation); `ae_it_max_us` acts, which is beyond the vendor and kept by decision.
 - Rate control: T10/T20 run the OEM-style controller for CBR/VBR (SMART is mapped to VBR); T10/T20/T21 accept QP steps, staticTime/changePos/qualityLvl without all of them acting on every path; T31 CBR writes no filler NAL.
 - AEC: only T31 is device-tested (T23 implemented, device test open; no speaker tests on the shared test cameras). Audio output only on T31.
 - Not yet exposed by timps (static caps; on T41 AE compensation and sinter are wired, the gain/exposure caps follow): DPC strength, defog/Iridix floor, DRC strength and the scene/colour effects; the timps side is decided by the timps maintainers.
 - T30 has no device in the test campaign (it builds against a real kernel; not device-verified here); T40 has one camera (cam-K) since 2026-10-10.
-- Opt-in and not device-tested: `OPENIMP_EPRC_QP_DOWN1`, `OPENIMP_EPRC_MBRC` (ported, 0 oracle deviations, device test not finished), `OPENIMP_T23_HELIX_BSF`.
+- Opt-in and not device-tested: `OPENIMP_EPRC_QP_DOWN1`, `OPENIMP_T23_HELIX_BSF`. `OPENIMP_EPRC_MBRC` (ported, 0 oracle deviations): T21 device-tested 2026-10-15 on cam-D (macroblock QP spread like the vendor), T23 device test (docs/T23_EPRC.md) not finished; opt-in.
 
 Defaults in `next` that older cells may still call opt-in or pending: T20/T10 OEM rate controller on, T10 super-frame fix on, T20 I-aware P budget on for CBR, T21 vendor-identical eprc on, T31 Allegro RC core on, reference sharing on T21/T23 on, motion detection v2 on (`OPENIMP_MOTION_V2=0` = vendor algorithm), T23 vendor AE as default (`source_ae_oem=1`), `isp_mmap_pool_kb=0` on T10/T20 (+8 MB free RAM), rmem peak logging and shortfall hints.
 
@@ -107,32 +111,32 @@ Not adopted: OSD edge flush, reference sharing on T10/T20/T31 (not in that SoC's
 |--:|---|---|---|---|---|---|---|---|---|
 | | **ISP core and image pipeline** | | | | | | | | |
 | 1 | [ISP core / sensor bring-up](#1-isp-core--sensor-bring-up) | ✅ | ✅ | ✅ | ✅ | 🔧 | ✅ | ✅ | ✅ |
-| 2 | [Reload / error handling (rmmod, stop/start)](#2-reload--error-handling-rmmod-stopstart) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | ? | ✅ |
+| 2 | [Reload / error handling (rmmod, stop/start)](#2-reload--error-handling-rmmod-stopstart) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | ⚠️ | ⚠️ |
 | 3 | [Boot guard (protection against boot loops)](#3-boot-guard-protection-against-boot-loops) | ✅+ | ✅ | ✅+ | ✅ | ? | ✅ | ? | — |
 | | **Exposure (AE)** | | | | | | | | |
-| 4 | [AE control](#4-ae-control) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | 🔧 | ✅ |
-| 5 | [AE compensation, backlight, highlight](#5-ae-compensation-backlight-highlight) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | — | ✅ |
+| 4 | [AE control](#4-ae-control) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | ⚠️ | ✅ |
+| 5 | [AE compensation, backlight, highlight](#5-ae-compensation-backlight-highlight) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | 🔧 | ✅ |
 | 6 | [Max gain, IT max, sensor FPS](#6-max-gain-it-max-sensor-fps) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | 🔧 | ✅ |
-| 7 | [Anti-flicker (50/60 Hz)](#7-anti-flicker-5060-hz) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ? | ✅ |
+| 7 | [Anti-flicker (50/60 Hz)](#7-anti-flicker-5060-hz) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ✅ | ✅ |
 | | **Colour and image quality** | | | | | | | | |
-| 8 | [White balance (AWB, presets, manual)](#8-white-balance-awb-presets-manual) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | ? | ✅ |
-| 9 | [CCM / LSC (lens shading)](#9-ccm--lsc-lens-shading) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | 🔧 | ❌ |
-| 10 | [Day/night switching (ISP side)](#10-daynight-switching-isp-side) | ✅ | ✅ | ✅ | ✅+ | ? | ✅ | ? | ✅ |
-| 11 | [IR cut / IR LED](#11-ir-cut--ir-led) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ? | ✅ |
+| 8 | [White balance (AWB, presets, manual)](#8-white-balance-awb-presets-manual) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | ⚠️ | ✅ |
+| 9 | [CCM / LSC (lens shading)](#9-ccm--lsc-lens-shading) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | 🔧 | ✅ |
+| 10 | [Day/night switching (ISP side)](#10-daynight-switching-isp-side) | ✅ | ✅ | ✅ | ✅+ | ? | ✅ | 🔧 | ⚠️ |
+| 11 | [IR cut / IR LED](#11-ir-cut--ir-led) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ✅ | ✅ |
 | 12 | [Brightness / contrast / saturation / sharpness / hue](#12-brightness--contrast--saturation--sharpness--hue) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | ⚠️ | ✅ |
-| 13 | [Mirror / flip](#13-mirror--flip) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ? | ✅ |
-| 14 | [WDR / ADR / DRC](#14-wdr--adr--drc) | ✅ | ✅+ | ✅+ | ✅+ | ? | ✅ | 🔧 | ❌ |
+| 13 | [Mirror / flip](#13-mirror--flip) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 🔧 | ✅ |
+| 14 | [WDR / ADR / DRC](#14-wdr--adr--drc) | ✅ | ✅+ | ✅+ | ✅+ | ? | ✅ | 🔧 | 🔧 |
 | 15 | [Defog](#15-defog) | ✅ | ✅+ | ✅+ | ✅+ | ? | ✅ | — | ❌ |
-| 16 | [Noise reduction (2DNR/3DNR, Sinter, Temper)](#16-noise-reduction-2dnr3dnr-sinter-temper) | ✅+ | ✅+ | ✅+ | ✅ | ? | ✅ | — | ⚠️ |
-| 17 | [DPC (defect pixels)](#17-dpc-defect-pixels) | ✅+ | ✅+ | ✅+ | ✅ | ? | ✅ | — | ❌ |
-| 18 | [Scene mode / colour effects (B/W, negative, sepia, vivid)](#18-scene-mode--colour-effects-bw-negative-sepia-vivid) | ✅+ | ✅ | ✅+ | ✅ | ? | ✅ | — | ❌ |
-| 19 | [Privacy mask (ISP hardware block)](#19-privacy-mask-isp-hardware-block) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ❌ | ✅ |
-| 20 | [Front crop / scaler level / CSC presets](#20-front-crop--scaler-level--csc-presets) | ✅ | ✅ | ✅ | ✅ | ? | ⚠️ | ❌ | ❌ |
-| 21 | [Rotation 90°/270°](#21-rotation-90270) | — | — | — | ✅ | ? | ✅ | ? | ❌ |
+| 16 | [Noise reduction (2DNR/3DNR, Sinter, Temper)](#16-noise-reduction-2dnr3dnr-sinter-temper) | ✅+ | ✅+ | ✅+ | ✅ | ? | ✅ | 🔧 | ⚠️ |
+| 17 | [DPC (defect pixels)](#17-dpc-defect-pixels) | ✅+ | ✅+ | ✅+ | ✅ | ? | ✅ | — | 🔧 |
+| 18 | [Scene mode / colour effects (B/W, negative, sepia, vivid)](#18-scene-mode--colour-effects-bw-negative-sepia-vivid) | ✅+ | ✅ | ✅+ | ✅ | ? | ✅ | — | — |
+| 19 | [Privacy mask (ISP hardware block)](#19-privacy-mask-isp-hardware-block) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 🔧 | ✅ |
+| 20 | [Front crop / scaler level / CSC presets](#20-front-crop--scaler-level--csc-presets) | ✅ | ✅ | ✅ | ✅ | ? | ⚠️ | ⚠️ | ⚠️ |
+| 21 | [Rotation 90°/270°](#21-rotation-90270) | — | — | — | ✅ | ? | ✅ | ✅ | ✅ |
 | | **Video encoder and streams** | | | | | | | | |
 | 22 | [H.264](#22-h264) | ✅ | ✅ | ✅ | ✅+ | 🔧 | ✅ | ✅ | ✅ |
-| 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | ❌ | ✅ | ❌ | ✅ |
-| 24 | [JPEG / MJPEG / snapshot](#24-jpeg--mjpeg--snapshot) | ✅ | ✅ | ✅+ | ✅ | 🔧 | ✅ | 🔧 | ✅ |
+| 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | ❌ | ✅ | ✅ | ✅ |
+| 24 | [JPEG / MJPEG / snapshot](#24-jpeg--mjpeg--snapshot) | ✅ | ✅ | ✅+ | ✅ | 🔧 | ✅ | ✅ | ✅ |
 | 25 | [Sub-stream / scaler (ch1 640×360)](#25-sub-stream--scaler-ch1-640360) | ✅ | ✅ | ✅ | ✅ | 🔧 | ✅ | ✅ | ✅ |
 | 26 | [Rate-control mode (CBR/VBR/FixQP/Capped*/SMART)](#26-rate-control-mode-cbrvbrfixqpcappedsmart) | ✅+ | ✅ | ✅ | ✅ | 🔧 | ✅ | ⚠️ | ✅ |
 | 27 | [RC parameters (QP steps, staticTime, changePos, qualityLvl, I bias)](#27-rc-parameters-qp-steps-statictime-changepos-qualitylvl-i-bias) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ? | ⚠️ |
@@ -144,20 +148,20 @@ Not adopted: OSD edge flush, reference sharing on T10/T20/T31 (not in that SoC's
 | 32 | [Audio output (AO, speaker)](#32-audio-output-ao-speaker) | ✅ | ✅ | ✅ | ✅ | ? | ✅ | ? | — |
 | 33 | [Echo cancellation (AEC)](#33-echo-cancellation-aec) | ✅ | ✅ | ✅ | ✅ | ? | ✅+ | ? | — |
 | | **Memory, size, load** | | | | | | | | |
-| 34 | [libimp size (code + data)](#34-libimp-size-code--data) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | ? | ✅+ |
-| 35 | [Kernel module size](#35-kernel-module-size) | ✅ | ✅ | ✅+ | ✅+ | ? | ✅+ | ? | ✅ |
+| 34 | [libimp size (code + data)](#34-libimp-size-code--data) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | ✅+ | ✅+ |
+| 35 | [Kernel module size](#35-kernel-module-size) | ✅ | ✅ | ✅+ | ✅+ | ? | ✅+ | ⚠️ | ⚠️ |
 | 36 | [Video memory (rmem) / MemFree](#36-video-memory-rmem--memfree) | ✅ | ✅ | ✅+ | ✅+ | ? | ✅ | ? | ✅ |
 | 37 | [Reference-frame sharing (BUF_SHARE_CFG)](#37-reference-frame-sharing-buf_share_cfg) | — | — | ✅+ | ✅+ | ? | — | ? | ? |
-| 38 | [CPU load (documented figures)](#38-cpu-load-documented-figures) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | ? | ✅+ |
+| 38 | [CPU load (documented figures)](#38-cpu-load-documented-figures) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | ✅ | ✅+ |
 | | **Stability, helper libraries, telemetry** | | | | | | | | |
 | 39 | [Kernel soc_vpu / Helix hardening](#39-kernel-soc_vpu--helix-hardening) | ✅+ | ✅+ | ✅+ | ✅+ | ? | — | — | ✅ |
-| 40 | [AVPU kernel driver (T31/T40/T41) review](#40-avpu-kernel-driver-t31t40t41-review) | — | — | — | — | — | ✅+ | 🔧 | ✅ |
-| 41 | [Long-term stability / hangs](#41-long-term-stability--hangs) | ✅ | ✅ | ✅ | ⚠️ | ? | ⚠️ | ? | ⚠️ |
+| 40 | [AVPU kernel driver (T31/T40/T41) review](#40-avpu-kernel-driver-t31t40t41-review) | — | — | — | — | — | ✅+ | ✅ | ✅ |
+| 41 | [Long-term stability / hangs](#41-long-term-stability--hangs) | ✅ | ✅ | ✅ | ⚠️ | ? | ⚠️ | ⚠️ | ⚠️ |
 | 42 | [Helper libraries libalog / libsysutils](#42-helper-libraries-libalog--libsysutils) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | ? | ✅+ |
 | 43 | [Tuning getters / readback](#43-tuning-getters--readback) | ✅ | ✅ | ✅+ | ✅ | ? | ✅ | 🔧 | ✅ |
-| 44 | [Encoder telemetry / diagnostics](#44-encoder-telemetry--diagnostics) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | ? | ⚠️ |
+| 44 | [Encoder telemetry / diagnostics](#44-encoder-telemetry--diagnostics) | ✅+ | ✅+ | ✅+ | ✅+ | ? | ✅+ | 🔧 | ⚠️ |
 | | **Region of interest** | | | | | | | | |
-| 45 | [Encoder ROI (region QP)](#45-encoder-roi-region-qp) | ✅ | ✅ | ✅+ | ✅ | ? | ✅+ | ❌ | 🔧 |
+| 45 | [Encoder ROI (region QP)](#45-encoder-roi-region-qp) | ✅ | ✅ | ✅+ | ✅ | ? | ✅+ | ✅ | ⚠️ |
 
 Columns T10..T41 (T30 and T40 added 2026-10-10): one status symbol per SoC (legend above). The number and the feature name link to the detail section below, which holds the full per-SoC text and the vendor-stack behaviour.
 
@@ -179,8 +183,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ exposure readback live, ~45 empty CIDs wired up, unknown CIDs return -EINVAL
 - **T30:** 🔧 open-tx-isp T30 core builds against a T30 kernel and had a hardware bring-up earlier (open-tx-isp README); the T30 contributor ran the ISP + FrameSource path live (`docs/T30_STATUS.md`); not run by us (no T30 camera)
 - **T31:** ✅ reference SoC; tuning gaps closed (RGB coefficients, AE ROI, SensorAttr)
-- **T40:** ✅ device-tested 2026-10-10 on cam-K (T40XP; vendor kernel driver `tx_isp_t40`, vendor libimp 1.3.0 side by side, OpenIMP via `LD_LIBRARY_PATH`): `AddSensor`/`EnableSensor`, `ISP_Tuning_GetSensorAttr` and `GetCameraInputMode` run like on the vendor library (OpenIMP vs vendor); the T40 contributor's live gate in `docs/T40_STATUS.md` (2026-07-30). Vendor note: `GetAeExpList` hung the vendor kernel driver; the magenta cast seen with timps stopped was the IR cut left open, not the library
-- **T41:** ✅ runs the fully open stack from the `aperto` full OTA image (rootfs rev7, rmem 26M) since 2026-10-04; no oops; day/night and AE/AWB quality still untested
+- **T40:** ✅ device-tested 2026-10-10 on cam-K (T40XP; vendor kernel driver `tx_isp_t40`, vendor libimp 1.3.0 side by side, OpenIMP via `LD_LIBRARY_PATH`): `AddSensor`/`EnableSensor`, `ISP_Tuning_GetSensorAttr` and `GetCameraInputMode` run like on the vendor library (OpenIMP vs vendor); the T40 contributor's live gate in `docs/T40_STATUS.md` (2026-07-30). Vendor note: `GetAeExpList` hung the vendor kernel driver; the magenta cast seen with timps stopped was the IR cut left open, not the library. Open driver (`tx_isp_t40`, Eufy sc830ai 4K) since 2026-10-12: devtest 24/35 results with 0 failures, 300 s and 10-min stream runs, 0 oops (2026-10-15..19)
+- **T41:** ✅ runs the fully open stack from the `aperto` full OTA image since 2026-10-04; defaults since 2026-10-19: vendor AE per frame, OEM CLM and per-frame tone worker, 16.6 h overnight soak on .32 without reboot or oops (2026-10-18/19)
 
 ##### 2. Reload / error handling (rmmod, stop/start)
 
@@ -191,8 +195,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ 10x stop/start incl. kill -9, 10x reload, 0 oops; 2 out-of-bounds writes (2 KB/18 KB) fixed
 - **T30:** ? not documented
 - **T31:** ✅+ 10x reload with kill -9; vmalloc leak of 252 KB/cycle fixed; residual drift ~45 KB/cycle
-- **T40:** ? not documented (vendor kernel driver in the first test)
-- **T41:** ✅ rev2 image: 10/10 rmmod/insmod cycles OK, refcnt 0, 0 oops; kill -9 of the streamer recovers 3/3 (root cause: decompiled tuning-node helper overwrote .bss) [claude/t41-matrix-fixes]
+- **T40:** ⚠️ 2026-10-18: 10/10 ch0+ch1 stop/start cycles after the OEM release reset on the last `/dev/tx-isp` close (`claude/t40-restart-hang`, 181/181 frames each), 5 client reconnects, 0 oops (T40_RESTART_HANG_1018); rmmod/insmod cycles are not run (the test state is a reboot between runs); MemFree drifts about -0.5 MB over 10 sessions (open)
+- **T41:** ⚠️ rev2 image: 10/10 rmmod/insmod cycles OK, refcnt 0, 0 oops; kill -9 of the streamer recovers 3/3; the boot oops (kthread_stop -EINTR, use-after-free of `isp_fw_process`) is fixed (`claude/t41-boot-oops`, 2026-10-17). Open: the module-parameter heap overwrite across reloads (oops in the 17th load/unload cycle, 2026-10-12; named again as "rmmod heap bug" in the 2026-10-19 size audit)
 
 ##### 3. Boot guard (protection against boot loops)
 
@@ -218,8 +222,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ lifted vendor AE is the default (all-14/15); night test on cam-B: switches to night, AE regulates (IT 1200/1436 lines, analog gain 133/160), gain reported; backlight/highlight/AE comp act
 - **T30:** ? AE calls exported (shared T-series ISP code), no test result for T30
 - **T31:** ✅ reference SoC; 2 h 53 soak without errors
-- **T40:** 🔧 host: `Get/SetAeWeight`, `Get/SetAeExprInfo` ioctl layout tests; `GetAeExpList`, `Get/SetAeSpeed`, `Get/SetAeScenceAttr` declared but not exported; AE itself runs in the stock ISP firmware
-- **T41:** ✅ AE regulates correctly on cam-F (it was saturated at max gain only because the room was dark); day/night and AE/AWB quality across a full day still untested
+- **T40:** ⚠️ vendor AE per frame runs on the open driver (`enable_core_ops_cb=1`, the module line of the timps-t40-v2 bundle; default 0): zone mean 44 = target 44, converges 2-3 frames after the first allocation, IT on the anti-flicker ladder, no oops (`fable/t40-3a-perframe`, in next); 2026-10-19 the AE clamps IT and gains to the sensor limits like the OEM, 12/12 samples 19.9-20.4 fps under timps (was 11.6 fps, `claude/t40-ae-maxint`). Restrictions: the open gain is 4-5x higher than the vendor's in the same scene (wiki changelog 2026-10-17, open); low light (gain instead of IT at the 2241 cap) not shown yet
+- **T41:** ✅ the vendor AE (63 functions translated from the SDK `tx-isp-t41.ko` H20250310a) runs per frame and is the default since 2026-10-19 (`t41_vendor_ae=1`): .32 gc5603 converges in about 1 s, .34 sc5336 light off 0.4 s, light on 1.8-2.5 s, 0 guard faults (2026-10-18); 16.6 h soak clean. Before: the frozen-exposure bug of the safe AE (duplicate knot in the sc5336 bin) fixed 2026-10-17
 
 ##### 5. AE compensation, backlight, highlight
 
@@ -230,8 +234,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ device-tested with the lifted vendor AE: backlight 10 luma 68→112, highlight 10 →48, AE comp works (decided: lifted vendor AE becomes the default after a pending night-switch test in the dark) [claude/t23-matrix-gaps]
 - **T30:** ? `SetAeComp` exported, no test result for T30
 - **T31:** ✅ device-tested: ae_comp (Y +13/−21), backlight (Y +19), highlight (Y −13) Re-tested 2026-10-10: OEM formula, luma 55 / 100 / 160 for 0 / 128 / 255; the AE is slow (about 6 s dead time, 25 to 30 s to settle), tests need at least 30 s settle
-- **T40:** — no AE compensation call in the T40 1.3.1 header set
-- **T41:** ✅ AE compensation reaches the ISP through OpenIMP (`AeScenceAttr.AeTargetComp`), device-tested: comp 2 lowers the target 65 → 1; wired in timps main. Backlight (BLC) and highlight (HLC) are not supported on T41: the driver now returns "not supported" instead of a silent success
+- **T40:** 🔧 `Get/SetAeScenceAttr` (`AeTargetComp`, the T40 1.3.1 header has no separate AeComp call) exported and device-called (PASS on cam-K 2026-10-10, vendor kernel driver); the compensation effect on the open vendor-AE path is not measured
+- **T41:** ✅ AE compensation reaches the ISP through OpenIMP (`AeScenceAttr.AeTargetComp`), device-tested: comp 2 lowers the target 65 → 1; wired in timps main. Backlight (BLC) and highlight (HLC) are not supported on T41: the driver now returns "not supported" instead of a silent success; measured on the earlier AE (2026-10-10), not re-measured with the vendor AE default
 
 ##### 6. Max gain, IT max, sensor FPS
 
@@ -242,8 +246,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ MaxAgain/MaxDgain, IT max, SetSensorFPS, additional ISP digital-gain stage; t23tune passed
 - **T30:** ? max-gain calls exported, no test result for T30
 - **T31:** ✅ EXPR setter, AE ROI, histogram edges
-- **T40:** 🔧 host: `Get/SetSensorFPS`; no max-gain call in the T40 1.3.1 header set
-- **T41:** ✅ gain and exposure caps reach the ISP through OpenIMP (`AeExprInfo`: `AeMaxAGain` linear Q10, `AeMaxIntegrationTime` in sensor lines), device-tested: 8x cap holds 6.9x; timps wiring follows
+- **T40:** 🔧 `Get/SetSensorFPS` device-proven under timps (20 fps held; a request before the first delivered frame is kept pending, 2026-10-19), the AE maximum integration time follows the sensor limit (`t40_ae_limits` 2241 at VTS 2250); the app-set `AeExprInfo` caps (`AeMaxAGain`, `AeMaxIntegrationTime`) are host-tested only
+- **T41:** ✅ gain and exposure caps reach the ISP through OpenIMP (`AeExprInfo`: `AeMaxAGain` linear Q10, `AeMaxIntegrationTime` in sensor lines), device-tested: 8x cap holds 6.9x; timps wiring follows; measured on the earlier AE (2026-10-10), not re-measured with the vendor AE default
 
 ##### 7. Anti-flicker (50/60 Hz)
 
@@ -254,8 +258,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ device-tested: vendor AE 50/60/off IT 720/900/971; HLIL 720/600/711
 - **T30:** ? exported, no test result
 - **T31:** ✅ device-tested with 22 ms IT cap: IT 1000/900/750 lines off/50/60 Hz, gain compensates; daylight test pending
-- **T40:** ? `Get/SetAntiFlickerAttr` exported, no test result
-- **T41:** ✅ device-tested: off/50/60 Hz readback in isp-m0, AE integration time follows (2092/1575/1750 lines)
+- **T40:** ✅ `Get/SetAntiFlickerAttr` hand-translated after the OEM and device-tested on the Eufy open driver (`t40_allow_antiflick` default 1, 50/60 Hz): IT ladder 469/938/1406/1875 at 25 fps, AE on the lattice (open-tx-isp wiki changelog 2026-10-17); the Get-after-Set oops of the RC2 run (2026-10-17) is fixed; the T40 devtests of 2026-10-19 ran with `t40_antiflick_hz=50`
+- **T41:** ✅ device-tested: off/50/60 Hz readback in isp-m0, AE integration time follows (2092/1575/1750 lines); 2026-10-18 `GetAntiFlickerAttr` on .34 under timps: mode 1, 50 Hz (RC2_T41_SMALL_1018)
 
 
 #### Colour and image quality
@@ -269,8 +273,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ [-all-13] daylight green cast fixed on claude/t23-day-color (bc70f10b), tested on cam-B in sunlight: neutral colours, WB gains kept (0x710/0x7c0); not flashed yet
 - **T30:** ? AWB calls exported (6 of 8 vendor names), no test result
 - **T31:** ✅ device-tested: manual R/B gains + presets 3/4/7 read back; chroma follows (Cb/Cr), auto restores
-- **T40:** ? `Get/SetAwbAttr`, `Get/SetAwbWeight` exported, no test result; `Awb_Get/SetRgbCoefft` not exported; AWB itself runs in the stock ISP firmware
-- **T41:** ✅ black-picture incident not reproducible; timps does not call any WB function on T41 (only AWB attr in libimp)
+- **T40:** ⚠️ AWB runs on the open driver and the picture is neutral (Bayer phase from the sensor, fast BGGR seed, gates at the OEM offset: colour-saturation index 7.9..9.7, 2026-10-13..15); `GetAwbStatistics` works since the oops fix of 2026-10-19 (`claude/t40-az-nohang`, day/night thread alive). Restrictions: the default white balance is the gray-world fallback; the hand-translated vendor `tisp_awb_ct_detect` is behind `t40_awb_ctd` and the vendor AWB process behind `t40_vendor_awb_process` (both default 0, not in the bundle line); `Get/SetAwbAttr` effect not measured
+- **T41:** ✅ the colour temperature follows the light on both cameras (.32: 2604/4048/5728 K, .34: 2408/3452/5084 K at 2700/4000/6500 K), whites neutral within 1-3 codes after the OEM CLM LUT (2026-10-18, `t41_clm=1` and `t41_tone_trigger=1` default since 2026-10-19). Open: gray 5000 K fallback at night, daylight check of the Cinnado cast (not reproduced under the lamp)
 
 ##### 9. CCM / LSC (lens shading)
 
@@ -281,8 +285,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ CCM follows the IQ bank (as vendor); daylight with vendor AE neutral (sun, 2026-10-04: R/G 0.94, B/G 0.93, no green or blue cast). Green cast fixed earlier (WB gains reset on every stream start, claude/t23-day-color); blue AWB flip with vendor AE fixed (GIB black level cleared by the stream-enable write, claude/t23-ae-awb-flip); LSC flip locked
 - **T30:** ? no CCM call in the T30 vendor export list; LSC `SetShading` exported, no test result
 - **T31:** ✅ CCM follows day/night (regs 0x5004-0x5018 differ), LSC LUT loaded and follows mode + flip; per-CT sweep not testable on a fixed scene
-- **T40:** 🔧 `Get/SetCCMAttr` implemented from the vendor 1.3.1 disassembly (40-byte payload, sign/13-bit conversion): Get dev, Set host (only the Get is device-tested on cam-K 2026-10-10, OpenIMP vs vendor library); the LSC calls are not run
-- **T41:** ❌ CCM is not supported on T41 (the driver returns "not supported" instead of a silent success)
+- **T40:** 🔧 `Get/SetCCMAttr` implemented from the vendor 1.3.1 disassembly (40-byte payload, sign/13-bit conversion): Get dev, Set host (only the Get is device-tested on cam-K 2026-10-10, OpenIMP vs vendor library); the LSC calls are not run; 2026-10-15: the CCM/BCSH/LSC module inits run clean on the open driver, their per-frame refresh (events 6-13, `t40_ev_updates`) stays off
+- **T41:** ✅ `Get/SetCCMAttr`, gamma, CSC presets 0-4 and ModuleControl device-tested on cam-F (`claude/t41-tuning`, in next); the CCM follows colour temperature and EV through the per-frame tone worker (CCM word changes with the CT, default on since 2026-10-19); the old "not supported" answer is gone
 
 ##### 10. Day/night switching (ISP side)
 
@@ -293,8 +297,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ oops (wait queue) fixed, night mono, bank error → block bypass, user bypass persists
 - **T30:** ? not documented
 - **T31:** ✅ 13 switches in the 4.5 h soak
-- **T40:** 🔧 host (night 2026-10-12): `GetISPRunningMode` reads the mode from the request payload word like vendor 1.3.1 (it returned garbage 9 on the Eufy T40XP on 2026-10-11); `StartNightMode` exported (ISP-device ioctl 0xc004542e, callable between `ISP_Open` and `AddSensor`); the "odd chroma" of 2026-10-11 was the test measuring two stale frames. ✅ dev `StartNightMode`: Eufy T40 2026-10-12 (`claude/funcsearch-run5`, same ioctl and argument for sensor 0), rc 0 as the vendor, first pictures black and white (chroma 0.0, Y 82), colour back after `SetISPRunningMode(DAY)` (chroma 96); `GetISPRunningMode` re-test pending (devtest phase 4)
-- **T41:** ✅ isp-m0 shows the run mode; forced switch test pending
+- **T40:** 🔧 `GetISPRunningMode` returns the mode on the open driver (2026-10-15), `StartNightMode` and `SetISPRunningMode` are accepted, the timps day/night thread reads `isp-m0` (`ISP Runing Mode`, `AeIntegrationTime`, `TotalGainDb`) and forces night/day through `/control` without a fps change (2026-10-19). The black-and-white / colour picture proof (chroma 0.0 then 96, 2026-10-12) was made with the vendor kernel driver; the picture check of the switch on the open driver is pending
+- **T41:** ⚠️ isp-m0 shows the run mode and timps switches live on .32 and .34 (8 switches on 2026-10-18, no idle warnings); after an IR switch the vendor AE re-converges in about 2.6 s. Restrictions: the night parameter bank for BCSH/CCM is not swapped (`tisp_bcsh_dn_params_refresh`/`tisp_ccm_dn_params_refresh` are `return 0` in the kernel build, audit 2026-10-17), .34 stayed in night under a lamp (timps threshold, note to the timps session)
 
 ##### 11. IR cut / IR LED
 
@@ -305,7 +309,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ device-tested: timps auto night switches IR cut + ir850 + mono
 - **T30:** ? not documented
 - **T31:** ✅ device-tested: daynight night/day switches ircut + ir940 (no ir850 pin on this cam), ISP follows
-- **T40:** ? not documented
+- **T40:** ✅ IR cut toggled on the Eufy through the platform GPIO tool (`ircut`, 8 toggles in the 2026-10-18 motion run; the magenta cast of 2026-10-10 was the IR cut left open); not driven by libimp
 - **T41:** ✅ device-tested: ircut + ir850 toggle; ISP mode not readable
 
 ##### 12. Brightness / contrast / saturation / sharpness / hue
@@ -317,7 +321,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ brightness/contrast/saturation/hue act now (they were reset on every stream start); contrast/gain feedback: driver takes the low byte like the vendor, OpenIMP remembers the gain before sending (user contrast 100 stays) (claude/t23-bcsh-aeit-fix)
 - **T30:** ? exported where the vendor has them (no hue call in the T30 vendor list), no test result
 - **T31:** ✅ defaults 0x80
-- **T40:** ✅ `Brightness`, `Contrast`, `Saturation` device-tested on the Eufy T40XP 2026-10-11 (getters from the vendor cache); `BcshHue` 🔧 host (night 2026-10-12): the getter answers the cached byte like vendor 1.3.1 (the set request is the vendor one; the kernel maps 0..255 to 0..120 degrees); the hue effect measured on 2026-10-11 was half stale frames, device re-test (with the vendor library side by side) pending
+- **T40:** ⚠️ `Brightness`, `Contrast`, `Saturation` device-tested only on the vendor kernel driver (Eufy 2026-10-11, getters from the vendor cache); on the open driver the EV-dependent BCSH strength entries are partly unresolved lift code (STREAMER_FUNC_AUDIT 2026-10-17) and no effect test exists; `BcshHue` host (getter from the vendor cache, device re-test pending)
 - **T41:** ✅ brightness 255 → Y 211, contrast 0 → flat grey, saturation 0/255 chroma 0.1/7.1 (dark scene) [claude/t41-matrix-fixes]
 
 ##### 13. Mirror / flip
@@ -329,7 +333,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ flip, Bayer re-sync, LSC flip locked
 - **T30:** ? `Get/SetISPHflip`/`Vflip` and (2026-10-10, host test) `Get/SetISPHVflip` exported, no device result
 - **T31:** ✅ sc4336p vflip no longer reports an error [-all-13]; MSCA flip takes effect only at the next channel start, as with the vendor
-- **T40:** 🔧 host (night 2026-10-12): `GetHVFlip` answers the cached mode like vendor 1.3.1 (the stock kernel has no getter: rc -1 on 2026-10-11), `SetHVFLIP` vendor checks; the "not mirrored" result of 2026-10-11 compared two frames captured before the call (2 buffers, no drain), device re-test pending (devtest phase 4)
+- **T40:** 🔧 host (night 2026-10-12): `GetHVFlip` answers the cached mode like vendor 1.3.1 (the stock kernel has no getter: rc -1 on 2026-10-11), `SetHVFLIP` vendor checks; the "not mirrored" result of 2026-10-11 compared two frames captured before the call (2 buffers, no drain), device re-test pending (devtest phase 4); the I2D flip/mirror of ch1 is device-proven on the open driver (#21), the ISP `SetHVFLIP` is not
 - **T41:** ✅ sensor flip registers follow live (hflip → 0x022c=0x01, vflip → 0x0063=0x02, off → 0x00); picture check in daylight pending [claude/t41-matrix-fixes]
 
 ##### 14. WDR / ADR / DRC
@@ -341,8 +345,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ dynamic ADR lifted from the vendor module (44/44 emulator-identical, claude/t23-adr-defog); DRC strength 0/255 visibly effective on cam-B; sc2336 has no WDR mode
 - **T30:** ? `Get/SetRawDRC` exported; `Get/SetWDRAttr` exported since 2026-10-10 (V4L2 control 0x8000169, host test), no device result
 - **T31:** ✅ WDR buffer lazy; AE1 (short frame) stub = vendor no-op without WDR sensor
-- **T40:** 🔧 host: `ISP_WDR_ENABLE`/`_GET` ioctl layout test; `ISP_WDR_OPEN` (vendor 1.3.1: LINEAR boot ioctl 0xc0045432, WDR boot = WDR enable; night 2026-10-12; Eufy T40 2026-10-12 (`claude/funcsearch-run5`) with rmode 0 / imode 1 before `AddSensor`: rc 0 as the vendor, but the linear-only sc830ai then delivers no frames with either library, the vendor returns from its stream poll, OpenIMP blocked until killed; stays host); `Get/SetWdrOutputMode` not exported
-- **T41:** ❌ WDR and DRC are not supported on T41 (the driver returns "not supported" instead of a silent success)
+- **T40:** 🔧 host: `ISP_WDR_ENABLE`/`_GET` ioctl layout test; `ISP_WDR_OPEN` (vendor 1.3.1: LINEAR boot ioctl 0xc0045432, WDR boot = WDR enable; night 2026-10-12; Eufy T40 2026-10-12 (`claude/funcsearch-run5`) with rmode 0 / imode 1 before `AddSensor`: rc 0 as the vendor, but the linear-only sc830ai then delivers no frames with either library, the vendor returns from its stream poll, OpenIMP blocked until killed; stays host); `Get/SetWdrOutputMode` not exported (the Eufy sc830ai is a linear sensor)
+- **T41:** 🔧 no real WDR (both test sensors are linear): `ISP_WDR_ENABLE` is device-tested (flag only, the gc5603/sc5336 are linear), `Get/SetWdrOutputMode` is accepted as the vendor no-op with readback; ADR runs per frame in the tone worker (soak 2026-10-18/19), the DRC ratio unit exists in the driver (`a3eff26f`, host/build only), WDR fusion is refused (`t41_wdr_fusion_unsafe=0`)
 
 ##### 15. Defog
 
@@ -354,7 +358,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** ? `SetAntiFogAttr` exported since 2026-10-10 (control 0x8000163, host test), no device result
 - **T31:** ✅ device-tested: defog 255 (Y −10, laplacian +193)
 - **T40:** — no defog call in the T40 1.3.1 header set
-- **T41:** ❌ defog is not supported on T41 (the driver returns "not supported" instead of a silent success)
+- **T41:** ❌ defog is not supported: a ModuleControl that takes DEFOG out of bypass and a defog ratio other than neutral return -EOPNOTSUPP (the defog algorithm is not recovered; still true on 2026-10-19)
 
 ##### 16. Noise reduction (2DNR/3DNR, Sinter, Temper)
 
@@ -365,8 +369,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ gain index now log2 (before: noise reduction too strong from 2x), Sinter non-compounding, sharpness/DPC follow the bank
 - **T30:** ? Sinter/Temper strength exported; `SetTemperDnsCtl` exported since 2026-10-10 (cache-only like the T30 `SetTemperDnsAttr`)
 - **T31:** ✅ vendor-identical: SDNS H-S regs 0→0, 255→15 (OEM cap 16); temper 0: temporal std 4.60 vs 1.64; sinter effect small by OEM design
-- **T40:** — no Sinter/Temper/2DNR call in the T40 1.3.1 header set
-- **T41:** ⚠️ 2D noise reduction (sinter) works through OpenIMP (`Module_Ratio` index 0), device-tested: sinter 255 cuts wall noise from ~7 to ~1; wired in timps main. 3D noise reduction (temper, index 1) shows no measurable effect yet and is being checked in the driver
+- **T40:** 🔧 `Get/SetModule_Ratio` (SINTER 2D / TEMPER 3D strength) is exported as a plain pass-through (host only); the open T40 driver handler for CID 0x080000a4 and the effect are not verified
+- **T41:** ⚠️ 2D noise reduction (sinter) works through OpenIMP (`Module_Ratio` index 0), device-tested: sinter 255 cuts wall noise from ~7 to ~1; wired in timps main. 3D noise reduction (temper, index 1) shows no measurable effect yet and is being checked in the driver; MDNS/YSP/CDNS blocks run in the per-frame tone worker, on by default since 2026-10-19
 
 ##### 17. DPC (defect pixels)
 
@@ -378,7 +382,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** ? `SetDPStrength` exported since 2026-10-10 (DPC ratio control, host test), no device result
 - **T31:** ✅ vendor-identical: m1/m3 thresholds 0→(d1000,f5), 255→(d5,f1191); impulses −6 % (defect pixels only)
 - **T40:** — no DPC call in the T40 1.3.1 header set
-- **T41:** ❌ DPC is not supported on T41 (the driver returns "not supported" instead of a silent success)
+- **T41:** 🔧 the DPC ratio unit of `Module_Ratio` is implemented in the driver (long-bank thresholds scaled from the pristine table, `6fcf5502`) and the tone worker interpolates the DPC gain per frame; no device measurement of the effect (host/build only)
 
 ##### 18. Scene mode / colour effects (B/W, negative, sepia, vivid)
 
@@ -390,7 +394,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T30:** ? `Get/SetColorfxMode`, `Get/SetSceneMode` exported, no test result
 - **T31:** ✅ device-tested: as T23 (claude/t23-t31-scene-colorfx, not yet in an aggregate)
 - **T40:** — no scene-mode/colour-effect call in the T40 1.3.1 header set
-- **T41:** ❌ no control path on T41 (no cap, no libimp function)
+- **T41:** — no scene-mode / colour-effect call in the vendor T41 library (function table: n.a.)
 
 ##### 19. Privacy mask (ISP hardware block)
 
@@ -401,7 +405,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ device-tested: both streams, green fill
 - **T30:** ? no privacy-mask call in the T30 vendor export list
 - **T31:** ✅ as vendor, follows mirror/flip; emulator 400/400 identical; cam-A black+red ok [-all-13]
-- **T40:** ✅ device-tested 2026-10-10 (vendor driver): cover at the right place in both streams, crop SSIM 0.9998 vs the vendor library (branch `claude/t40-isp-osd`)
+- **T40:** 🔧 `Get/SetMask` (ISP-drawn cover) device-tested 2026-10-10 on the vendor kernel driver (cover at the right place in both streams, crop SSIM 0.9998 vs the vendor library, `claude/t40-isp-osd`); not re-run on the open driver
 - **T41:** ✅ device-tested on chn1 (chn0 value missing because the camera rebooted in that run)
 
 ##### 20. Front crop / scaler level / CSC presets
@@ -413,8 +417,9 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ front crop via vendor path (960x540 crop ok); MASK -EINVAL as vendor (no stock handler); the 2026-10-06 crop hang is fixed in agg-34 and device-tested on 2026-10-09: crop off unlocks the window and restores the full sensor window, a locked window that does not fit is dropped (with a warning) instead of stalling the MSCA, the lock is released at the last close of the ISP device (a streamer restart without crop gets the full frame), module parameter `fcrop_upscale_pct` (default 0) lets the geometry check tolerate a measured upscale (T23 upscales up to 2.0; at 2.2 the MSCA stalled briefly, the crop was dropped, no reboot); flip, day/night, fast changes with many streamer restarts, corner windows, sub-stream and a reboot with a persisted crop all passed; `SetAutoZoom` as the stock control (host/build-tested only) Front crop vs flip (device-tested 2026-10-10): the window is in sensor space before the flip; the streamer mirrors it on both axes; with image hflip/vflip both the sensor (reg 0x3221) and the MSCA (0xd050) flip, `shvflip=1` only flips the LSC mesh. A streamer detects the safe crop path by `/sys/module/tx_isp_t23/parameters/fcrop_upscale_pct` (present only in fixed drivers).
 - **T30:** ? no front-crop/scaler-level call in the T30 vendor export list
 - **T31:** ⚠️ BLC get, CSC presets 0–4 + user matrix, scaler level (tested on cam-A); front crop: the crash is fixed (enabling a window smaller than a channel's scaler output stalled every MSCA output until reboot; the kernel now refuses such a window with -EINVAL and logs it without a hang, a main stream larger than the window drops the crop with a warning, the crop survives idle off/on, a restart and a flip, disabling restores the full frame; module parameter `fcrop_upscale_pct`, default 0) and, device-tested on 2026-10-10, a valid window zooms both streams (**proven**) Front crop vs flip (device-tested 2026-10-10): the window is in sensor space before the flip; the streamer mirrors it on both axes. Front crop is effective (picture effect proven on both streams in daylight, 2026-10-10); `/sys/module/tx_isp_t31/parameters/fcrop_upscale_pct` exists only in fixed drivers. The vendor does no transform (T23/T31 stock).
-- **T40:** ❌ `SetScalerLv`, `Get/SetISPCSCAttr`, `Get/SetAutoZoom` declared but not exported
-- **T41:** ❌ crop (I2D) still open: no control path. T41 experimental notes 2026-10-10 (**in branch, not yet in an aggregate**: open-tx-isp `claude/t41-driver-gaps` bf2a6a5c, OpenIMP 0997f0b): MSCA ch1 latch (`cfg_update=2`, opt-in) is correct up to 768x432, ch1 of 960x540 or more started mid-stream can hang the SoC (recommendation: T41 sub-stream at most 768x432); module-parameter heap overwrite only across rmmod/insmod; driver controls FrameDrop, SensorRegister, WDR enable and AF weight added (device-tested); `WdrOutputMode` has no stock handler (stays -1)
+- **T40:** ⚠️ `Get/SetAutoZoom` (CID 0x08000077) device-tested 2026-10-18 on the Eufy T40XP (sc830ai 3840x2160, open driver): live window changes apply within one frame (frame gap 67-85 ms at 15 fps) on ch0 at 1920x1080, 2560x1440 (zoomed) and 640x360, regions match, invalid/too-small windows return -1, `zr0` (disable) restores the full frame, no oops; the window must be at least as large as the channel output (the MSCA cannot upscale), 4K output only with the full window; ch1/ch2 use the same per-channel path (ch1 frames proven, zoom on ch1 not device-proven); second sensor (vinum 1) is refused. `OpenIMP_Cap_AutoZoom = 1`. `SetScalerLv`, `Get/SetISPCSCAttr` still not exported on T40. Timps crop/ROI test passed on 2026-10-19 (idle 0.01 s, live 0.03 s, region correct, 10 min ch0+ch1) after the AWB-statistics oops fix. Restrictions: a window not smaller than the channel output, 4K only with the full window, `SetScalerLv` and `Get/SetISPCSCAttr` not exported on T40
+- **T41:** ⚠️ `Get/SetAutoZoom` device-tested 2026-10-18 on Cinnado .34 (sc5336): window applied at stream start; ch1 640x360 and 768x432 live (about 150 calls, frame gap at most 78 ms, 0 failures); ch0 and ch1 1280x720 live changes are deferred to the next stream start; invalid window -1. `SetScalerLv` (CID 0x080000a6): levels 0/64/128 return 0, 129 returns -1, no visible sharpness change at 2880 to 640. Crop and rotation by the I2D block are real since 2026-10-18 (#21). Restrictions: a ch1 above 1280x720 is refused by the driver's own hang-protection gate (`t41_msca_ch1_max_w/h`, not proven a vendor limit)
+- **T40 (streamer test, 2026-10-19):** ✅ ch1 / front crop / AutoZoom passed the streamer test on the Eufy with the AWB-statistics fix in the driver: idle and live (ch0 1080p + ch1 360p) on/off in 10-30 ms, region matches a centre crop (mean abs diff 7.8 / 6.8 against 34.7 / 33.6 for the full picture), 10 min with two clients 0 oops. The earlier "AutoZoom hang" was an oops in `GetAwbStatistics` that left the library's tuning lock held (open-tx-isp changelog 2026-10-19).
 
 ##### 21. Rotation 90°/270°
 
@@ -425,11 +430,12 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ sub-stream rotation 90/270 works via the native encoder; main stream above 704x576 refused (software rotation); IMP_Encoder_YuvSetCrop implemented (host-tested only, timps does not call it)
 - **T30:** ? no rotation call in the T30 vendor export list
 - **T31:** ✅ 704×1280 correct, 9 ms/frame @15 fps, before OSD/IVS/encoder
-- **T40:** ? no rotation call in the T40 1.3.1 header set; not checked in the FrameSource attributes
-- **T41:** ❌ open: hardware I2D path not enabled (timps build coerces 90/180/270 to 0)
+- **T40:** ✅ hardware I2D (same path as T41, vendor 1.3.1 `i2d_resourcedeal`; `/dev/i2d` present), device-tested 2026-10-19 on the Eufy T40XP (open driver): `SetI2dAttr` on ch1 returns 0 for rotate 90/180/270, flip and mirror; all six variants give H.264 + JPEG with 0 decode errors (300 frames each), 90/270 deliver 360x640, orientation correct (SSIM 0.94 against the transformed unrotated picture with the OSD in the frame, wrong orientation 0.38), OSD upright at 16,16 of the output; ch0 without I2D unchanged; 300 s regression 6001 frames, 0 oops [claude/i2d-t4x, in next 30f88d5]
+- **T41:** ✅ hardware I2D (`/dev/i2d`, built-in kernel driver, vendor 1.2.6 semantics: `i2d_enable` + rotate 90/180/270 or flip/mirror, applied at `EnableChn`, `picWidth/picHeight` stay the capture size, 90/270 delivers picHeight x picWidth, the encoder is created with that size). Device test 2026-10-18 on Cinnado .34 (sc5336): 1920x1080, 1280x720 and 640x360 at 90/270, 180, flip, mirror, flip+mirror via the CreateChn attribute: all correctly oriented, streams decode without errors, 90° vs transposed unrotated picture SSIM 0.97; 25 fps with and without I2D (501/501 frames in 20 s), system CPU 1-7 % with and without (no measurable cost). Frame w/h must be 8 aligned (vendor rule), 90/270 width 16 aligned: the sc5336 full 2880x1620 is refused (1620 % 8). The block needs a 32-aligned output pitch (360/720 wide outputs use pitch 384/736; encoder, IVS and SnapFrame read it). SnapFrame on an I2D channel: host only [claude/i2d-t4x]
 
 
 #### Video encoder and streams
+- **Follow-ups (2026-10-19, in next):** JPEG snapshots after I2D 90/270 were striped (software JPEG read the frame with stride = width, the I2D pitch is 32-aligned): fixed for the on-demand snapshot and the JPEG fan-out copy (2918162, ac48882), device-tested on T41 .34 (90/270/180/0 clean) and confirmed by the streamer on 90/270 JPEG + H.264 + OSD; T40 JPEG after I2D device-tested on the Eufy (JPEG decodes in all six variants). OSD after I2D: see #28.
 
 ##### 22. H.264
 
@@ -440,8 +446,9 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ native without helixd/OEM libimp: 2 h 34, 231,668 frames, 0 decode errors, ~6 % CPU
 - **T30:** 🔧 Helix H.264 (High profile, CABAC, 1080p main + 640x360 sub, 25 fps) in `docs/T30_STATUS.md`, decoded without errors by the T30 contributor on a T30X camera; host tests for the descriptor/encoder/level code; not run by us
 - **T31:** ✅ soak 2 h 53, 260,648 frames, 1030/1030 snapshots, 0 errors
-- **T40:** ✅ device-tested 2026-10-10 on cam-K (OpenIMP vs vendor library): H.264 on ch0 3840x2160 and ch1 640x360, 10 s each, strict decode clean; stream timestamp was 0 and is now copied from the frame record (a5d9b03). Open: CBR delivers only about 20 % of the target bit rate; frame size is 16-line aligned (353280 B vs 345600 B for the vendor); the pixel-format enum reads 10 (vendor 0); `P1_INNER` traces always go to stderr
+- **T40:** ✅ open driver 2026-10-18/19 (Eufy T40XP): ch0 1080p CBR 2000 + ch1 640x360, 300 s, 6001 frames each, 0 decode errors, 0 oops; 10-min timps runs ch0+ch1 at 20 fps; encoder parity with the vendor library (`claude/t40-rc`, `t40-rc2`, measured 2026-10-11 on the vendor ISP driver): CBR 500..6000 kbit/s within 1-3 % of the vendor, 360p about equal, 4K FixQP30 +4 %; pack timestamps come from the frame record (e2a74cb). Open: 4K IDR about 2.5x the vendor size, frame size 16-line aligned (353280 B vs 345600 B)
 - **T41:** ✅ cam-F with the fully open stack: main stream High profile 1920x1080 (earlier undecodable 1080p was the rmem exhaustion, fixed by the rmem best-fit), sub stream ok, no oops; repo docs: 2560×1440 H.264 verified on a different T41 device
+- **Encoder path with a test pattern (2026-10-19, `claude/testbild`, hook not yet merged, host-fed pattern at the FrameSource, device runs):** T40/T41 H.264 1080p/720p/360p luma PSNR 56-57 dB, SSIM >= 0.998, chroma bit-exact, checker 16/235 exact, I2D 90 as well; T20/T21/T23/T31 H.264 luma PSNR 51-66 dB, bar chroma difference 0, no colour swap or orientation error. T23 H.264 320x180: P-frame job timeout (also without the pattern, open).
 
 ##### 23. H.265 / HEVC
 
@@ -452,7 +459,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T30:** ❌ not implemented: the T30 build encodes H.264 and JPEG only (the vendor library exports `H265TransCfg` calls, no HEVC encoder in OpenIMP T30)
 - **T31:** ✅ real HEVC on AVPU (VPS/SPS/PPS, CABAC); 2×900 frames, 0 errors
-- **T40:** ❌ not supported by OpenIMP T40 yet (cam-K device run 2026-10-10); the HEVC headers and AVPU path from T41 are built in but not enabled on T40
+- **T40:** ✅ H.265 on the AVPU with the PPS tool flags of the vendor (`transform_skip`, `cu_qp_delta`) and hardware RC on by default (`claude/t40-h265-rc2`, in next): CBR 4000/1000 about equal to the vendor, SSIM equal, decode clean (the earlier "clean decode" on green pictures is fixed); FixQP lambda tables and 4K throughput (ebe0291, 4K 19.3 vs vendor 19.9 fps). Device-tested on the Eufy with the vendor ISP driver (2026-10-11); not re-run on the open ISP driver
 - **T41:** ✅ AVPU HEVC path (as T31): 1080p H.265 decodes clean, a stuck AVPU job times out after 2 s and resets the core [claude/t41-h265, rev5 image]
 
 ##### 24. JPEG / MJPEG / snapshot
@@ -465,8 +472,9 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ HW JPEG 29 ms/job; q75 = IJG tables, size matches libjpeg (scene-driven)
 - **T30:** 🔧 JPEG on the Helix VPU (`src/t30/helix_jpeg.c`), host test `helix_jpeg_test`; no device result documented
 - **T31:** ✅ HW JPEG, own MJPEG channel ok (24 B/5 s, before 0 bytes)
-- **T40:** 🔧 snapshot channels encode the captured NV12 frame with the software baseline JPEG encoder since 257ba9d (was a flat grey placeholder): `FrameSource_SnapFrame` and JPEG on ch1 640x360 device-tested on cam-K 2026-10-10 (OpenIMP vs vendor library, decodes). JPEG at 4K not tested (out of memory in the test process, 60 MB RAM)
-- **T41:** ✅ 1080p + 640x360 snapshots ok on cam-F with the open driver (claude/t41-gc5603-fix); MJPEG and the grey-JPEG TODO (T40/T41) not re-checked
+- **T40:** ✅ software baseline JPEG (SSIM 0.9996 vs the vendor library, about 1.7 fps at 4K); open driver 2026-10-19: JPEG of ch1 decodes with 0 errors in all six I2D variants (300 frames each), pitch after I2D fixed (2918162), range/colour as the vendor (the ISP delivers full range BT.709, `claude/jpeg-range`); an encoder failure returns an error instead of a grey JPEG (b5ba1c3)
+- **T41:** ✅ 1080p + 640x360 snapshots ok on cam-F with the open driver (claude/t41-gc5603-fix); MJPEG and the grey-JPEG TODO (T40/T41) not re-checked; 2026-10-19: JPEG after I2D 90/270 uses the I2D pitch (2918162), range/colour as the vendor (no defect)
+- **Test pattern and range (2026-10-19):** JPEG T40/T41 PSNR 55 dB, SSIM >= 0.997, chroma at most 1 code off (quantisation); T20/T21/T23/T31 JPEG PSNR 51-56 dB. JPEG range: the ISP delivers full-range data (BT.709) and neither the vendor libraries nor OpenIMP convert; the Y 16..238 once seen came from the sensor's Bayer test pattern (host regression test only, no code change).
 
 ##### 25. Sub-stream / scaler (ch1 640×360)
 
@@ -477,8 +485,10 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ idle teardown bug (motion detection without frames) fixed
 - **T30:** 🔧 640x360 sub-stream ran together with the main stream in the contributor's sustained gate (60 s, both at 25.0 fps; `docs/T30_STATUS.md`); not run by us
 - **T31:** ✅ cam-A 25 fps ch0+ch1 4.5 h
-- **T40:** ✅ device-tested 2026-10-10 on cam-K: ch1 640x360 with `GetFrame` (timestamps monotonic, non-zero) and H.264 on the sub-stream, clean strict decode (OpenIMP vs vendor library)
+- **T40:** ✅ device-tested 2026-10-10 on cam-K: ch1 640x360 with `GetFrame` (timestamps monotonic, non-zero) and H.264 on the sub-stream, clean strict decode (OpenIMP vs vendor library). **Open driver, 2026-10-18 (Eufy T40XP, open-tx-isp `claude/t40-ch1`, merged into next):** ch1 used to deliver 0 frames (the interrupt handler never popped MSCA output 1); fixed, roitest 1920x1080 + 640x360 (and 1280x720): 226/226 frames per 15 s, and ch0 no longer throttled (9 to 15 fps); 10 min timps run with both streams at 20 fps: 10966/10954 frames, 0 oops, RSS flat. NV12 chroma offset now follows the vendor (height aligned to 16): the green bottom strip on 1080p and the colour fringes on 360p are gone (360p SSIM vs scaled ch0 0.83 to 0.92). Open: stop path mask not OEM-exact, GIB AE dgain still returns -1 per frame (not applied), second sensor untested
 - **T41:** ✅ 640x360 snapshot and MP4 ok on cam-F with the open driver (claude/t41-gc5603-fix)
+- **T40 (2026-10-19):** ✅ the 1.1 s "gaps" on ch1 were PTS jumps of the T40 encoder (pack stamps from `first_ts + n/fps`), not lost frames; stamps now come from the FrameSource frame (648daf1). Eufy, 10 min ch0+ch1 under the streamer: 0 jumps > 0.2 s, largest step 0.105 s, 0 oops.
+- **T41 ch1 above 1280x720 (2026-10-19):** `FS_Enable1` 1920x1080 returns -1 because of the open driver's own hang-protection gate (`t41_msca_ch1_max_w/h`, default 1280x720), not OpenIMP; not proven to be a vendor limit (nothing in the vendor header or module forbids it); gate-off test pending.
 
 ##### 26. Rate-control mode (CBR/VBR/FixQP/Capped*/SMART)
 
@@ -488,9 +498,10 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T21:** ✅ vendor-identical T21 eprc is the default (0 oracle deviations); cam-D 1200 kbit/s: CBR 1326, VBR 1096, SMART 1071 [claude/eprc-t21-default]; eprc complete: SMART/CBR/VBR at 1200 kbit/s → 1090/1305/1042; runtime HSkip N=4 gives an IDR every 4 GOPs; decode clean, 0 oops [claude/eprc-complete]; scene-cut IDR not triggered by a day/night switch (vendor condition: scene class 5); MB-level RC ported (claude/eprc-mbrc 9e2bc3a, a8b483a: 0x400c0/0x400c4 per picture type like the vendor; device test running)
 - **T23:** ✅ eprc controller: 60 s at 1200 kbit/s, decode clean: SMART 1141, CBR 1253, VBR 1255 (claude/eprc-t21-t23, not yet in an aggregate); MB-level RC ported (claude/eprc-mbrc 9e2bc3a, a8b483a: 0x400c0/0x400c4 per picture type like the vendor; device test running)
 - **T30:** 🔧 CBR/VBR/FixQP with the T31 GOP-level controller (`docs/T30_STATUS.md`), host test `rc_readback_test`; no device result by us
-- **T31:** ✅ all modes via the vendor Allegro core (default): CBR 1210 kbit/s at 1200 target and 2973 at 3000 (legacy controller 1511 / 3786, +26 % with large peaks); VBR 1163, CappedVBR 1177, CappedQuality 1174 at 1200; decode clean, 0 oops [claude/t31-allegro-cbr]. No filler NAL is written (filler=0 in the logs also at 3000), so in practice there was no difference.
+- **T31:** ✅ all modes via the vendor Allegro core (default): CBR 1210 kbit/s at 1200 target and 2973 at 3000 (legacy controller 1511 / 3786, +26 % with large peaks); VBR 1163, CappedVBR 1177, CappedQuality 1174 at 1200; decode clean, 0 oops [claude/t31-allegro-cbr]. CappedVBR/CappedQuality set at CreateChn now keep their mode and cap (were VBR with max = target): cap 38 dB at 3000/4000 → 507 kbit/s at encoder PSNR 38.5 (VBR 3108), SSIM 0.963 vs FixQP 12 [claude/capped-rc-followup]. No filler NAL is written (filler=0 in the logs also at 3000), so in practice there was no difference.
 - **T40:** ⚠️ CBR delivers only about 20 % of the target bit rate on cam-K (2026-10-10); VBR 2560x1440 run reported by the T40 contributor; rate control shared with T31/T41, host `rate_control_test`
-- **T41:** ✅ bitrate 400/1200/3000 → 518/1195/2777 kbit/s (30 s each) [claude/t41-cbr-overshoot]
+- **T41:** ✅ bitrate 400/1200/3000 → 518/1195/2777 kbit/s (30 s each) [claude/t41-cbr-overshoot]; CappedVBR/CappedQuality real (vendor Allegro core with the PSNR cap, marker `OpenIMP_Cap_CappedRc`) [claude/capped-rc-t4x]; plain VBR on the same core and AVC slice-header QP = command QP (VBR/capped AVC streams did not decode before): VBR 300/400 → 291, 800/1600 → 829, CappedVBR 38 dB at 3000/4000 → 1696 (VBR 2981), all streams decode, SSIM 0.97-0.99 vs FixQP 12 of the same pictures; CBR/FixQP unchanged [claude/capped-rc-followup]. T40 same code, host test only
+- **T40 on the device (2026-10-19, Eufy, open driver, live scene):** mean rate at or below the maximum in all modes: CBR 800 -> 800, FixQP 30 -> 191, VBR 300/400 -> 289, VBR 800/1600 -> 755, VBR 3000/4000 -> 2824, CappedVBR 38 dB 3000/4000 -> 195 (SSIM 0.949 vs 0.970 for plain VBR), CappedQuality 38 -> 247 kbit/s, 0 decode errors; 1 s peaks above the maximum are IDR frames (CBR the same). CappedQuality 50 dB is not conclusive (scene changed). CBR 2000 on a static scene gives 1605 kbit/s (QP minimum clamp). The T40 cell stays ⚠️ (one board, CBR deficit seen earlier on cam-K not re-measured there).
 
 ##### 27. RC parameters (QP steps, staticTime, changePos, qualityLvl, I bias)
 
@@ -513,8 +524,9 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ device-tested: all 4 items, text edit
 - **T30:** ? OSD calls exported (T23 services, shared), no test result for T30
 - **T31:** ✅ IPU OSD; lines/rectangles; rotation: no OSD clamp in timps
-- **T40:** ✅+ device-tested 2026-10-10 on cam-K (OpenIMP vs vendor library): PIC and COVER regions; OpenIMP draws COVER on NV12 while the vendor library fails with "COVER cannot support this format" (beyond vendor on this board). IPU OSD from the T41 path; mosaic regions are not drawn, `IMPOSDRgnAttr` shares only the 1772-byte prefix
+- **T40:** ✅+ device-tested 2026-10-10 on cam-K (OpenIMP vs vendor library): PIC and COVER regions; OpenIMP draws COVER on NV12 while the vendor library fails with "COVER cannot support this format" (beyond vendor on this board). IPU OSD from the T41 path; mosaic regions are not drawn, `IMPOSDRgnAttr` shares only the 1772-byte prefix; open driver 2026-10-19: OSD upright at 16,16 of the I2D-rotated frame in H.264 and JPEG (92232a1)
 - **T41:** ✅ works on cam-F with the open stack (claude/t41-libimp): PIC/COVER via IPU, text/line/rect on CPU; clock, name and logo visible; kernel oops from the rmem cache flush fixed (T41 kernel expects a physical address)
+- **OSD after I2D (2026-10-19, in next 92232a1):** the group OSD draws on the I2D-rotated frame (vendor order FrameSource -> OSD -> encoder) at its 32-aligned pitch; regions are given in rotated-stream coordinates, bitmaps are not pre-rotated. Device-tested T41 .34 (upright at 0/90/180/270 in H.264 ch0/ch1 and the ch1 JPEG) and T40 Eufy (upright at 16,16 in all six I2D variants, H.264 and JPEG).
 
 ##### 29. IVS / motion detection
 
@@ -525,8 +537,9 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ motion active again after sub-stream idle (WebUI grid)
 - **T30:** ? IVS calls exported (T31 IVS code), no test result for T30
 - **T31:** ✅+ sub-stream default: ~85 % less IVS CPU (compared with vendor libimp)
-- **T40:** ✅ move detection device-tested for 20 s on cam-K 2026-10-10 (OpenIMP vs vendor library); T31/T41 IVS framework, base move and `Get/SetParam` host tests only
-- **T41:** ✅ device-tested earlier on cam-F with a feeder thread (no more 10-s stalls); since then the `GetFrame` re-check after `DQBUF` (914b96b, a `DisableChn` race delivered a null frame address) and a deterministic framework test (3b849dc, 500/500 under load) are host-tested only, not re-run on the camera; short ~1.2-s gaps still open; the IVS function rows stay `aud` for T41 (no function-level device test)
+- **T40:** ✅ move detection device-tested for 20 s on cam-K 2026-10-10 (OpenIMP vs vendor library); T31/T41 IVS framework, base move and `Get/SetParam` host tests only; open driver: not tested yet (camera offline on 2026-10-18)
+- **T41:** ✅ device-tested earlier on cam-F with a feeder thread (no more 10-s stalls); since then the `GetFrame` re-check after `DQBUF` (914b96b, a `DisableChn` race delivered a null frame address) and a deterministic framework test (3b849dc, 500/500 under load) are host-tested only, not re-run on the camera; short ~1.2-s gaps still open; the IVS function rows stay `aud` for T41 (no function-level device test); **open stack 2026-10-18 (Cinnado .34, timps motion on ch1 640x360, 5x5 grid):** 8/8 defined PTZ moves detected (latency 0.51-0.70 s), 0 false alarms in 660 s of static scene, timpsd CPU 0.1 % off / 1.0 % on (static), 0 BUG/oops; the ~1.2-s gaps are no longer seen on the ch1 RTSP substream (829 s, 20733 packets, largest PTS gap 0.05 s; not measured directly at the IVS feed)
+- **Motion with the open stack (2026-10-18/19):** T41 .34: 8/8 PTZ moves detected, latency 0.5-0.7 s, 0 false alarms in 600 s static, CPU about 1 %, no gaps > 0.2 s on ch1, 0 oops. T40 Eufy (night): not assessable (IR-cut toggle is no usable stimulus), 64 false snapshots in 600 s static (T41: 0), CPU cost about 0.5 percentage points; repeat by day with real movement. The T40 cell stays ✅ from the 2026-10-10 vendor-library test; open driver result is incomplete.
 
 ##### 30. Frame source / VBM pool
 
@@ -538,7 +551,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ frames also recycled for callback pools
 - **T30:** 🔧 FrameSource ran as the source of the contributor's H.264 gate; host test `fs_lifecycle_test`; not run by us
 - **T31:** ✅ device-tested: concurrent streams ok
-- **T40:** ✅ ch0 3840x2160 and ch1 640x360 `GetFrame`/`ReleaseFrame` device-tested on cam-K 2026-10-10 (timestamps monotonic, non-zero; OpenIMP vs vendor library); frame size 16-line aligned (353280 B vs 345600 B)
+- **T40:** ✅ ch0 3840x2160 and ch1 640x360 `GetFrame`/`ReleaseFrame` device-tested on cam-K 2026-10-10 (timestamps monotonic, non-zero; OpenIMP vs vendor library); frame size 16-line aligned (353280 B vs 345600 B); open driver 2026-10-18/19: ch0 and ch1 6001/6001 frames in 300 s, 0 gaps above 0.2 s in the 10-min timps run
 - **T41:** ✅ device-tested: concurrent streams ok
 
 
@@ -593,8 +606,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ 726 KB (was 774 KB; native, no helixd; claude/openimp-size)
 - **T30:** ? 594,232 B (~0.57 MB) stripped build; the vendor size was not measured
 - **T31:** ✅+ ~0.57 MB
-- **T40:** ? 375,752 B (~0.36 MB) stripped build of the branch; the vendor size was not measured
-- **T41:** ✅+ 465,728 B (~0.47 MB)
+- **T40:** ✅+ 330 KB file / 112 KB xz / 344 KB RAM (stripped, size audit 2026-10-19) vs the vendor libimp 1.3.1 with 1014 / 293 / 981 KB
+- **T41:** ✅+ 327 KB file / 113 KB xz / 339 KB RAM (stripped, size audit 2026-10-19) vs the vendor libimp 1.2.6 with 1362 / 368 / 1322 KB
 
 ##### 35. Kernel module size
 
@@ -605,8 +618,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅+ 622 KB stripped (was 1,047; vendor 857; claude/open-tx-isp-size2, device-tested on cam-B)
 - **T30:** ? not measured
 - **T31:** ✅+ 711 KB stripped (was 859; vendor 829; claude/open-tx-isp-size2, device-tested on cam-A)
-- **T40:** ? not measured
-- **T41:** ✅ tx_isp_t41 731,488 B (vendor size not measured)
+- **T40:** ⚠️ open `tx_isp_t40` 3015 KB file / 484 KB xz / 5267 KB RAM vs the vendor module 980 / 230 / 746 KB (size audit 2026-10-19): still built `-O0` without gc; a `-Os` + gc trial gives 1084 KB / 1946 KB RAM (queued, must be re-proven on the camera)
+- **T41:** ⚠️ `tx_isp_t41` 1004 KB file / 328 KB xz / 840 KB RAM vs the vendor module 779 / 227 / 555 KB (size audit 2026-10-19; +343 KB since 2026-10-18 from the translated vendor AE, 277 KB of text)
 
 ##### 36. Video memory (rmem) / MemFree
 
@@ -641,7 +654,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ ~6–7 % for 2 streams 25 fps
 - **T30:** ? not measured
 - **T31:** ✅ rotation 9 ms/frame @15 fps
-- **T40:** ? not measured
+- **T40:** ✅ timpsd about 5.4-6.2 % of one core with a ch1 client on the Eufy (open driver, motion off/on, 2026-10-18); vendor comparison not measured
 - **T41:** ✅+ timps ~10–12 % with our libimp vs ~27 % with the vendor libimp (momentary values)
 
 
@@ -668,7 +681,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** — other VPU
 - **T30:** — Helix, not AVPU
 - **T31:** ✅+ DeepSeek review verified; fixes on claude/avpu-review-fixes (minor-number leak, use-after-free on sysfs unbind, uninitialised dma-buf list mutex, flush clamp); kernel patch 0100 validates the rmem flush ioctl (invalid direction no longer crashes the kernel); tested on cam-A: reload, kill -9, 5× rmmod/insmod, 0 oops [-all-13]
-- **T40:** 🔧 AVPU driver is in the review scope of this row; no T40 device run in the OpenIMP campaign
+- **T40:** ✅ the AVPU runs under every T40 encoder test: H.264 4K/1080p/360p, HEVC, 300 s and 10-min runs on the open ISP driver, 0 AVPU errors and 0 oops (2026-10-18/19); the AVPU module is the kernel's, there is no dedicated T40 review of it
 - **T41:** ✅ same module family runs on cam-F with the open driver (5 min, 3 RTSP clients plus snapshots, 0 AVPU errors). ioctl stack-overflow hardening (unknown or legacy commands now return -ENOTTY) is in open-tx-isp, not yet device-tested; test plan in `driver/t41/README`
 
 ##### 41. Long-term stability / hangs
@@ -677,11 +690,11 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T10:** ✅ rmmod/insmod 5× with streaming, 0 oops; the earlier 'csi clock -22' oops came from a module built against the T20 kernel tree, the T10 build now refuses that [claude/t10-reload-safe]
 - **T20:** ✅ 1 h 44 soak, 0 errors
 - **T21:** ✅ uptime 1:54 at the test, 0 oops
-- **T23:** ✅ the frequent Helix frame drops had a fixed cause (residual interrupt 0x100 treated as an error by the bounded-wait kernel patch): 60 min 0 errors after the fix, 5 h soak on the `aperto` images 0 encoder errors. Sporadic single Helix encode error (errno 5): 0 errors in 6 days on cam-B since the 0102 fix (syslog: 342, 32, 37 and 419 errors on 10-01..10-04, then 0 from 10-05 to 10-10); provisionally closed, still observed. Cold-start snapshot 503 on a second channel (stale MSCA FIFOs): fix `msca_fifo_rearm` gave 260 cold-start cycles without a failure (before ~1-7 %), soak pending before it enters `next`; 2026-10-06: release defaults of the driver are the stock-like set that ran 7 h overnight (`chan_stop_keep_input=1`, `msca_keep_enabled=2`, `msca_fifo_rearm=0`, `msca_flip_skip_noop=1`, `msca_restart_skip=1`, `msca_session_release=1`, `crumbs=0`); the cold-start snapshot 503 is prevented by the stock STREAMOFF drain wait and a QBUF cache invalidate (20 cold starts and 20 restarts without a failure); MSCA scratch buffer parks a stopped channel (80 parks, 0 settle timeouts). **Known issue: the pipeline stops after a FrameSource crop change (under investigation).**
+- **T23:** ⚠️ the frequent Helix frame drops had a fixed cause (residual interrupt 0x100 treated as an error by the bounded-wait kernel patch): 60 min 0 errors after the fix, 5 h soak on the `aperto` images 0 encoder errors. Sporadic single Helix encode error (errno 5): 0 errors in 6 days on cam-B since the 0102 fix (syslog: 342, 32, 37 and 419 errors on 10-01..10-04, then 0 from 10-05 to 10-10); provisionally closed, still observed. Cold-start snapshot 503 on a second channel (stale MSCA FIFOs): fix `msca_fifo_rearm` gave 260 cold-start cycles without a failure (before ~1-7 %), soak pending before it enters `next`; 2026-10-06: release defaults of the driver are the stock-like set that ran 7 h overnight (`chan_stop_keep_input=1`, `msca_keep_enabled=2`, `msca_fifo_rearm=0`, `msca_flip_skip_noop=1`, `msca_restart_skip=1`, `msca_session_release=1`, `crumbs=0`); the cold-start snapshot 503 is prevented by the stock STREAMOFF drain wait and a QBUF cache invalidate (20 cold starts and 20 restarts without a failure); MSCA scratch buffer parks a stopped channel (80 parks, 0 settle timeouts). **Known issue: the pipeline stops after a FrameSource crop change (under investigation).** 2026-10-19: a T23 H.264 320x180 P-frame job timeout was found in the test-image campaign (also without the pattern, open).
 - **T30:** ? the contributor's gate was 60 s; no long run documented
-- **T31:** ✅ 4.5 h soak ok; 2026-10-06: H.264 stall after JPEG teardown fixed (5c2ccef, agg-29).
-- **T40:** ? not documented
-- **T41:** ⚠️ 5-min stress without reboot earlier; still open: OOM with three parallel streams, `AddSensor` EBUSY after an OOM kill; module reload 10/10 clean
+- **T31:** ⚠️ 4.5 h soak ok; 2026-10-06: H.264 stall after JPEG teardown fixed (5c2ccef, agg-29). 2026-10-17: the Wintergarten T31 rebooted after 4.7 days with a preempt-count underflow (suspected IRQ stack overflow, analysis in T31_ATOMIC_1017; fix patch untested, `motor.ko` also suspected)
+- **T40:** ⚠️ open driver: 300 s regression and 10-min ch0+ch1 timps runs clean, 10/10 restart cycles (2026-10-18), the oops at every day/night thread start fixed 2026-10-19 (AWB statistics); no overnight soak with the current stack. Open: MemFree about -0.5 MB over 10 sessions; aicwf-SDIO "rxbuff list is empty" storms with hangs in about half of the runs on 2026-10-17 (suspected memory pressure, not closed in the TODO)
+- **T41:** ⚠️ 16.6 h overnight soak on .32 with the current defaults clean (2026-10-18 15:02 to 10-19 07:39, 0 BUG/oops, streamer without restart); 30 min and 10-restart tests clean. Open: `AddSensor` sporadically fails at boot (`tisp_top_init` -16), OOM with three parallel streams, the module-reload heap bug (#2), a "scheduling while atomic" in the SDK `motor.ko` on .34 (2026-10-18)
 
 ##### 42. Helper libraries libalog / libsysutils
 
@@ -704,7 +717,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ expr/EV/TotalGain live, SensorAttr 20-byte layout, vendor isp-m0
 - **T30:** ? getters exported (shared code), no test result
 - **T31:** ✅ SensorAttr, WaitFrame per frame, isp-w02 counter
-- **T40:** 🔧 host: `GetAeWeight`, `GetAfWeight`, `GetAeExprInfo`, `GetSensorFPS`, `GetFrameDrop`, `GetSensorRegister` layout tests; `GetSensorAttr` is device-tested on cam-K 2026-10-10
+- **T40:** 🔧 host: `GetAeWeight`, `GetAfWeight`, `GetAeExprInfo`, `GetSensorFPS`, `GetFrameDrop`, `GetSensorRegister` layout tests; `GetSensorAttr` is device-tested on cam-K 2026-10-10; open driver: `isp-m0` readable and parsed by the timps day/night thread, `GetAwbStatistics` device-proven (2026-10-19)
 - **T41:** ✅ isp-m0 in vendor layout: run mode, BCSH, flip mode, anti-flicker, AE
 
 ##### 44. Encoder telemetry / diagnostics
@@ -729,8 +742,8 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T23:** ✅ on the native Helix encoder (default backend), the same registers the vendor 1.3.0 encoder programs; device-tested 2026-10-10: QP map shows the window (relative QP acts inside -12/+13 of the slice QP, like T21), bit rate +10 % at delta -15 and -4 % at +20/absolute 51, 9 streams valid in VA-API and strict ffmpeg; OPENIMP_T23_ROI=0 switches it off
 - **T30:** ? ROI calls (4 vendor names) exported, no test result for T30
 - **T31:** ✅+ beyond vendor: `IMP_Encoder_Set/GetChnRoiAttr` through the AVPU macroblock QP table (H.264 only), device-tested: delta -10 gives 2.7x the bit rate, a relative -20 is clamped to -19, absolute 51 blurs the region, 0 decoder errors in 20 VA-API checks; 2026-10-10: 20 phases valid in VA-API and strict ffmpeg (`-err_detect`); known deviation: under FixQP 42 an absolute 5 or relative -25 window drives the P-frames to QP about 14 almost frame-wide (bit rate about x4, stream valid); `OPENIMP_T31_ROI=0` refuses the call
-- **T40:** 🔧 `Encoder_Get/SetChnRoiAttr` (10 windows, AVC only) through the same AVPU macroblock QP table as the T31 (one byte per 16x16 block in EP2, cmd[9] bits 25/24; the vendor 1.3.1 library builds the same one-byte table and sets the same bits), off unless `OPENIMP_T40_ROI=1` (then rc -1, by design); device-tested with `OPENIMP_T40_ROI=1` on the Eufy T40XP 2026-10-11: FixQP 34, a full-frame window with delta -10 raises the bit rate from 81 to 155 kbps (x1.9), stream valid; whether it becomes the default is open (user decision); `SetChnMapRoi` is still not exported on T40
-- **T41:** 🔧 no effect: the table is written (off unless `OPENIMP_T41_ROI=1`; enable bits derived from the vendor library, not yet device-tested), but on the T41 run the AVPU ignored the table (bit rate and picture unchanged); `SetChnRoiAttr`/`SetChnMapRoi` count as cache
+- **T40:** ✅ `Encoder_Get/SetChnRoiAttr` (10 windows, AVC only) through the same AVPU macroblock QP table as the T31 (one byte per 16x16 block in EP2, cmd[9] bits 25/24; the vendor 1.3.1 library builds the same one-byte table and sets the same bits); **on by default** since 2026-10-18 (`OPENIMP_T40_ROI=0` refuses the call); device-tested on the Eufy T40XP in FixQP and CBR (FixQP 32 window -20: 100 to 1194 kbit/s, CBR window +20 drops the window SSIM 0.96 to 0.89); `SetChnMapRoi` is still not exported on T40
+- **T41:** ⚠️ `Encoder_Get/SetChnRoiAttr` (AVC) through the AVPU QP table with cmd[152] bits 0 and 3 as the vendor sets them; **on by default for CBR/VBR** (device-tested 2026-10-18 on Cinnado .34 and Vanhua .32: whole frame -20 doubles the bit rate, a +20 window drops its SSIM 0.97 to 0.73); **under FixQP the AVPU ignores the table** (cause open), so the windows are only cached there and a one-off syslog line says "ROI has no effect under FixQP on T41"; `OPENIMP_T41_ROI=0` refuses the call, `=1` forces the table even under FixQP; `SetChnMapRoi` rides on the same switch (not device-tested)
 - **Rules (all SoCs with ROI):** window deltas -25..+25; spread of all deltas at most 25; picture QP plus delta inside 0..51 and the rate control's min/max QP; requests beyond that are clamped with a one-time warning (`SetChnRoiAttr` returns -1 for a delta outside -26..25 or an absolute QP outside 0..51)
 
 ## Missing / incomplete functions (vendor IMP/SU API, per SoC)
@@ -861,7 +874,7 @@ Notes:
 1. `ISP_Get/SetFrameDrop`: T41: 40-byte request {ch, 3 entries}, device-tested (claude/t41-driver-gaps, in agg-35); T31: stock lsize/fmark semantics, the ISP drops the frames (open-tx-isp claude/release-t31-framedrop; 29.6 fps to 14.8/7.4 fps, disabled restores, lsize 32 refused)
 3. `ISP_Tuning_Get/SetDrawBlock`: T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).
 4. `ISP_Tuning_Get/SetModuleControl`: T21: tuning 0x80000e2 (agg-25); T41: driver rejects 0x8000072 (-EINVAL); T40: Get dev, Set host (only the Get is device-tested on cam-K 2026-10-10, OpenIMP vs vendor library)
-5. `ISP_Tuning_Get/SetWdrOutputMode`: T41: the stock driver has no handler and refuses (claude/t41-isp-round2); explained, counted as vendor no-op
+5. `ISP_Tuning_Get/SetWdrOutputMode`: T41: the stock driver has no handler (empty tisp_set/get_wdr_output_mode); the open driver refuses with EOPNOTSUPP, so libimp accepts the value and reads it back (default 0), like the vendor no-op but with readback; apitest PASS on the T41 test board (2026-10-17)
 6. `ISP_Tuning_GetAutoZoom`: T23: stock autozoom control 0x80000e8 (open-tx-isp agg-28), host/build-tested only; T41: driver has no stock handler, refuses; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 7. `ISP_Tuning_GetMaskBlock`: T23: 0x8000183 in claude/t23-awb-runtime only (not in agg-25); T23: 0x8000183 on the stock mscaler mask table (open-tx-isp agg-28, emulator-identical); the stored masks have no image effect yet (the mscaler update that consumes them is not run)
 8. `ISP_Tuning_SetAntiFogAttr`: T21: exported like the vendor libimp; control 0x8000163 is accepted by the OEM kernel without effect; T10/T20 (class c, 2026-10-10): the vendor sends control 0x98e903 (CUSTOM_ANTI_FOG); agg-37: exported; the open driver (`claude/agg37-drv`) serves the control with a safe preset that does not touch the Iridix state that hung cameras earlier (DefogStrength remains the alternative); host test only, device test pending. T21: apitest PASS (ret 0); T30 1.0.5: the enum goes out as control 0x8000163, the same code as T21; host test with a fake ioctl, driver behaviour on T30 not checked
@@ -1052,7 +1065,7 @@ Notes:
 61. `ISP_Tuning_Get/SetSensorVflip`: audit: reaches the driver/kernel
 62. `ISP_Tuning_Get/SetSinterDnsAttr`: T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build
 63. `ISP_Tuning_Get/SetTemperDnsAttr`: T10+T20: reach the driver (agg-25, T20 vendor layout); T10 shares the build
-5. `ISP_Tuning_Get/SetWdrOutputMode`: T41: the stock driver has no handler and refuses (claude/t41-isp-round2); explained, counted as vendor no-op
+5. `ISP_Tuning_Get/SetWdrOutputMode`: T41: the stock driver has no handler (empty tisp_set/get_wdr_output_mode); the open driver refuses with EOPNOTSUPP, so libimp accepts the value and reads it back (default 0), like the vendor no-op but with readback; apitest PASS on the T41 test board (2026-10-17)
 64. `ISP_Tuning_Get/SetWdr_OutputMode`: T31: reaches the WDR tool block (agg-25)
 6. `ISP_Tuning_GetAutoZoom`: T23: stock autozoom control 0x80000e8 (open-tx-isp agg-28), host/build-tested only; T41: driver has no stock handler, refuses; T41 (2026-10-10): deferred, live MSCA reprogramming carries a hang risk
 65. `ISP_Tuning_GetBlcAttr`: T23: the stock T23 module has no BLC attr control (-1 as stock; apitest N/A); T31: apitest PASS
@@ -1495,7 +1508,7 @@ Notes:
 | ► `FrameSource_Get/SetChnFifoAttr` [3] | host | dev | dev | dev | ? | dev | host | host | p† r† |
 | ► `FrameSource_Get/SetDelay` [4] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | ► `FrameSource_Get/SetFrameDepth` [5] | aud | dev | dev | dev | ? | dev | dev | cache | see note |
-| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | r† |
+| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | dev | r† |
 | ► `FrameSource_Get/SetMaxDelay` [7] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | ► `FrameSource_Get/SetPool` [8] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | cache | T31/T41: r† |
 | `FrameSource_GetFrameEx` | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | miss | miss | – |
@@ -1511,7 +1524,7 @@ Notes:
 3. `FrameSource_Get/SetChnFifoAttr`: T10+T20+T21+T23+T31: = SetMaxDelay(maxdepth) (agg-25); FIFO_DATA_PRIORITY refused for maxdepth>0; T41: FIFO attr stored, no FIFO behind it
 4. `FrameSource_Get/SetDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 5. `FrameSource_Get/SetFrameDepth`: T41: depth stored, GetFrame ignores it (T41 p1); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps
-6. `FrameSource_Get/SetI2dAttr`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+6. `FrameSource_Get/SetI2dAttr`: T40/T41: real hardware I2D rotate/flip/mirror since 2026-10-18 (`claude/i2d-t4x`, src/t40/p1_i2d.h + openimp_p1.c, marker `OpenIMP_Cap_I2dRotate`); T41 device-tested on .34, T40 host only (see row 21). Before: SetI2dAttr returned -1
 7. `FrameSource_Get/SetMaxDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 8. `FrameSource_Get/SetPool`: T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25); T41: pool id recorded only
 9. `FrameSource_GetTimedFrame`: T10+T20+T21+T23+T31: agg-25; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
@@ -1539,7 +1552,7 @@ Notes:
 | ► `FrameSource_Get/SetDelay` [4] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | `FrameSource_Get/SetDirectModeAttr` [16] | n.a. | n.a. | n.a. | dev | n.a. | n.a. | n.a. | n.a. | – |
 | ► `FrameSource_Get/SetFrameDepth` [5] | aud | dev | dev | dev | ? | dev | dev | cache | see note |
-| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | host | r† |
+| ► `FrameSource_Get/SetI2dAttr` [6] | n.a. | n.a. | n.a. | n.a. | n.a. | n.a. | host | dev | r† |
 | ► `FrameSource_Get/SetMaxDelay` [7] | host | dev | dev | dev | ? | dev | host | host | T31/T41: r† |
 | ► `FrameSource_Get/SetPool` [8] | n.a. | n.a. | n.a. | dev | n.a. | dev | n.a. | cache | T31/T41: r† |
 | `FrameSource_GetFrame` [17] | aud | dev | dev | dev | ? | dev | dev | aud | see note |
@@ -1567,7 +1580,7 @@ Notes:
 4. `FrameSource_Get/SetDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 16. `FrameSource_Get/SetDirectModeAttr`: audit: userspace implementation
 5. `FrameSource_Get/SetFrameDepth`: T41: depth stored, GetFrame ignores it (T41 p1); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps
-6. `FrameSource_Get/SetI2dAttr`: T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
+6. `FrameSource_Get/SetI2dAttr`: T40/T41: real hardware I2D rotate/flip/mirror since 2026-10-18 (`claude/i2d-t4x`, src/t40/p1_i2d.h + openimp_p1.c, marker `OpenIMP_Cap_I2dRotate`); T41 device-tested on .34, T40 host only (see row 21). Before: SetI2dAttr returned -1
 7. `FrameSource_Get/SetMaxDelay`: T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)
 8. `FrameSource_Get/SetPool`: T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25); T41: pool id recorded only
 17. `FrameSource_GetFrame`: audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T21/T31/T41: raptor†; T23: raptor, timps; all: GetFrame/SnapFrame wait up to 2 s like the vendor libimp (T20 REQBUFS/SET_BANKS fix, T21/T23/T31 wait), apitest PASS

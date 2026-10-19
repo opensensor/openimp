@@ -46,6 +46,13 @@
 #include "t40/t41_hw_rate_control.h"
 #include "t40/t41_rate_control.h"
 #endif
+/* The OEM Allegro frame rate controller port (t31_al_rc.c): T31 and T40 run
+ * CBR/VBR/CappedVBR/CappedQuality on it, T41 CappedVBR and CappedQuality
+ * (OEM T41 1.2.6 libCoreAv: the same core, AL_RateCtrl_Init modes 6/7). */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#define OPENIMP_AL_ALLEGRO_RC 1
+#include "t40/t31_al_rc.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -295,6 +302,10 @@ typedef struct ALAvpuContext {
     uint32_t t40_ep1_lambda_type;
     /* Slice QP of the last IDR (HWRC cmd[0x17] bits 23:16). */
     uint32_t t40_idr_qp;
+    /* Picture SSE from the status image (+0x158 high, +0x15c low word, as
+     * the OEM EncodingStatusRegsToSliceStatus 0x54bc4), for the capped
+     * modes' PSNR cap; [buf][0] high, [buf][1] low. */
+    uint32_t t40_sse_by_buf[16][2];
 #endif
 #if defined(PLATFORM_T31)
     /* Exact entropy bytes reported at completion status +0x104. */
@@ -303,10 +314,13 @@ typedef struct ALAvpuContext {
 #if defined(OPENIMP_AL_FRAME_RC)
     uint32_t t31_rate_control_qp_by_buf[16];
     OpenIMPT31RateController t31_rate_controller;
-    /* CappedVBR/CappedQuality: PSNR cap in dB * 100 (0 = none), copied from
-     * the codec at every AVPU setup; PSNR of the last completed picture. */
-    uint32_t t31_quality_cap_x100;
+    /* PSNR of the last completed picture (legacy capped controller). */
     uint32_t t31_last_psnr_x100;
+#endif
+#if defined(OPENIMP_AL_ALLEGRO_RC)
+    /* CappedVBR/CappedQuality: PSNR cap in dB * 100 (0 = none), copied from
+     * the codec at every AVPU setup. */
+    uint32_t t31_quality_cap_x100;
     /* OEM Allegro rate-control core (OPENIMP_T31_RC_CORE=allegro) for VBR,
      * CappedVBR and CappedQuality; t31_rate_controller stays the default. */
     T31AlRc t31_al_rc;

@@ -53,6 +53,7 @@ static int fs_outstanding[4];
 
 int IMP_FrameSource_GetFrame(int chn, void **frame);
 int VBMGetFrame(int chn, void **frame) { return IMP_FrameSource_GetFrame(chn, frame); }
+int OpenIMP_T40_FrameSource_TryGetFrame(int chn, void **frame) { return IMP_FrameSource_GetFrame(chn, frame); }
 
 int IMP_FrameSource_GetFrame(int chn, void **frame)
 {
@@ -184,6 +185,13 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user)
     stub_released++;
     return 0;
 }
+int AL_Codec_Encode_SetJpegSrcPitch(void *codec, uint32_t pitch)
+{
+    (void)codec;
+    (void)pitch;
+    return 0;
+}
+
 int AL_Codec_Encode_SetJpegSkip(void *codec, int allow)
 {
     StubCodec *c = codec;

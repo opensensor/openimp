@@ -300,7 +300,85 @@ effect at the next IDR, the controller restarting from the last QP (OEM
 `i264e_idr_reconfig`); with maxSameSceneCnt > 0 a scene change (picture
 class 5) codes an IDR early at a GOP boundary.
 
-## T10 / T40 / T41
+## T40 (libimp 1.3.1) / T41 (1.2.6)
 
-T10 (NVPU) and T40/T41 were not changed: CappedVBR/CappedQuality still run
-as VBR there (one log line).
+Both vendor libraries run CappedVBR and CappedQuality like the T31:
+`AL_Codec_Encode_ValidateRcParam` (T40 0x5ef68) / `AL_Codec_Encode_Create`
+(T41 0x324c4) clamp uMaxPSNR * 100 to 3000..5000, `AL_Common_Encoder_Compute-
+RCParam` sets pixels and peak (255) for AL modes 4 and 8, and
+`AL_RateCtrl_Init` modes 6/7 (T31: 8/9) build the shared core with the
+CappedVBR flag 1/0 (T40 `liOi`, T41 `l1Oi` -> core `llio` 0xee5f0, flag at
+state +410).  The update (T40 `lIii` 0x3e990, T41 `OooI` 0xeec20) is the VBR
+analysis (T41 `io0o` 0xf0fc0, same idle-share test on the flag at 0xf13b8)
+followed by the T31 PSNR rule (`mse1000 = sse * 1000 / pixels`,
+`psnr = 1000 * log10(peak^2 * 1000 / mse1000)`, a negative delta becomes 0
+while psnr > cap).  SSE: T40 status +0x158 high / +0x15c low (slice +108/
++104), T41 slice status +0x60 low / +0x64 high (status image +0x50/+0x54).
+
+OpenIMP (`claude/capped-rc-t4x`): both SoCs run the ported Allegro core
+(`t31_al_rc.c`) in modes 8/9 with the uMaxPSNR cap
+(`AL_Codec_Encode_SetRcQualityCap`, 30..50 dB).  T40 feeds it the published
+AU size and the picture SSE (other statistics 0, as for its CBR/VBR).  T41
+runs it for VBR and the capped modes (`claude/capped-rc-followup`: plain VBR
+too, vendor `AL_RateCtrl_Init` mode 1 -> update `o1l` 0xf3880 = analysis
+`io0o` + QP delta + `Io0o`, the T31 VBR mode 1) with the slice statistics and
+SSE; the core's QP is the picture QP of the command and the slice header.
+CBR keeps the T41 controller.  The AL mode, uMaxBitRate, eRcOptions and
+iPBDelta survive the lazy AVPU initialisation on T31, T40 and T41 (T31 before
+`claude/capped-rc-followup`: lost when the mode was set only at CreateChn, so
+CappedVBR/CappedQuality ran as VBR with max = target).
+
+T41 AVC slice header (`claude/capped-rc-followup`): slice_qp_delta now comes
+from the T41 command QP (`avpu_t41_command_picture_qp`) like HEVC.  Before it
+came from the T40 open-loop picture QP, which follows only the CBR
+controller: every VBR and capped stream (HWRC-only VBR as well) carried
+QP 34 (or 23) in the header while the command encoded another QP, so CABAC
+started with a wrong context and the AVC streams did not decode (100-240
+broken pictures per minute, grey smear).  CBR and FixQP were not affected.  The runtime marker is `OpenIMP_Cap_CappedRc`
+= 1 (replaces `OpenIMP_Cap_CappedRcAsVbr`).
+
+Device (T41 Cinnado, sc5336, 1280x720@15, static scene, 2026-10-18):
+target/max 3000/4000 kbit/s: CappedVBR cap 50 dB 3111, cap 38 dB 1665
+(-46 %), CappedQuality cap 38 dB 1745; target/max 300/400: CappedVBR 300
+(plain T41 VBR 585); target/max 800/1600: CappedVBR 774 (below max),
+encoder PSNR 37.4..38.9 dB at cap 38.  0 oops.  T40: host test only.
+These T41 streams did not decode (slice header QP, see above); the bit rates
+stand, the pictures were broken.
+
+Re-measured with the header fix (`claude/capped-rc-followup`, 2026-10-18
+night, static scenes, 1280x720@15, 40 s, GOP 30, QP 15..45, every stream
+decodes with 0 errors).  SSIM/PSNR (luma) against a FixQP 12 encode of the
+same pictures on channel 1 (`ROITEST_CH1_QP`), frames 300..600:
+
+| SoC | mode | target/max | kbit/s | encoder PSNR | SSIM / PSNR vs ref |
+|---|---|---|---|---|---|
+| T41 | VBR before (HWRC only) | 300/400 | 389 | - | broken (0.58) |
+| T41 | VBR | 300/400 | 291 | 42.6 | 0.974 / 41.6 |
+| T41 | VBR before (HWRC only) | 800/1600 | 384 | - | broken (0.60) |
+| T41 | VBR | 800/1600 | 829 | 44.0 | 0.985 / 44.7 |
+| T41 | VBR | 3000/4000 | 2981 | 46.1 | 0.990 / 47.0 |
+| T41 | CappedVBR 38 dB | 3000/4000 | 1696 | 46.1 | 0.989 / 46.7 |
+| T41 | CappedQuality 38 dB | 3000/4000 | 1695 | 46.1 | 0.989 / 46.7 |
+| T41 | CappedQuality 50 dB | 3000/4000 | 3309 | 45.1 | 0.985 / 42.6 |
+| T41 | CappedVBR 50 dB | 300/400 | 278 | 35.7 | 0.963 / 38.2 |
+| T41 | CBR before / after (2 runs each) | 800 | 797-799 / 788-799 | - | 0.982-0.983 / 0.982-0.983 |
+| T41 | FixQP 30 before / after | - | 141 / 141 | - | 0.969 / 0.969 |
+| T31 | VBR before / after | 800/1600 | 766 / 770 | 39.4 / 39.4 | 0.967 / 0.965 |
+| T31 | VBR | 3000/4000 | 3108 | 43.4 | 0.981 / 43.2 |
+| T31 | CappedVBR 38 dB before (ran as VBR) | 3000/4000 | 2895 | - | - |
+| T31 | CappedVBR 38 dB | 3000/4000 | 507 | 38.5 | 0.963 / 39.1 |
+| T31 | CappedQuality 38 dB | 3000/4000 | 508 | 38.5 | 0.963 / 39.1 |
+| T31 | CappedQuality 50 dB | 3000/4000 | 3338 | 42.3 | 0.981 / 43.3 |
+| T31 | CappedVBR 50 dB | 300/400 | 283 | - | - |
+| T31 | CBR before / after | 800 | 802 / 807 | - | 0.969 / 0.967 |
+
+CappedVBR/CappedQuality stay at or below uMaxBitRate and fall well below it
+where the picture already meets the cap (T31 lit scene: the encoder PSNR
+settles at the 38 dB cap, 507 instead of 3108 kbit/s; T41 IR scene: QP held
+at 19, -43 %).  A 50 dB cap is not reached by these scenes (encoder PSNR
+42-45 dB), so the modes run as VBR up to uMaxBitRate.  The CappedQuality
+50 dB run was at night (IR on T41, garage light on T31); a daylight repeat is
+still open.  T31 plain VBR now uses uMaxBitRate and eRcOptions 1 like the
+vendor; at this scene the result is unchanged.
+
+T10 (NVPU) was not changed: CappedVBR/CappedQuality run as VBR there.
