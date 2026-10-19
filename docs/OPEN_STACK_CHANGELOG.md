@@ -7,6 +7,13 @@ Last update: 2026-10-19 (I2D follow-ups, T40 device tests, test-image results: f
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
+## 2026-10-19: Test pattern runtime API and logo (claude/testpattern-api)
+
+- `OpenIMP_TestPattern_Set/Get` (`include/openimp_testpattern.h`, ABI 1, capability `OpenIMP_Cap_TestPattern`): mode 0..3 and parameters (step, logo, noise, built-in object size/contrast/speed/cell/duty, script file) switchable during streaming on T20/T21/T23/T30/T31 (kernel_interface.c hook) and T40/T41 (FrameSource hook); state readback (mode, parameters, frames since Set, objects shown/active). Env variables are the start value; per-frame cost one atomic load, no lock.
+- Control socket `OPENIMP_TEST_PATTERN_CTL` and `tools/testpattern/tpctl` (get/set from outside the process, for tests without timps).
+- Logo: the two simplified 64x64 logos at the top left are gone; the OpenIMP banner (full fidelity from `docs/assets/banner.svg`, host rasteriser `tools/testpattern/mklogo.py`: librsvg via ImageMagick / rsvg-convert / inkscape / cairosvg) is centred on a white quiet zone, 15 % of the picture height (the measuring areas stay outside the box: it lies in the checkerboard band), palette (32 colours) + RLE, unpacked once per picture size. Size: +3.8 KB .rodata; stripped libimp T31/T41 +84/+76 bytes against the old logo tables (see the report numbers: xz share +8 KB against before the test hook).
+- Device T23 .23, 1080p, one running stream, `tpctl` 0, 1, 2, 3, 0, 1: transitions clean, counter contiguous, decode clean.
+
 ## 2026-10-19: SnapFrame NV12 fix and test-image tools (claude/testbild)
 
 - Fix (T20/T21/T23/T30/T31): `IMP_FrameSource_SnapFrame` NV12 copied the first w*h*3/2 bytes of the capture buffer, but the chroma sits after ALIGN16(height) luma lines; for heights not divisible by 16 (1080) the snapshot chroma was 8 lines late and the bottom was cut. Luma and chroma are now packed separately (heights divisible by 16 unchanged). Checked on cam-D (T21) and cam-C (T20) at 1080p: snapshot chroma equals the capture chroma at line 1088 (before: offset 1080).

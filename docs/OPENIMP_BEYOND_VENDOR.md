@@ -172,6 +172,7 @@ frame.
 | `OPENIMP_MOTION_V2` | unset (default since 2026-10-04) or `1`/`on`/`all` = all four features; `0`/`off`/`vendor` = vendor algorithm; `shadow` = all but OVERRIDE; a number = feature mask |
 | `OPENIMP_MOTION_V2_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE` | `0`/`1` clears/sets one feature on top of the above |
 | `OPENIMP_MOTION_V2_LEARN`, `_K`, `_MIN_DELTA`, `_SUPPRESS_MS`, `_JUMP_PCT`, `_MIN_CELLS`, `_MIN_FRAMES`, `_MIN_MOVE` | parameters, see the config struct |
+| `OPENIMP_TEST_PATTERN` (`_STEP`, `_NOISE`, `_EVENTS`, `OPENIMP_TP_LOGO`) | start value of the test pattern (0..3, section 6.1); `OPENIMP_TEST_PATTERN_CTL=<path>` opens the control socket for `tpctl` | off | debug-only |
 | `OPENIMP_MOTION_V2_LOG` | `1` = one stderr line per change of the vendor or the v2 decision (debug, A/B) |
 
 The environment is read when the move interface is created. A streamer can instead (or later) set the configuration per
@@ -257,6 +258,10 @@ force; `OPENIMP_MOTION_V2=0` (or `features = 0` via `SetConfigEx`) is the vendor
 | T20/T21 OSD via IPU hook | T20, T21 | vendor path never drew | OSD regions work | `claude/t20-osd` |
 | Frame source / VBM pool of a disabled channel parked for the next pool (as on T21) instead of being freed: the open T23 driver keeps a stopped MSCA output enabled while the input runs, so a freed pool could be handed to another allocation while the hardware still writes into it (`OPENIMP_VBM_PARK=0` frees at once) | T23 | internal | on | Stream start/stop cycles are safe; no workaround | 40 streamer restarts with every snapshot OK, 0 oopses | a T23 camera, `claude/release-t23-vbm`, release candidate (2026-10-06) |
 | **T23 MSCA scratch buffer** (beyond stock): a channel stopped with its output kept enabled and the input running made the MSCA write every further frame into the stream's last buffer, which user space frees after the close. STREAMOFF now queues a scratch address (the tail of the ISP buffer in rmem, one Y plane at sensor size, 900 KiB at 720p) behind the stream's buffers, QBUFs of a parked channel are held back until STREAMON, and the input waits until each parked scratch address has been consumed before it stops. The stock module has no such buffer | T23 | module parameter `msca_scratch` (0 = off); counters `msca_scratch_parks/_frames/_deferred/_skips/_settle_timeouts` | on (`msca_scratch=1`) | Nothing to do; if a streamer hangs on a stop/start of one channel, set `msca_scratch=0` as a first test | 20 cold starts and 20 streamer restarts OK, day/night switch OK, 80 parks / 81 scratch completions, 0 timeouts, longest settle 30 ms; 0 oopses | a T23 camera, open-tx-isp `claude/release-t23-af-scratch`, release candidate (2026-10-06); docs `driver/t23/docs/MSCA_SCRATCH.md` in that branch |
+
+### 6.1 Test pattern with runtime control (extension, all SoCs)
+
+For streamers and test setups: `#include "openimp_testpattern.h"`, `OpenIMP_TestPattern_Set(mode, &params)` replaces the encoder/IVS input by a synthetic picture (1 pattern with the OpenIMP logo in the middle, 2 moving square + frame counter, 3 motion test with object size/contrast/speed or script), `OpenIMP_TestPattern_Get` reads the state back; switchable while streaming, no lock in the frame path. Detect: symbol `OpenIMP_Cap_TestPattern` (absent on vendor libimp, use `dlsym`/weak). Status: T23 device-tested (switching during one stream); other SoCs build + host test. Outside a streamer: `OPENIMP_TEST_PATTERN_CTL=<socket>` and `tools/testpattern/tpctl`.
 
 ## 7. Environment variables
 

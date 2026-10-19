@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../../src/openimp_testpattern.h"
+#include "../../src/openimp_testpattern_gen.h"
 
 static double psnr(const unsigned char *a, const unsigned char *b, int stride, int x0, int y0, int x1, int y1)
 { double se = 0; long n = 0;

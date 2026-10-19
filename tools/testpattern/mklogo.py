@@ -1,76 +1,101 @@
 #!/usr/bin/env python3
-"""Rasterise the two project logos (OpenIMP: rects; open-tx-isp: simplified, discs/ellipses/rects/hexagon,
-no Bezier details) to 64x64 palette bitmaps -> src/openimp_testpattern_logo.h.
-usage: mklogo.py OPENIMP_LOGO.svg > ../../src/openimp_testpattern_logo.h   (the open-tx-isp logo is drawn
-from its geometry here; only the OpenIMP svg is parsed, <rect> elements only)"""
-import re, sys, math
-N = 64
-PAL = ['#202428', '#f59e0b', '#1f8a95', '#0b5d66', '#ffffff', '#111418', '#f2a20c', '#2b3440', '#3fd8e6']
-def idx(c): return PAL.index(c)
-def rrect(px, py, x, y, w, h, rx):
-    if not (x <= px < x + w and y <= py < y + h): return False
-    cx = min(max(px, x + rx), x + w - rx); cy = min(max(py, y + rx), y + h - rx)
-    return (px - cx) ** 2 + (py - cy) ** 2 <= rx * rx
-def ell(px, py, cx, cy, a, b): return ((px - cx) / a) ** 2 + ((py - cy) / b) ** 2 <= 1
-def seg_dist(px, py, ax, ay, bx, by):
-    dx, dy = bx - ax, by - ay; t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
-    return math.hypot(px - ax - t * dx, py - ay - t * dy)
-def inpoly(px, py, p):
-    c = False
-    for i in range(len(p)):
-        x1, y1 = p[i]; x2, y2 = p[(i + 1) % len(p)]
-        if (y1 > py) != (y2 > py) and px < (x2 - x1) * (py - y1) / (y2 - y1) + x1: c = not c
-    return c
-rects = [(float(a), float(b), float(c), float(d), float(e), f) for a, b, c, d, e, f in
-         re.findall(r'<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="([\d.]+)" fill="(#[0-9a-f]{6})"', open(sys.argv[1]).read())]
-def openimp(x, y):
-    c = idx('#202428')
-    for rx_, ry_, w, h, r, f in rects:
-        if rrect(x, y, rx_, ry_, w, h, r): c = idx(f)
-    return c
-HEX = [(100, 60), (134.64, 80), (134.64, 120), (100, 140), (65.36, 120), (65.36, 80)]
-SEAMS = [((134.64, 80), (193, 113.69)), ((134.64, 120), (134.64, 187.38)), ((100, 140), (41.64, 173.69)),
-         ((65.36, 120), (7, 86.31)), ((65.36, 80), (65.36, 12.62)), ((100, 60), (158.36, 26.31))]
-def otx(x, y):
-    c = idx('#202428'); d = math.hypot(x - 100, y - 100)
-    if d <= 95.5: c = idx('#ffffff') if d > 92.5 else idx('#0b5d66')
-    if d <= 92.5 and any(seg_dist(x, y, *a, *b) <= 1.5 for a, b in SEAMS): c = idx('#ffffff')
-    if inpoly(x, y, HEX): c = idx('#f59e0b')
-    if any(seg_dist(x, y, *HEX[i], *HEX[(i + 1) % 6]) <= 1.5 for i in range(6)): c = idx('#ffffff')
-    px, py = x - 100, y - 104
-    if ell(px, py, 0, 4, 17, 21): c = idx('#111418')
-    if ell(px, py, 0, 9, 11, 15): c = idx('#ffffff')
-    if ell(px, py, 0, -15, 12, 12): c = idx('#111418')
-    for ex in (-4.2, 4.2):
-        if ell(px, py, ex, -17, 3.2, 4): c = idx('#ffffff')
-    for ex in (-3.6, 3.6):
-        if ell(px, py, ex, -16.2, 1.6, 1.6): c = idx('#111418')
-    for ex in (-8, 8):
-        if ell(px, py, ex, 25, 7, 3.2): c = idx('#f2a20c')
-    if rrect(px, py, -12, 0, 24, 15, 3): c = idx('#ffffff') if not rrect(px, py, -11, 1, 22, 13, 2.5) else idx('#2b3440')
-    if ell(px, py, 1, 7.5, 6.2, 6.2): c = idx('#ffffff')
-    if ell(px, py, 1, 7.5, 5.0, 5.0): c = idx('#0b5d66')
-    if ell(px, py, 1, 7.5, 2.6, 2.6): c = idx('#3fd8e6')
-    if ell(px, py, -0.2, 6.3, 0.9, 0.9): c = idx('#ffffff')
-    return c
-def bake(fn, vb):
-    out = []
-    for j in range(N):
-        for i in range(N):
-            cnt = {}
-            for sj in range(3):
-                for si in range(3):
-                    c = fn((i + (si + .5) / 3) * vb / N, (j + (sj + .5) / 3) * vb / N); cnt[c] = cnt.get(c, 0) + 1
-            out.append(max(cnt, key=cnt.get))
+"""Rasterise the OpenIMP banner (docs/assets/banner.svg: dot grid + lettering "OpenIMP" + tagline, all paths) at
+full fidelity to a palette bitmap -> src/openimp_testpattern_logo.h.  Host build step only, there is no SVG
+parser on the camera.  usage: mklogo.py docs/assets/banner.svg > src/openimp_testpattern_logo.h
+Rasteriser: the first of rsvg-convert, inkscape, magick/convert (librsvg) that is installed, python3-cairosvg last.
+The SVG is rendered at 4x, flattened onto white (the quiet zone colour), box-filtered down to W x H, reduced to a
+32 colour palette (deterministic k-means), stored as BT.601 limited-range Y/U/V palette entries and run-length
+coded (tokens: see enc()).  Target: <= 8 KB in .rodata."""
+import shutil, subprocess, sys, tempfile, os
+NW, NH = 384, 118   # 337:104 banner
+SS = 4
+def render(svg):
+    pw, ph = NW * SS, NH * SS
+    if shutil.which('rsvg-convert'):
+        cmd = ['rsvg-convert', '-w', str(pw), '-h', str(ph), '-b', 'white', '-f', 'png', svg]
+        png = subprocess.check_output(cmd)
+    elif shutil.which('inkscape'):
+        with tempfile.TemporaryDirectory() as d:
+            o = os.path.join(d, 'o.png')
+            subprocess.check_call(['inkscape', svg, '-w', str(pw), '-h', str(ph), '-b', 'white', '-o', o])
+            png = open(o, 'rb').read()
+    elif shutil.which('magick') or shutil.which('convert'):
+        m = shutil.which('magick') or shutil.which('convert')
+        png = subprocess.check_output([m, '-background', 'white', '-density', '1152', svg, '-resize', '%dx%d!' % (pw, ph),
+                                       '-flatten', 'png:-'])
+    else:
+        import cairosvg
+        png = cairosvg.svg2png(url=svg, output_width=pw, output_height=ph, background_color='white')
+    # decode PNG to RGB through magick/convert if present, else PIL
+    m = shutil.which('magick') or shutil.which('convert')
+    if m:
+        raw = subprocess.check_output([m, 'png:-', '-depth', '8', '-alpha', 'remove', 'rgb:-'], input=png)
+    else:
+        from PIL import Image; import io
+        raw = Image.open(io.BytesIO(png)).convert('RGB').tobytes()
+    assert len(raw) == pw * ph * 3
+    return raw
+K = 32
+def kmeans(px):
+    """deterministic k-means over the unique colours (weighted by pixel count), K centroids"""
+    cnt = {}
+    for x in px: cnt[x] = cnt.get(x, 0) + 1
+    cols = sorted(cnt); w = [cnt[x] for x in cols]
+    d2 = lambda a, b: sum((p - q) ** 2 for p, q in zip(a, b))
+    cen = [max(cols, key=lambda x: cnt[x])]
+    dd = [d2(x, cen[0]) * cnt[x] for x in cols]
+    while len(cen) < K:                      # farthest-point init
+        k = max(range(len(cols)), key=lambda t: dd[t]); cen.append(cols[k])
+        dd = [min(dd[t], d2(cols[t], cols[k]) * cnt[cols[t]]) for t in range(len(cols))]
+    for _ in range(10):
+        acc = [[0, 0, 0, 0] for _ in cen]
+        for x, ww in zip(cols, w):
+            k = min(range(K), key=lambda t: d2(x, cen[t]))
+            for q in range(3): acc[k][q] += x[q] * ww
+            acc[k][3] += ww
+        cen = [tuple(int(round(v / e[3])) for v in e[:3]) if e[3] else cen[t] for t, e in enumerate(acc)]
+    return cen
+def enc(idx, n):
+    """tokens: 0x80|i literal colour i, 0x40|(a-1) copy a pixels from the row above, (l-1) repeat the previous pixel l times"""
+    out = bytearray(); k = 0; L = len(idx)
+    while k < L:
+        a = 0
+        while k + a < L and k + a >= n and idx[k + a] == idx[k + a - n] and a < 63: a += 1
+        l = 0
+        while k + l < L and k > 0 and idx[k + l] == idx[k - 1] and l < 63: l += 1
+        if a >= 1 and a >= l: out.append(0x40 | (a - 1)); k += a
+        elif l >= 1: out.append(l - 1); k += l
+        else: out.append(0x80 | idx[k]); k += 1
     return out
-def emit(name, data):
-    s = 'static const uint8_t %s[%d] = {\n' % (name, N * N)
-    for r in range(N): s += '    ' + ','.join(str(v) for v in data[r * N:(r + 1) * N]) + ',\n'
+def bake(svg):
+    raw = render(svg); px = NW * SS
+    pix = []
+    for j in range(NH):
+        for i in range(NW):
+            r = g = b = 0
+            for sj in range(SS):
+                o = ((j * SS + sj) * px + i * SS) * 3
+                for si in range(SS):
+                    r += raw[o + 3 * si]; g += raw[o + 3 * si + 1]; b += raw[o + 3 * si + 2]
+            n = SS * SS
+            pix.append((int(round(r / n)), int(round(g / n)), int(round(b / n))))
+    cen = kmeans(pix)
+    idx = [min(range(K), key=lambda t: sum((p - q) ** 2 for p, q in zip(x, cen[t]))) for x in pix]
+    pal = []
+    for r, g, b in cen:   # BT.601 limited range Y U V
+        pal += [min(255, max(0, int(round(v)))) for v in (16 + (65.481 * r + 128.553 * g + 24.966 * b) / 255,
+                128 + (-37.797 * r - 74.203 * g + 112.0 * b) / 255, 128 + (112.0 * r - 93.786 * g - 18.214 * b) / 255)]
+    return pal, enc(idx, NW)
+def emit(name, d, w):
+    s = 'static const uint8_t %s[%d] = {\n' % (name, len(d))
+    for r in range(0, len(d), w):
+        s += '    ' + ','.join(str(v) for v in d[r:r + w]) + ',\n'
     return s + '};\n'
-print('/* generated by tools/testpattern/mklogo.py - do not edit.  64x64 palette bitmaps of the OpenIMP and\n * open-tx-isp logos (docs/assets/logo.svg; open-tx-isp simplified). */')
+pal, rl = bake(sys.argv[1])
+print('/* generated by tools/testpattern/mklogo.py - do not edit.  %dx%d OpenIMP banner (docs/assets/banner.svg) on white,\n'
+      ' * %d colour palette (Y,U,V BT.601 limited), run-length coded (see openimp_tp_unpack). */' % (NW, NH, K))
 print('#ifndef OPENIMP_TESTPATTERN_LOGO_H\n#define OPENIMP_TESTPATTERN_LOGO_H\n#include <stdint.h>\n')
-print('#define OPENIMP_LOGO_N %d' % N)
-print('static const uint8_t openimp_logo_pal[%d][3] = {' % len(PAL) + ','.join('{%d,%d,%d}' % tuple(int(p[i:i+2], 16) for i in (1, 3, 5)) for p in PAL) + '};')
-print(emit('openimp_logo_imp', bake(openimp, 64)))
-print(emit('openimp_logo_isp', bake(otx, 200)))
+print('#define OPENIMP_LOGO_W %d\n#define OPENIMP_LOGO_H %d\n#define OPENIMP_LOGO_K %d' % (NW, NH, K))
+print(emit('openimp_logo_pal', pal, 3)); print(emit('openimp_logo_rle', rl, 24))
+print('#define OPENIMP_LOGO_RLE_LEN %d' % len(rl))
 print('#endif')
