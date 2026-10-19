@@ -184,6 +184,80 @@ static int p3_sensor_register(int set, uint32_t addr, uint32_t *value)
     return result;
 }
 
+/* AE/AWB hold of the test pattern mode 4: the vendor freeze switches (AeMode = MANUAL freezes AE at
+ * the current values, awb_frz = ENABLE the AWB gains); on = 0 writes the saved structs back. */
+static struct {
+    int ae, awb;
+    IMPISPAEExprInfo expr;
+    IMPISPWBAttr wb;
+} tp_hold_saved;
+
+int openimp_tp_sensor_hold(int on, int ae, int awb)
+{
+    if (on) {
+        memset(&tp_hold_saved, 0, sizeof tp_hold_saved);
+        if (ae) {
+            IMPISPAEExprInfo e;
+
+            if (IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &tp_hold_saved.expr) != 0)
+                return -1;
+            e = tp_hold_saved.expr;
+            e.AeMode = IMPISP_TUNING_OPS_TYPE_MANUAL;
+            if (IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &e) != 0)
+                return -1;
+            tp_hold_saved.ae = 1;
+            fprintf(stderr, "[TP] AE hold: it=%u again=%u dgain=%u ispdgain=%u\n", e.AeIntegrationTime,
+                    e.AeAGain, e.AeDGain, e.AeIspDGain);
+        }
+        if (awb) {
+            IMPISPWBAttr w;
+
+            if (IMP_ISP_Tuning_GetAwbAttr(IMPVI_MAIN, &tp_hold_saved.wb) != 0)
+                goto awb_fail;
+            w = tp_hold_saved.wb;
+            w.awb_frz = IMPISP_TUNING_OPS_MODE_ENABLE;
+            if (IMP_ISP_Tuning_SetAwbAttr(IMPVI_MAIN, &w) != 0)
+                goto awb_fail;
+            tp_hold_saved.awb = 1;
+            fprintf(stderr, "[TP] AWB hold (ct %u)\n", w.ct);
+        }
+        return 0;
+awb_fail:
+        if (tp_hold_saved.ae)
+            (void)IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &tp_hold_saved.expr);
+        tp_hold_saved.ae = 0;
+        return -1;
+    }
+    if (tp_hold_saved.awb)
+        (void)IMP_ISP_Tuning_SetAwbAttr(IMPVI_MAIN, &tp_hold_saved.wb);
+    if (tp_hold_saved.ae)
+        (void)IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &tp_hold_saved.expr);
+    if (tp_hold_saved.ae || tp_hold_saved.awb)
+        fprintf(stderr, "[TP] AE/AWB released\n");
+    tp_hold_saved.ae = tp_hold_saved.awb = 0;
+    return 0;
+}
+
+/* Sensor register hook of the test pattern mode 4 (src/openimp_testpattern.c). */
+int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32])
+{
+    char n[32];
+    int32_t type = 0;
+
+    memset(n, 0, sizeof n);
+    if (OpenIMP_P1_GetSensorName(n, &type) != 0 || type != 1 || !n[0]) {
+        if (name)
+            name[0] = 0;
+        return -1;
+    }
+    n[31] = 0;
+    if (name)
+        memcpy(name, n, sizeof n);
+    if (set < 0)
+        return 0;
+    return p3_sensor_register(set, reg, val);
+}
+
 #if defined(PLATFORM_T41)
 /* T41 1.2.6: one {addr, value} structure */
 int32_t IMP_ISP_SetSensorRegister(IMPVI_NUM num, IMPISPSensorRegister *reg)
