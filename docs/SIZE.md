@@ -52,7 +52,7 @@ Checks done for the switch (host only):
 
 The `.so` file size moves in 64 KiB steps: the MIPS linker aligns the data
 segment to a 64 KiB page, so the zero padding before it absorbs smaller
-savings. The `.text` column below shows the real change.
+savings. The xz and RAM columns below show the real change.
 
 ## libimp: AVPU diagnostics only with OPENIMP_DEBUG=1
 
@@ -86,99 +86,56 @@ The exported symbols do not change. `OPENIMP_T23_HELIX_BRIDGE=1` builds the
 bridge again. Without it, an image no longer needs `openimp-t23-helixd` or the
 OEM `libimp.so` under `/opt/openimp-t23/`.
 
-## Size table (2026-10-11)
+## Size table (2026-10-19)
 
-Per SoC: the file as installed and the allocated sections, in KB (1024
-bytes). RAM is the sum of all allocated sections (text, rodata, data, bss):
-for a module what the kernel loader allocates, for `libimp.so` what one
-process maps (the read-only pages are shared).
+Measured on open-tx-isp `1427ffa1` and OpenIMP `7d55619` (clean rebuild of
+all SoCs). Sizes in KB (1024 bytes), per file as `file / xz / RAM`.
 
-- vendor: the Ingenic module built by thingino's ingenic-sdk package
-  (9e87773; T40 from a thingino T40 image) and the vendor `libimp.so` thingino
-  installs (T10/T20 3.12.0, T21 1.0.33, T23 1.3.0, T30 1.0.5, T31 1.1.6,
-  T40 1.3.1, T41 1.2.6). No T30 vendor module is built locally.
-- RC1: `v2026.10.11-rc1`; agg-36: openimp 7c08dad, open-tx-isp a1c28797;
-  agg-37-size: this change set.
-- Modules stripped like thingino (`strip --strip-unneeded`, no `.comment`),
-  `libimp.so` with `--strip-unneeded`. Built against the thingino kernels of
-  the test cameras (T30 against the T31 kernel, T40 against the T41 kernel:
-  compile baselines).
-- The `libimp.so` file size moves in 64 KiB steps (data segment alignment).
-- The vendor module figures of earlier notes (T21 616 KB, T23 857 KB, T31
-  829 KB) are not reproduced by the current vendor build (695, 1105, 1075 KB
-  stripped like above); they came from another build or strip method.
+Method:
 
+- Both sides stripped with `strip --strip-unneeded`; the vendor modules are
+  built by thingino's ingenic-sdk package (9e87773; T40 d30c0af), the vendor
+  `libimp.so` is the one thingino installs (T10/T20 3.12.0, T21 1.0.33,
+  T23 1.3.0, T30 1.0.5, T31 1.1.6, T40 1.3.1, T41 1.2.6). No T30 vendor
+  module exists locally.
+- xz = `xz -9e --block-size=256K` per file (approximates the share in the
+  xz squashfs rootfs with 256 KB blocks).
+- RAM = sum of all `SHF_ALLOC` sections (text, rodata, data, bss): for a
+  module what the kernel loader allocates, for `libimp.so` what one process
+  maps (read-only pages are shared).
+- The `libimp.so` file size moves in 64 KiB steps (data segment alignment),
+  so compare xz and RAM. T10 `libimp.so` is the T20 build.
+- Modules are built against the thingino kernels of the test cameras
+  (T30 against the T31 kernel, T40 against the T41 kernel: compile
+  baselines).
 
-### Kernel module tx-isp-<soc>.ko
+| SoC | ko ours | ko vendor | libimp ours | libimp vendor | ko+libimp xz, ours vs vendor |
+|---|---|---|---|---|---|
+| T10 | 390/119/321 | 389/107/293 | 453/173/511 | 921/269/1118 | 292 vs 376 |
+| T20 | 392/120/323 | 392/107/295 | 453/173/511 | 921/269/1118 | 293 vs 376 |
+| T21 | 419/120/662 | 697/122/601 | 453/167/491 | 798/247/996 | 288 vs 369 |
+| T23 | 607/178/871 | 1108/230/836 | 518/184/567 | 1032/291/1232 | 362 vs 521 |
+| T30 | 853/164/683 | n/a | 389/149/454 | 1660/452/1823 | 312 vs n/a |
+| T31 | 648/195/645 | 1077/228/809 | 453/173/504 | 1063/328/1024 | 368 vs 556 |
+| T40 | 3016/484/5267 | 980/230/746 | 330/123/372 | 1014/293/981 | 607 vs 523 |
+| T41 | 787/283/665 | 779/227/555 | 327/123/366 | 1362/368/1322 | 406 vs 595 |
 
-| SoC | stage | file KB | text/rodata/data/bss KB | RAM KB |
-|---|---|---|---|---|
-| T10 | vendor | 386 | 196/22/43/33 | 293 |
-| T10 | RC1 | 402 | 208/35/45/36 | 324 |
-| T10 | agg-36 | 402 | 208/35/45/36 | 324 |
-| T10 | agg-37-size | 383 | 201/35/45/36 | 317 |
-| T20 | vendor | 389 | 198/22/43/33 | 295 |
-| T20 | RC1 | 405 | 210/35/45/36 | 326 |
-| T20 | agg-36 | 405 | 210/35/45/36 | 326 |
-| T20 | agg-37-size | 385 | 203/35/45/36 | 320 |
-| T21 | vendor | 695 | 208/18/277/98 | 602 |
-| T21 | RC1 | 414 | 233/46/21/359 | 658 |
-| T21 | agg-36 | 414 | 233/46/21/359 | 658 |
-| T21 | agg-37-size | 414 | 233/46/21/359 | 658 |
-| T23 | vendor | 1105 | 433/31/212/161 | 837 |
-| T23 | RC1 | 637 | 378/72/58/386 | 894 |
-| T23 | agg-36 | 637 | 378/72/58/386 | 894 |
-| T23 | agg-37-size | 599 | 362/60/58/386 | 866 |
-| T30 | vendor | n/a | n/a | n/a |
-| T30 | RC1 | 845 | 559/34/48/36 | 677 |
-| T30 | agg-36 | 845 | 559/34/48/36 | 677 |
-| T30 | agg-37-size | 845 | 559/34/48/36 | 677 |
-| T31 | vendor | 1075 | 424/35/191/159 | 809 |
-| T31 | RC1 | 687 | 397/86/19/168 | 669 |
-| T31 | agg-36 | 687 | 397/86/19/168 | 669 |
-| T31 | agg-37-size | 641 | 377/77/19/168 | 641 |
-| T40 | vendor | 975 | 501/37/186/22 | 747 |
-| T40 | RC1 | 2571 | 1832/103/104/3384 | 5422 |
-| T40 | agg-36 | 2571 | 1832/103/104/3384 | 5422 |
-| T40 | agg-37-size | 2571 | 1832/103/104/3384 | 5422 |
-| T41 | vendor | 773 | 468/43/24/20 | 556 |
-| T41 | RC1 | 593 | 385/59/27/30 | 500 |
-| T41 | agg-36 | 603 | 391/60/27/30 | 508 |
-| T41 | agg-37-size | 599 | 391/56/27/30 | 504 |
+Notes:
 
-### libimp.so
+- Only T40 is larger than the vendor pair (ko+libimp xz 607 vs 523 KB); the
+  T40 module carries about 1.1 MB of bss in recovered placeholder buffers.
+- T41 module: 1004 KB on the earlier 2026-10-19 build, 787 KB now (the
+  translated vendor AE code became 231 KB smaller).
+- T10, T20 and T30 modules are byte-identical to the earlier 2026-10-19
+  build; changes of the other modules are below 2 KB.
+- The vendor module figures of older notes (T21 616 KB, T23 857 KB, T31
+  829 KB) are not reproduced by the vendor build above; they came from
+  another build or strip method. The T21 and T41 figures here (697, 779)
+  are reproducible.
 
-| SoC | stage | file KB | text/rodata/data/bss KB | RAM KB |
-|---|---|---|---|---|
-| T10 | vendor | 921 | 642/198/44/235 | 1118 |
-| T10 | RC1 | 709 | 528/135/4/76 | 744 |
-| T10 | agg-36 | 517 | 419/75/4/76 | 574 |
-| T10 | agg-37-size | 453 | 332/71/4/76 | 482 |
-| T20 | vendor | 921 | 642/198/44/235 | 1118 |
-| T20 | RC1 | 709 | 528/135/4/76 | 744 |
-| T20 | agg-36 | 517 | 419/75/4/76 | 574 |
-| T20 | agg-37-size | 453 | 332/71/4/76 | 482 |
-| T21 | vendor | 798 | 586/147/27/237 | 997 |
-| T21 | RC1 | 709 | 512/138/4/74 | 729 |
-| T21 | agg-36 | 517 | 402/76/4/74 | 556 |
-| T21 | agg-37-size | 453 | 312/72/4/74 | 461 |
-| T23 | vendor | 1032 | 758/195/28/252 | 1233 |
-| T23 | RC1 | 774 | 568/169/5/77 | 819 |
-| T23 | agg-36 | 582 | 460/110/4/77 | 652 |
-| T23 | agg-37-size | 518 | 370/105/4/77 | 556 |
-| T30 | vendor | 1660 | 1136/378/50/259 | 1824 |
-| T30 | RC1 | 645 | 462/131/4/73 | 669 |
-| T30 | agg-36 | 453 | 366/72/4/73 | 514 |
-| T30 | agg-37-size | 389 | 282/68/4/73 | 425 |
-| T31 | vendor | 1059 | 804/183/7/28 | 1022 |
-| T31 | RC1 | 709 | 518/129/4/71 | 722 |
-| T31 | agg-36 | 517 | 401/62/4/71 | 538 |
-| T31 | agg-37-size | 453 | 336/62/4/71 | 473 |
-| T40 | vendor | 1014 | 752/187/7/35 | 982 |
-| T40 | RC1 | 390 | 296/71/5/49 | 422 |
-| T40 | agg-36 | 330 | 280/36/9/50 | 376 |
-| T40 | agg-37-size | 330 | 224/36/9/50 | 319 |
-| T41 | vendor | 1362 | 1038/221/29/34 | 1322 |
-| T41 | RC1 | 455 | 330/75/6/52 | 462 |
-| T41 | agg-36 | 327 | 262/35/6/53 | 355 |
-| T41 | agg-37-size | 263 | 214/35/6/53 | 307 |
+### Test pattern feature cost
+
+The test pattern runtime API (`openimp_testpattern.o`, always linked, same
+object on every SoC) adds about 10 KB xz and 28 KB RAM to every `libimp.so`
+(text+rodata 16.9 KB, bss 7.4 KB). The logo is about 4 KB xz of that
+(3.6 KB RLE data, 2.1 KB decoder).
