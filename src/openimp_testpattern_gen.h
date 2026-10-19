@@ -384,12 +384,12 @@ static inline void openimp_tp_object(uint8_t *y, uint32_t w, uint32_t h, uint32_
     int size = (int)((uint32_t)size640 * w / 640u);
     int ox = 0, x0, y0, rr, cc;
 
-    if (size < 2 || size > (int)cw || size > (int)ch)
-        return;
+    if (size < 2)
+        return;       /* larger than the cell is fine: drawn centred and clipped at the frame edge */
     if (speed > 0) {
-        double range = (double)(cw - (uint32_t)size) / 2.0, ph, d;
-        if (range < 1)
-            range = 1;
+        /* the centre travels +-half a cell whatever the size: big objects must still move far
+         * enough for the motion detectors' minimum path */
+        double range = (double)cw / 2.0, ph, d;
         d = ts * speed * w / 640.0;
         ph = d - 4.0 * range * (double)(long)(d / (4.0 * range));
         ox = (int)(ph < 2 * range ? ph - range : 3 * range - ph);
