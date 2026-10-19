@@ -3152,7 +3152,8 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     P2EncoderChannel *ch;
     P2HWStream *raw;
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30) && \
-    !defined(PLATFORM_T31) && !defined(PLATFORM_T41)
+    !defined(PLATFORM_T31) && !defined(PLATFORM_T41) && \
+    !defined(PLATFORM_T40)
     uint32_t fps_num;
     uint32_t fps_den;
     uint64_t frame_interval_us;
@@ -3221,11 +3222,16 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     memset(&ch->packs[0], 0, sizeof(ch->packs[0]));
     ch->packs[0].offset = 0;
     ch->packs[0].length = raw->length;
-#if defined(PLATFORM_T41)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
     /* The codec carries the FrameSource completion timestamp through its
      * owned stream. Do not manufacture a frame-rate timeline: it hides
      * dropped frames, drifts against audio and compresses stop/start gaps.
-     * Zero is a valid P0-relative timestamp, not an uninitialized marker. */
+     * Zero is a valid P0-relative timestamp, not an uninitialized marker.
+     * T40: a nominal-rate timeline (start + n * 1/fps) fell ~1 s behind the
+     * wall clock whenever the sensor ran below the configured rate (night,
+     * long exposure); the streamer's PTS sanitizer then re-anchored it,
+     * which showed as a 1.08 s PTS jump every 2.5 s on both channels. The
+     * vendor pack timestamp is the frame's capture time, as here. */
     ch->packs[0].timestamp = (int64_t)raw->timestamp;
 #else
     source_timestamp_us = raw->timestamp
