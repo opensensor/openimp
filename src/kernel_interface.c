@@ -2475,7 +2475,7 @@ int VBMGetFrame(int chn, void **frame) {
 /* Test hook: OPENIMP_TEST_PATTERN=1 replaces every NV12 frame handed out by
  * VBMGetFrame with the synthetic pattern (src/openimp_testpattern.h), so the
  * encoder path can be checked against a known picture on the device. Layout:
- * pitch ALIGN16(width), chroma after ALIGN16(height) luma rows. Off unless
+ * pitch = width, chroma after ALIGN16(height) luma rows. Off unless
  * the variable is set. */
 static int vbm_test_pattern_enabled(void)
 {
@@ -2492,7 +2492,7 @@ static void vbm_test_pattern_fill(int chn, VBMFrame *f)
     static uint32_t cache_w[MAX_VBM_POOLS], cache_h[MAX_VBM_POOLS];
     static uint32_t counter[MAX_VBM_POOLS];
     uint32_t w = (uint32_t)f->width, h = (uint32_t)f->height;
-    uint32_t pitch = (w + 15u) & ~15u, lines = (h + 15u) & ~15u;
+    uint32_t pitch = w, lines = (h + 15u) & ~15u;   /* FrameSource capture: pitch = width */
     uint32_t need = pitch * lines + pitch * (h / 2u);
 
     if (f->pixfmt != 0xa && f->pixfmt != 0x3231564e)
