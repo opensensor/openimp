@@ -50,13 +50,16 @@ struct tp_sensor_entry {
  * SOI JX-*: 0x0c bit0 = test mode (Ingenic SDK jxh42.c: "0x41 test mode, 0x40 DVP output").  Device T20 .107
  * jxf23: vertical colour columns, but the T20/T21 jxf23 drivers rewrite 0x0c in set_analog_gain, so the
  * pattern ends at the next AE gain step (hold AE / fixed gain, or Set(4) again).
- * GalaxyCore gc5603: no source for the register yet, no entry. */
+ * GalaxyCore gc5603 (T41 .32): 0x008c bit0 (0x10 -> 0x11) = test pattern (colour bars / chart, tiled by the
+ * scaler), no vendor source: found on the device by I2C, candidate from the GalaxyCore family convention
+ * (0x008c), chip id 0x03f0/0x03f1 = 0x5603. */
 static const struct tp_sensor_entry tp_sensor_tab[] = {
     { "sc2336p", 0x3107, 0x3108, 0x9b3a, 0x4501, 0x08, "ramp" },
     { "sc2336",  0x3107, 0x3108, 0xcb3a, 0x4501, 0x08, "ramp" },
     { "sc4336p", 0x3107, 0x3108, 0x9c42, 0x4501, 0x08, "ramp" },
     { "sc5336",  0x3107, 0x3108, 0xce50, 0x4501, 0x08, "ramp" },
     { "sc830ai", 0x3107, 0x3108, 0xc143, 0x4501, 0x08, "ramp" },
+    { "gc5603",  0x03f0, 0x03f1, 0x5603, 0x008c, 0x01, "colour bars" },
     { "sc1a4t",  0x3107, 0x3108, 0xda4d, 0x4501, 0x08, "ramp (unverified)" },
     { "jxf23",   0x000a, 0x000b, 0x0f23, 0x000c, 0x01, "colour columns (AE gain step clears it)" },
     { "jxf22",   0x000a, 0x000b, 0x0f22, 0x000c, 0x01, "test mode (unverified)" },

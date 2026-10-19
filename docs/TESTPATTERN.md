@@ -157,7 +157,7 @@ test, ❓ open.
 | Mode 1 pattern | ✅ | ✅ | ✅ | ✅ | 🔧 | ✅ | ✅ | ✅ |
 | Mode 2 moving | ✅ | 🔧 | ✅ | ✅ | 🔧 | ✅ | ✅ | 🔧 |
 | Mode 3 motion test | ✅ (objects shown) | 🔧 | ✅ | ✅ | 🔧 | ✅ | ✅ | 🔧 |
-| Mode 4 sensor pattern | 🔧 (jxh42) | ✅ (jxf23) | ✅ (jxf23, sensor exposure hold) | ✅ (sc2336p) | 🔧 | 🔧 (register by hand ✅) | ⏳ (sc830ai) | 🔧 sc5336 / ❓ gc5603 |
+| Mode 4 sensor pattern | 🔧 (jxh42) | ✅ (jxf23) | ✅ (jxf23, sensor exposure hold) | ✅ (sc2336p) | 🔧 | 🔧 (register by hand ✅) | ⏳ (sc830ai) | ✅ gc5603 (colour bars, 72 s stable) / 🔧 sc5336 |
 | Own picture before the ISP | 🔧 Apical TPG | ✅ Apical TPG + VIC colour bars (register level, not in the API yet) | ❌ | ❌ | 🔧 Apical TPG | ❌ (VIC bars, CSI, mux tested: no) | ❓ | ⏳ RAW from DDR (v3 module pending) |
 
 Notes:
@@ -169,7 +169,7 @@ Notes:
   `next`, T21/T23 fix device-tested with a test module; T31 needs the current module).
 - Sensor pattern registers: SmartSens (sc2336, sc2336p, sc4336p, sc5336, sc830ai, sc1a4t) 0x4501
   bit 3, produces a Bayer ramp (after the ISP: black, magenta gradient, white, mirrored on T40);
-  JX (jxf22, jxf23, jxh42) 0x0c bit 0, vertical colour columns. gc5603 has no known register.
+  JX (jxf22, jxf23, jxh42) 0x0c bit 0, vertical colour columns. GalaxyCore gc5603 0x008c bit 0 (0x10 -> 0x11), colour bars/chart.
 - Before the ISP: T41 has an ISP RAW read DMA (DDR to ISP, full picture, colour chart); the first
   two driver attempts crashed the ISP (the recovered open driver passes no control pointer and
   scales the register offsets by 4), the third module is untested. The Tiziano v1 ISP (T21, T23, T31)
@@ -187,7 +187,7 @@ Notes:
   at the time of writing); moving objects only swing +-(cell width - size)/2.
 - JX-F23 (T20, T21): the sensor driver rewrites register 0x0c at every analog gain step, which
   clears the pattern after about 1.5 s. Keep `ae_hold=1` (default) or call Set(4) again.
-- gc5603 (T41): no test pattern register known, no table entry (mode 4 returns `ENOTSUP`).
+- gc5603 (T41): register found by I2C on the device (no source); the pattern is tiled by the scaler (3x3 bars), colours are off because the Bayer phase of the pattern differs.
 - Mode 3 has no real sensor or ISP noise: false alarms under real noise are measured separately
   (a short static real scene), the pattern only has +-1 LSB.
 - The hook assumes capture pitch = width on T20-T31 (measured at 1920, 640, 2560); odd widths not checked.
