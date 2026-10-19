@@ -34,3 +34,7 @@ __pycache__/
 /driver/
 tools/roitest/roitest_t*
 tests/t30/isp_t31_movestate_test
+tools/rawcheck/rawcheck_t*
+tools/rawcheck/rawana
+tools/testpattern/tbmotion
+tools/testpattern/tbcmp

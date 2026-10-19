@@ -2476,10 +2476,8 @@ static int vbm_test_pattern_enabled(void)
 {
     static int enabled = -1;
 
-    if (enabled < 0) {
-        const char *env = getenv("OPENIMP_TEST_PATTERN");
-        enabled = env && env[0] == '1';
-    }
+    if (enabled < 0)
+        enabled = openimp_testpattern_mode() != 0;
     return enabled;
 }
 
@@ -2487,6 +2485,7 @@ static void vbm_test_pattern_fill(int chn, VBMFrame *f)
 {
     static uint8_t *cache[MAX_VBM_POOLS];
     static uint32_t cache_w[MAX_VBM_POOLS], cache_h[MAX_VBM_POOLS];
+    static uint32_t counter[MAX_VBM_POOLS];
     uint32_t w = (uint32_t)f->width, h = (uint32_t)f->height;
     uint32_t pitch = (w + 15u) & ~15u, lines = (h + 15u) & ~15u;
     uint32_t need = pitch * lines + pitch * (h / 2u);
@@ -2506,6 +2505,11 @@ static void vbm_test_pattern_fill(int chn, VBMFrame *f)
         cache_h[chn] = h;
     }
     memcpy((void *)(uintptr_t)f->virt_addr, cache[chn], need);
+    if (openimp_testpattern_mode() == 2) {   /* moving square + frame counter */
+        uint8_t *dst = (uint8_t *)(uintptr_t)f->virt_addr;
+        openimp_testpattern_overlay(dst, dst + pitch * lines, w, h, pitch,
+                                    counter[chn]++, openimp_testpattern_step());
+    }
     (void)DMA_RmemFlushCache((void *)(uintptr_t)f->virt_addr, need, 1 /* WBACK */);
 }
 #endif

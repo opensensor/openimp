@@ -1859,10 +1859,8 @@ static int p1_test_pattern_enabled(void)
 {
     static int enabled = -1;
 
-    if (enabled < 0) {
-        const char *env = getenv("OPENIMP_TEST_PATTERN");
-        enabled = env && env[0] == '1';
-    }
+    if (enabled < 0)
+        enabled = openimp_testpattern_mode() != 0;
     return enabled;
 }
 
@@ -1871,6 +1869,7 @@ static void p1_test_pattern_fill(struct openimp_fs_channel *chn,
 {
     static uint8_t *cache[OPENIMP_FS_CHANNELS];
     static uint32_t cache_w[OPENIMP_FS_CHANNELS], cache_h[OPENIMP_FS_CHANNELS];
+    static uint32_t counter[OPENIMP_FS_CHANNELS];
     uint32_t w = (uint32_t)chn->attr.picWidth, h = (uint32_t)chn->attr.picHeight;
     uint32_t pitch = (w + 15u) & ~15u, lines = (h + 15u) & ~15u;
     uint32_t need = pitch * lines + pitch * (h / 2u);
@@ -1888,6 +1887,11 @@ static void p1_test_pattern_fill(struct openimp_fs_channel *chn,
         cache_h[channel] = h;
     }
     memcpy(buffer->virtual_address, cache[channel], need);
+    if (openimp_testpattern_mode() == 2) {   /* moving square + frame counter */
+        uint8_t *dst = buffer->virtual_address;
+        openimp_testpattern_overlay(dst, dst + pitch * lines, w, h, pitch,
+                                    counter[channel]++, openimp_testpattern_step());
+    }
     (void)DMA_RmemFlushCache(buffer->virtual_address, need, 1 /* WBACK */);
 }
 
