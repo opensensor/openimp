@@ -179,8 +179,14 @@ int main(void)
         fake_regs[0x0c] = 0x40;
         assert(OpenIMP_TestPattern_Set(4, NULL) == 0 && fake_regs[0x0c] == 0x41);
         assert(OpenIMP_TestPattern_Set(0, NULL) == 0 && fake_regs[0x0c] == 0x40);
-        /* unknown sensor: ENOTSUP, state unchanged */
+        /* GalaxyCore gc5603: 0x008c bit0, id 0x03f0/f1 */
         snprintf(fake_name, sizeof fake_name, "gc5603");
+        fake_regs[0x03f0] = 0x56; fake_regs[0x03f1] = 0x03;
+        fake_regs[0x008c] = 0x10;
+        assert(OpenIMP_TestPattern_Set(4, NULL) == 0 && fake_regs[0x008c] == 0x11);
+        assert(OpenIMP_TestPattern_Set(0, NULL) == 0 && fake_regs[0x008c] == 0x10);
+        /* unknown sensor: ENOTSUP, state unchanged */
+        snprintf(fake_name, sizeof fake_name, "gc9999");
         assert(OpenIMP_TestPattern_Set(1, NULL) == 0);
         errno = 0;
         assert(OpenIMP_TestPattern_Set(4, NULL) == -1 && errno == ENOTSUP && openimp_testpattern_mode() == 1);
