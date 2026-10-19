@@ -109,7 +109,7 @@ $(CAMERA_INPUT_TEST_BIN): camera_input_test.c $(PROJECT_DIR)/src/t40/openimp_p1.
 	mkdir -p "$(dir $@)"
 	$(CC) -std=gnu99 -O2 -Wall -Wextra -Werror -DPLATFORM_T40 \
 		-I$(PROJECT_DIR)/src -I$(PROJECT_DIR)/include \
-		camera_input_test.c -o "$@"
+		camera_input_test.c $(PROJECT_DIR)/src/openimp_testpattern.c -lpthread -o "$@"
 
 $(STREAM_LAYOUT_TEST_BIN): stream_layout_test.c \
 	$(PROJECT_DIR)/src/t40/t40_stream_layout.c \

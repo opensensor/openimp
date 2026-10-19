@@ -151,7 +151,7 @@ ivs-bench: ivs_move_bench_t20
 # (fs_lifecycle_test.c), as built for T21, T20 and T23.
 FS_SOURCES := fs_lifecycle_test.c \
 	$(ROOT)/src/framesource/framesource_tseries.c \
-	$(ROOT)/src/kernel_interface.c $(ROOT)/src/core/video_drop.c \
+	$(ROOT)/src/kernel_interface.c $(ROOT)/src/openimp_testpattern.c $(ROOT)/src/core/video_drop.c \
 	$(ROOT)/src/framesource/nv12_rotate.c
 FS_DEPS := $(FS_SOURCES) $(ROOT)/src/kernel_interface.h \
 	$(ROOT)/src/vbm_dq_step.h $(ROOT)/src/openimp_ready_event.h \
