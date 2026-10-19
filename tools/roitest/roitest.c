@@ -216,7 +216,7 @@ static void do_slv(int ch, int mode, int level)
 #endif
 
 /* output 1 (ROITEST_CH1) */
-static int ch1_on, ch1_w, ch1_h;
+static int ch1_on, ch1_w, ch1_h, jpeg_on;
 
 static void restart_out(int ch, int stop)
 {
@@ -540,6 +540,20 @@ int main(int argc, char **argv)
             mk_enc(1, ch1_w, ch1_h, fps, fixqp, qp, kbps, minqp, maxqp);
         CK(IMP_Encoder_CreateGroup(1), "CreateGroup1");
         CK(IMP_Encoder_RegisterChn(1, 1), "RegisterChn1");
+#ifdef ENC_NEW
+        /* ROITEST_CH1_JPEG=path (a FIFO read by the host): one snapshot JPEG
+         * of output 1 from a JPEG encoder (chn 4, same group), taken ~5 s
+         * into the first phase, like timps' snapshot channel */
+        if (getenv("ROITEST_CH1_JPEG")) {
+            IMPEncoderChnAttr ja;
+            memset(&ja, 0, sizeof(ja));
+            CK(IMP_Encoder_SetDefaultParam(&ja, IMP_ENC_PROFILE_JPEG, IMP_ENC_RC_MODE_FIXQP,
+                                           ch1_w, ch1_h, fps, 1, 0, 0, 75, 0), "SetDefaultParam jpeg");
+            CK(IMP_Encoder_CreateChn(4, &ja), "Enc_CreateChn jpeg");
+            CK(IMP_Encoder_RegisterChn(1, 4), "RegisterChn jpeg");
+            jpeg_on = 1;
+        }
+#endif
         CK(IMP_System_Bind(&fs1, &enc1), "Bind1");
     }
     if (!getenv("ROITEST_FS_FIRST")) CK(IMP_FrameSource_EnableChn(0), "FS_Enable");
@@ -603,6 +617,30 @@ int main(int argc, char **argv)
                         sensor_w * fr[k][2] / 4 & ~1, sensor_h * fr[k][3] / 4 & ~1);
                 zdone++;
                 tz = now_ms() + zms;
+            }
+#endif
+#ifdef ENC_NEW
+            if (jpeg_on == 1 && now_ms() >= t0 + 5000) {
+                fprintf(stderr, "[R] jpeg StartRecvPic -> %d\n", IMP_Encoder_StartRecvPic(4));
+                jpeg_on = 2;
+            }
+            if (jpeg_on == 2 && IMP_Encoder_PollingStream(4, 500) == 0) {
+                IMPEncoderStream js;
+                memset(&js, 0, sizeof(js));
+                if (IMP_Encoder_GetStream(4, &js, true) == 0) {
+                    FILE *jf = fopen(getenv("ROITEST_CH1_JPEG"), "wb");
+                    uint32_t k;
+                    if (jf) {
+                        const unsigned char *base = (const unsigned char *)(uintptr_t)js.virAddr;
+                        for (k = 0; k < js.packCount; k++)
+                            fwrite(base + js.pack[k].offset, 1, js.pack[k].length, jf);
+                        fclose(jf);
+                    }
+                    IMP_Encoder_ReleaseStream(4, &js);
+                    fprintf(stderr, "[R] jpeg snapshot %u bytes\n", js.streamSize);
+                    IMP_Encoder_StopRecvPic(4);
+                    jpeg_on = 3;
+                }
             }
 #endif
             len = drain(chn, buf, f, &frames, &idrs, &idr_b, &p_b);

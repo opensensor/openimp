@@ -133,6 +133,9 @@ typedef struct {
     uint32_t height;            /* 0x10: Frame height */
     uint32_t pixfmt;            /* 0x14: Pixel format */
     uint64_t timestamp;         /* 0x18: Timestamp */
+    uint32_t pitch;             /* 0x20: luma line pitch, 0 = width (I2D
+                                 * output: ALIGN32, chroma at pitch *
+                                 * ALIGN16(height)) */
 } HWFrameBuffer;
 
 /* Hardware stream buffer */

@@ -1046,7 +1046,9 @@ int HW_Encoder_Encode_NV12_JPEG(HWFrameBuffer *frame,
         return -1;
     width = frame->width;
     height = frame->height;
-    stride = width;
+    stride = frame->pitch ? frame->pitch : width;
+    if (stride < width)
+        return -1;
     padded_height = (height + 15u) & ~15u;
     chroma_rows = (height + 1u) / 2u;
     if ((uint64_t)stride * padded_height +
