@@ -32,6 +32,9 @@ static pthread_mutex_t set_lock = PTHREAD_MUTEX_INITIALIZER;   /* Set/Get only, 
 /* set 1 = write *val, 0 = read into *val, -1 = only fill name; name always gets the sensor name (32 bytes)
  * when a sensor is registered.  Returns 0 or -1. */
 int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32]) __attribute__((weak));
+/* on = 1: save the AE (ae) / AWB (awb) state and freeze it at the current values; on = 0: restore exactly
+ * what the last on = 1 saved.  Returns 0 or -1 (nothing frozen). */
+int openimp_tp_sensor_hold(int on, int ae, int awb) __attribute__((weak));
 
 struct tp_sensor_entry {
     const char *name;                   /* registered sensor name, exact */
@@ -62,6 +65,24 @@ static const struct tp_sensor_entry tp_sensor_tab[] = {
 
 static int tp_sensor_active;            /* Get reports mode 4 */
 static const struct tp_sensor_entry *tp_sensor_cur;
+static int tp_hold_ae, tp_hold_awb;     /* what is frozen now */
+
+static void tp_hold(int ae, int awb)
+{
+    if (ae == tp_hold_ae && awb == tp_hold_awb)
+        return;
+    if ((tp_hold_ae || tp_hold_awb) && openimp_tp_sensor_hold)
+        (void)openimp_tp_sensor_hold(0, tp_hold_ae, tp_hold_awb);
+    tp_hold_ae = tp_hold_awb = 0;
+    if ((ae || awb) && openimp_tp_sensor_hold) {
+        if (openimp_tp_sensor_hold(1, ae, awb) == 0) {
+            tp_hold_ae = ae;
+            tp_hold_awb = awb;
+        } else {
+            fprintf(stderr, "[TP] AE/AWB hold not available, pattern runs with live 3A\n");
+        }
+    }
+}
 
 static const struct tp_sensor_entry *tp_sensor_lookup(char name[32])
 {
@@ -131,22 +152,36 @@ VIS int OpenIMP_TestPattern_SensorInfo(char name[32], uint32_t *reg, uint32_t *m
     return 0;
 }
 
-/* called with set_lock held; mode 4 on (want != 0) or off */
-static int tp_sensor_switch(int want)
+/* called with set_lock held; mode 4 on (p != NULL: hold flags) or off.  AE/AWB are frozen BEFORE the
+ * pattern appears (the values of the real scene), released after it is gone. */
+static int tp_sensor_switch(const OpenIMPTestPatternParams *p)
 {
-    if (want) {
+    if (p) {
         char name[32];
         const struct tp_sensor_entry *e = tp_sensor_lookup(name);
 
-        if (!e || tp_sensor_bit(e, 1) != 0)
+        if (!e)
             return -1;
+        tp_hold(p->ae_hold != 0, p->awb_hold != 0);
+        if (tp_sensor_bit(e, 1) != 0) {
+            int err = errno;
+
+            if (!tp_sensor_active)
+                tp_hold(0, 0);
+            errno = err;
+            return -1;
+        }
         tp_sensor_cur = e;
         tp_sensor_active = 1;
         return 0;
     }
     if (tp_sensor_active) {
+        int ret;
+
         tp_sensor_active = 0;            /* even on error: a stopped sensor reloads its init table anyway */
-        return tp_sensor_bit(tp_sensor_cur, 0);
+        ret = tp_sensor_bit(tp_sensor_cur, 0);
+        tp_hold(0, 0);
+        return ret;
     }
     return 0;
 }
@@ -164,11 +199,12 @@ static void tp_state_text(char *out, size_t n)
     s.size = (uint32_t)sizeof s;
     OpenIMP_TestPattern_Get(&s);
     snprintf(out, n, "ok mode=%d frames=%llu objects_shown=%llu objects_active=%u step=%u logo=%u noise=%d "
-             "obj_size=%u obj_contrast=%d obj_speed=%u obj_cell=%u,%u obj_on_ms=%u obj_period_ms=%u script=%s",
+             "obj_size=%u obj_contrast=%d obj_speed=%u obj_cell=%u,%u obj_on_ms=%u obj_period_ms=%u script=%s "
+             "ae_hold=%u awb_hold=%u",
              s.mode, (unsigned long long)s.frames, (unsigned long long)s.objects_shown, s.objects_active,
              s.params.step, s.params.logo, s.params.noise, s.params.obj_size, s.params.obj_contrast,
              s.params.obj_speed, s.params.obj_cell_x, s.params.obj_cell_y, s.params.obj_on_ms,
-             s.params.obj_period_ms, s.params.script);
+             s.params.obj_period_ms, s.params.script, s.params.ae_hold, s.params.awb_hold);
 }
 
 static void tp_ctl_line(char *line, char *rep, size_t rn)
@@ -201,6 +237,8 @@ static void tp_ctl_line(char *line, char *rep, size_t rn)
             else if (!strcmp(tok, "obj_period_ms")) p->obj_period_ms = (uint32_t)atoi(v);
             else if (!strcmp(tok, "obj_cell") && sscanf(v, "%u,%u", &a, &b) == 2) { p->obj_cell_x = a; p->obj_cell_y = b; }
             else if (!strcmp(tok, "script")) snprintf(p->script, sizeof p->script, "%s", v);
+            else if (!strcmp(tok, "ae_hold")) p->ae_hold = (uint32_t)atoi(v);
+            else if (!strcmp(tok, "awb_hold")) p->awb_hold = (uint32_t)atoi(v);
             else goto bad;
         }
         if (OpenIMP_TestPattern_Set(mode, &s.params) == 0)
@@ -302,7 +340,8 @@ VIS int OpenIMP_TestPattern_Set(int mode, const OpenIMPTestPatternParams *p)
             n.step = 8;
         if (n.step < 2 || n.step > 4096 || n.logo > 1 || n.noise < 0 || n.noise > 16 ||
             n.obj_size > 640 || n.obj_contrast < -200 || n.obj_contrast > 200 ||
-            n.obj_cell_x >= OPENIMP_TP_GX || n.obj_cell_y >= OPENIMP_TP_GY) {
+            n.obj_cell_x >= OPENIMP_TP_GX || n.obj_cell_y >= OPENIMP_TP_GY || n.ae_hold > 1 ||
+            n.awb_hold > 1) {
             pthread_mutex_unlock(&set_lock);
             goto inval;
         }
@@ -311,14 +350,14 @@ VIS int OpenIMP_TestPattern_Set(int mode, const OpenIMPTestPatternParams *p)
     if (mode == 4) {                     /* also re-asserts the bit after a sensor restart */
         int err;
 
-        if (tp_sensor_switch(1) != 0) {
+        if (tp_sensor_switch(&n) != 0) {
             err = errno;
             pthread_mutex_unlock(&set_lock);
             errno = err;
             return -1;
         }
     } else if (mode != 4 && tp_sensor_active) {
-        (void)tp_sensor_switch(0);       /* the new frame mode applies regardless */
+        (void)tp_sensor_switch(NULL);    /* the new frame mode applies regardless */
     }
     slot[1 - __atomic_load_n(&slot_idx, __ATOMIC_ACQUIRE)] = n;
     __atomic_store_n(&slot_idx, 1 - slot_idx, __ATOMIC_RELEASE);

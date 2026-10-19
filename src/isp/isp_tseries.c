@@ -572,6 +572,106 @@ log_error:
     return -1;
 }
 
+/* AE/AWB hold of the test pattern mode 4 (src/openimp_testpattern.c).  AE: the vendor freeze control
+ * (T23/T31 IMP_ISP_Tuning_SetAeFreeze) where the driver has it; in addition (and as the only way on
+ * T20/T21, whose drivers have no AE freeze) manual integration time at the current value and the
+ * gain ceilings set to the current gains.  AWB: manual mode with the current gains.  on = 0 puts
+ * back exactly what was read before. */
+int IMP_ISP_Tuning_GetMaxAgain(uint32_t *pgain);
+int IMP_ISP_Tuning_GetMaxDgain(uint32_t *pgain);
+int IMP_ISP_Tuning_SetAeFreeze(int enable);
+
+static struct {
+    int ae, awb, freeze;
+    enum isp_core_expr_mode expr_mode;
+    uint16_t expr_time;
+    uint32_t max_again, max_dgain;
+    IMPISPWB wb;
+} tp_hold_saved;
+
+int openimp_tp_sensor_hold(int on, int ae, int awb)
+{
+    if (on) {
+        memset(&tp_hold_saved, 0, sizeof tp_hold_saved);
+        if (ae) {
+            IMPISPExpr e;
+            IMPISPEVAttr ev;
+
+            memset(&e, 0, sizeof e);
+            memset(&ev, 0, sizeof ev);
+            if (IMP_ISP_Tuning_GetExpr(&e) != 0 || IMP_ISP_Tuning_GetEVAttr(&ev) != 0 ||
+                IMP_ISP_Tuning_GetMaxAgain(&tp_hold_saved.max_again) != 0 ||
+                IMP_ISP_Tuning_GetMaxDgain(&tp_hold_saved.max_dgain) != 0)
+                return -1;
+            tp_hold_saved.expr_mode = e.g_attr.mode;
+            tp_hold_saved.expr_time = e.g_attr.integration_time;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+            tp_hold_saved.freeze = IMP_ISP_Tuning_SetAeFreeze(1) == 0;
+#endif
+            /* ev[3]/ev[4]: current again/dgain in the units of Set/GetMaxAgain/Dgain (log2); a ceiling
+             * of 0 means "no cap" in the drivers, so 1x is held with the smallest cap 1 */
+            (void)IMP_ISP_Tuning_SetMaxAgain(ev.ev[3] ? ev.ev[3] : 1);
+            (void)IMP_ISP_Tuning_SetMaxDgain(ev.ev[4] ? ev.ev[4] : 1);
+            memset(&e, 0, sizeof e);
+            e.s_attr.mode = ISP_CORE_EXPR_MODE_MANUAL;
+            e.s_attr.unit = ISP_CORE_EXPR_UNIT_LINE;
+            e.s_attr.time = tp_hold_saved.expr_time;
+            (void)IMP_ISP_Tuning_SetExpr(&e);
+            tp_hold_saved.ae = 1;
+            fprintf(stderr, "[TP] AE hold: it=%u lines again=%u dgain=%u (max was %u/%u) freeze=%d\n",
+                    tp_hold_saved.expr_time, ev.ev[3], ev.ev[4], tp_hold_saved.max_again,
+                    tp_hold_saved.max_dgain, tp_hold_saved.freeze);
+        }
+        if (awb) {
+            IMPISPWB cur, man;
+
+            memset(&cur, 0, sizeof cur);
+            if (IMP_ISP_Tuning_GetWB(&tp_hold_saved.wb) != 0 || IMP_ISP_Tuning_GetWB_Statis(&cur) != 0 ||
+                !cur.rgain || !cur.bgain) {
+                if (tp_hold_saved.ae)
+                    (void)openimp_tp_sensor_hold(0, 1, 0);
+                return -1;
+            }
+            memset(&man, 0, sizeof man);
+            man.mode = ISP_CORE_WB_MODE_MANUAL;
+            man.rgain = cur.rgain;
+            man.bgain = cur.bgain;
+            if (IMP_ISP_Tuning_SetWB(&man) != 0) {
+                if (tp_hold_saved.ae)
+                    (void)openimp_tp_sensor_hold(0, 1, 0);
+                return -1;
+            }
+            tp_hold_saved.awb = 1;
+            fprintf(stderr, "[TP] AWB hold: rgain=%u bgain=%u (mode was %d)\n", cur.rgain, cur.bgain,
+                    (int)tp_hold_saved.wb.mode);
+        }
+        return 0;
+    }
+    if (tp_hold_saved.awb) {
+        (void)IMP_ISP_Tuning_SetWB(&tp_hold_saved.wb);
+        tp_hold_saved.awb = 0;
+    }
+    if (tp_hold_saved.ae) {
+        IMPISPExpr e;
+
+        memset(&e, 0, sizeof e);
+        e.s_attr.mode = tp_hold_saved.expr_mode;
+        e.s_attr.unit = ISP_CORE_EXPR_UNIT_LINE;
+        e.s_attr.time = tp_hold_saved.expr_time;
+        (void)IMP_ISP_Tuning_SetExpr(&e);
+        (void)IMP_ISP_Tuning_SetMaxAgain(tp_hold_saved.max_again);
+        (void)IMP_ISP_Tuning_SetMaxDgain(tp_hold_saved.max_dgain);
+#if defined(PLATFORM_T23) || defined(PLATFORM_T31)
+        if (tp_hold_saved.freeze)
+            (void)IMP_ISP_Tuning_SetAeFreeze(0);
+#endif
+        tp_hold_saved.ae = 0;
+        fprintf(stderr, "[TP] AE released (expr mode %d, max again/dgain %u/%u)\n",
+                (int)tp_hold_saved.expr_mode, tp_hold_saved.max_again, tp_hold_saved.max_dgain);
+    }
+    return 0;
+}
+
 /* Sensor register hook of the test pattern mode 4 (src/openimp_testpattern.c): name from the ISPDevice
  * copy of the sensor record (0x28, 32 bytes), access through the stock sensor register ioctl above. */
 int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32])
