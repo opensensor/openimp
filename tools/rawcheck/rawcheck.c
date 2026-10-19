@@ -165,8 +165,15 @@ int main(int argc, char **argv)
 #endif
         CK(IMP_FrameSource_CreateChn(1, &f1), "FS_CreateChn1");
     }
+    fprintf(stderr, "[I] enable ch0\n");
     CK(IMP_FrameSource_EnableChn(0), "FS_Enable");
-    if (ch1_w) CK(IMP_FrameSource_EnableChn(1), "FS_Enable1");
+    fprintf(stderr, "[I] ch0 enabled\n");
+    if (ch1_w) {
+        sleep(3);   /* T41: ch0 and ch1 enabled back to back hang the open stack */
+        fprintf(stderr, "[I] enable ch1\n");
+        CK(IMP_FrameSource_EnableChn(1), "FS_Enable1");
+        fprintf(stderr, "[I] ch1 enabled\n");
+    }
     sleep(3);   /* AE/AWB settle, sensor pattern is switched on meanwhile */
     grab(0, W, H, n, snap);
     if (ch1_w) grab(1, ch1_w, ch1_h, n, snap);

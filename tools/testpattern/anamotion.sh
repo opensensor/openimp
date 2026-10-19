@@ -7,5 +7,6 @@ ffmpeg -v error -y -i $F -vsync passthrough -f rawvideo -pix_fmt yuv420p $B.all.
 ffprobe -v error -select_streams v:0 -show_entries frame=pict_type -of csv=p=0 $F > $B.types
 ffprobe -v error -select_streams v:0 -show_entries packet=size,pts_time,flags -of csv=p=0 $F > $B.pkts
 $T/tbmotion $B.all.yuv $W $H $STEP $B.types
-awk -F, 'NR==1{t0=$1} {n++; b+=$2; if($3 ~ /K/){ni++; bi+=$2} else {bp+=$2; np++}; t1=$1} END{d=t1-t0; if(d<=0)d=1;
-  printf "BITRATE packets %d (I %d, P %d), %.0f kbit/s avg over %.1f s, I avg %.0f B, P avg %.0f B\n", n, ni, np, b*8/1000/d, d, ni?bi/ni:0, np?bp/np:0}' $B.pkts
+# no timestamps in a raw H.264 stream: duration = packets / FPS (env FPS, default 25)
+awk -F, -v fps=${FPS:-25} '{n++; b+=$2; if($3 ~ /K/){ni++; bi+=$2} else {bp+=$2; np++}} END{d=n/fps;
+  printf "BITRATE packets %d (I %d, P %d), %.0f kbit/s avg over %.1f s (at %d fps), I avg %.0f B, P avg %.0f B\n", n, ni, np, b*8/1000/d, d, fps, ni?bi/ni:0, np?bp/np:0}' $B.pkts
