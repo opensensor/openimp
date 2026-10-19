@@ -289,7 +289,6 @@ static void dump_counters(const char *lab)
 #ifdef PLATFORM_T41
 static int osd_h;
 #endif
-#ifdef ENC_NEW
 static void *jpeg_thread(void *arg)
 {
     int tries;
@@ -302,20 +301,24 @@ static void *jpeg_thread(void *arg)
             FILE *jf = fopen(getenv("ROITEST_CH1_JPEG"), "wb");
             uint32_t k;
             if (jf) {
+#ifdef ENC_NEW
                 const unsigned char *base = (const unsigned char *)(uintptr_t)js.virAddr;
                 for (k = 0; k < js.packCount; k++)
                     fwrite(base + js.pack[k].offset, 1, js.pack[k].length, jf);
+#else
+                for (k = 0; k < js.packCount; k++)
+                    fwrite((const void *)(uintptr_t)js.pack[k].virAddr, 1, js.pack[k].length, jf);
+#endif
                 fclose(jf);
             }
             IMP_Encoder_ReleaseStream(4, &js);
-            fprintf(stderr, "[R] jpeg snapshot %u bytes\n", js.streamSize);
+            fprintf(stderr, "[R] jpeg snapshot done\n");
             IMP_Encoder_StopRecvPic(4);
             jpeg_on = 3;
         }
     }
     return NULL;
 }
-#endif
 
 static long drain(int chn, unsigned char *buf, FILE *f, int *frames, int *idrs, long *idr_b, long *p_b)
 {
@@ -626,6 +629,17 @@ int main(int argc, char **argv)
             CK(IMP_Encoder_RegisterChn(1, 4), "RegisterChn jpeg");
             jpeg_on = 1;
         }
+#else
+        /* classic API: PT_JPEG channel in the same group, rcAttr zero, SDK default table (timps hal_ingenic.c) */
+        if (getenv("ROITEST_CH1_JPEG")) {
+            IMPEncoderCHNAttr ja;
+            memset(&ja, 0, sizeof(ja));
+            ja.encAttr.enType = PT_JPEG;
+            ja.encAttr.picWidth = ch1_w; ja.encAttr.picHeight = ch1_h;
+            CK(IMP_Encoder_CreateChn(4, &ja), "Enc_CreateChn jpeg");
+            CK(IMP_Encoder_RegisterChn(1, 4), "RegisterChn jpeg");
+            jpeg_on = 1;
+        }
 #endif
 #ifdef PLATFORM_T41
         if (getenv("ROITEST_OSD")) {   /* the same picture on ch1 (JPEG path), group 1 */
@@ -705,7 +719,6 @@ int main(int argc, char **argv)
                 tz = now_ms() + zms;
             }
 #endif
-#ifdef ENC_NEW
             if (jpeg_on == 1 && now_ms() >= t0 + 5000) {
                 /* own thread: the ch1 video poll must go on at 100 ms, or the
                  * JPEG channel stops being fed from the video channel (fan-out
@@ -716,7 +729,6 @@ int main(int argc, char **argv)
                 pthread_create(&jt, NULL, jpeg_thread, NULL);
                 pthread_detach(jt);
             }
-#endif
             len = drain(chn, buf, f, &frames, &idrs, &idr_b, &p_b);
             if (len >= 0) bytes += len;
             if (ch1_on) {
