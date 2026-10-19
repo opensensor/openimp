@@ -1,22 +1,29 @@
 MODULE_NAME := avpu
 OUT := $(MODULE_NAME)
 
-DIR=$(KERNEL_VERSION)/$(MODULE_NAME)/$(SOC)
+# SDK layout (thingino/ingenic-sdk): KERNEL_VERSION and SOC are set and the
+# sources live in $(KERNEL_VERSION)/$(MODULE_NAME)/$(SOC).  Standalone build
+# (build-avpu.sh, M=<this dir>): flat, sources next to this Kbuild.
+ifneq ($(KERNEL_VERSION),)
+DIR := $(KERNEL_VERSION)/$(MODULE_NAME)/$(SOC)/
+else
+DIR :=
+endif
 
 AVPU_NO_DMABUF ?= 0
 
 SRCS := \
-  $(DIR)/avpu_main.c \
-  $(DIR)/avpu_ip.c \
-  $(DIR)/avpu_alloc.c \
-  $(DIR)/avpu_alloc_ioctl.c \
+  $(DIR)avpu_main.c \
+  $(DIR)avpu_ip.c \
+  $(DIR)avpu_alloc.c \
+  $(DIR)avpu_alloc_ioctl.c \
 
 ifeq ($(AVPU_NO_DMABUF),1)
 SRCS += \
-  $(DIR)/avpu_no_dmabuf.c
+  $(DIR)avpu_no_dmabuf.c
 else
 SRCS += \
-  $(DIR)/avpu_dmabuf.c
+  $(DIR)avpu_dmabuf.c
 endif
 
 OBJS := $(SRCS:%.c=%.o) $(ASM_SRCS:%.S=%.o)
