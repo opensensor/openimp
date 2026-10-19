@@ -28,6 +28,7 @@
  */
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -278,6 +279,34 @@ static void dump_counters(const char *lab)
     }
     printf("\n");
 }
+
+#ifdef ENC_NEW
+static void *jpeg_thread(void *arg)
+{
+    int tries;
+    (void)arg;
+    for (tries = 0; tries < 60 && jpeg_on == 2; tries++) {
+        IMPEncoderStream js;
+        if (IMP_Encoder_PollingStream(4, 500) != 0) continue;
+        memset(&js, 0, sizeof(js));
+        if (IMP_Encoder_GetStream(4, &js, true) == 0) {
+            FILE *jf = fopen(getenv("ROITEST_CH1_JPEG"), "wb");
+            uint32_t k;
+            if (jf) {
+                const unsigned char *base = (const unsigned char *)(uintptr_t)js.virAddr;
+                for (k = 0; k < js.packCount; k++)
+                    fwrite(base + js.pack[k].offset, 1, js.pack[k].length, jf);
+                fclose(jf);
+            }
+            IMP_Encoder_ReleaseStream(4, &js);
+            fprintf(stderr, "[R] jpeg snapshot %u bytes\n", js.streamSize);
+            IMP_Encoder_StopRecvPic(4);
+            jpeg_on = 3;
+        }
+    }
+    return NULL;
+}
+#endif
 
 static long drain(int chn, unsigned char *buf, FILE *f, int *frames, int *idrs, long *idr_b, long *p_b)
 {
@@ -621,26 +650,14 @@ int main(int argc, char **argv)
 #endif
 #ifdef ENC_NEW
             if (jpeg_on == 1 && now_ms() >= t0 + 5000) {
+                /* own thread: the ch1 video poll must go on at 100 ms, or the
+                 * JPEG channel stops being fed from the video channel (fan-out
+                 * idle) and reads the framesource itself - timps' order */
+                pthread_t jt;
                 fprintf(stderr, "[R] jpeg StartRecvPic -> %d\n", IMP_Encoder_StartRecvPic(4));
                 jpeg_on = 2;
-            }
-            if (jpeg_on == 2 && IMP_Encoder_PollingStream(4, 500) == 0) {
-                IMPEncoderStream js;
-                memset(&js, 0, sizeof(js));
-                if (IMP_Encoder_GetStream(4, &js, true) == 0) {
-                    FILE *jf = fopen(getenv("ROITEST_CH1_JPEG"), "wb");
-                    uint32_t k;
-                    if (jf) {
-                        const unsigned char *base = (const unsigned char *)(uintptr_t)js.virAddr;
-                        for (k = 0; k < js.packCount; k++)
-                            fwrite(base + js.pack[k].offset, 1, js.pack[k].length, jf);
-                        fclose(jf);
-                    }
-                    IMP_Encoder_ReleaseStream(4, &js);
-                    fprintf(stderr, "[R] jpeg snapshot %u bytes\n", js.streamSize);
-                    IMP_Encoder_StopRecvPic(4);
-                    jpeg_on = 3;
-                }
+                pthread_create(&jt, NULL, jpeg_thread, NULL);
+                pthread_detach(jt);
             }
 #endif
             len = drain(chn, buf, f, &frames, &idrs, &idr_b, &p_b);
