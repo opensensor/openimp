@@ -8255,6 +8255,9 @@ struct AL_CodecEncode {
      * at once (jpeg_skipped) instead of going to the software encoder.
      * Encoder thread only. */
     int jpeg_skip_allowed;
+    /* AL_Codec_Encode_SetJpegSrcPitch: pitch of a frame copy whose address
+     * OpenIMP_FS_FramePitch does not know (0: by address, else width) */
+    uint32_t jpeg_src_pitch;
     int jpeg_skipped;
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
     /* IMP_Encoder_InsertUserData: payloads waiting for the next picture
@@ -8455,6 +8458,18 @@ int AL_Codec_Encode_SetJpegSkip(void *codec, int allow)
         return -1;
     enc->jpeg_skip_allowed = allow != 0;
     enc->jpeg_skipped = 0;
+    return 0;
+}
+
+/* The p2 JPEG channel encodes a copy of the framesource frame: the pitch of
+ * the original (I2D output), for a source address FS_FramePitch cannot map. */
+int AL_Codec_Encode_SetJpegSrcPitch(void *codec, uint32_t pitch)
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc)
+        return -1;
+    enc->jpeg_src_pitch = pitch;
     return 0;
 }
 
@@ -12354,6 +12369,8 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         hw_frame.height = height;
         hw_frame.pixfmt = pixfmt;
         hw_frame.pitch = avpu_src_pitch_hint(phys_addr);
+        if (!hw_frame.pitch)
+            hw_frame.pitch = enc->jpeg_src_pitch;
         hw_frame.timestamp = timestamp;
         { static unsigned int hw_count = 0; unsigned int c = __sync_add_and_fetch(&hw_count, 1);
           if (c <= 5 || (c % 50) == 0)
@@ -13242,6 +13259,8 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         hw_frame.height = height;
         hw_frame.pixfmt = pixfmt;
         hw_frame.pitch = avpu_src_pitch_hint(phys_addr);
+        if (!hw_frame.pitch)
+            hw_frame.pitch = enc->jpeg_src_pitch;
         hw_frame.timestamp = timestamp;
         if (force_idr) {
             LOG_CODEC("Process: channel=%d forcing next SW frame to IDR", enc->channel_id - 1);

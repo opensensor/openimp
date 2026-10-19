@@ -175,6 +175,9 @@ static P2CaptureReleasePolicy p2_capture_release_policy(void)
 #endif
 }
 
+/* I2D output pitch by physical address (openimp_p1.c); weak: 0 without P1 */
+extern uint32_t OpenIMP_FS_FramePitch(uint32_t physical) __attribute__((weak));
+
 typedef struct {
     uint32_t phys_addr;
     uint32_t virt_addr;
@@ -259,6 +262,7 @@ typedef struct {
     uint8_t *jpeg_frame_buffer;
     size_t jpeg_frame_capacity;
     uint32_t jpeg_frame_phys;       /* rmem copy for the T31 hardware JPEG core */
+    uint32_t jpeg_src_pitch;        /* line pitch of the frame copy (I2D output), 0 = width */
 #if defined(P2_JPEG_LEND)
     void *jpeg_lent_frame;          /* capture frame lent by the AVC channel */
     int jpeg_lent_source;
@@ -788,6 +792,7 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
             jpeg->synthetic_frame.physical_address = source->physical_address;
             jpeg->synthetic_frame.timestamp = source->timestamp;
             jpeg->jpeg_lent_frame = (void *)source;
+            jpeg->jpeg_src_pitch = 0;   /* the lent frame keeps its own address */
             jpeg->jpeg_lent_source = source_channel;
             jpeg->jpeg_frame_requested = 0;
             jpeg->jpeg_frame_generation++;
@@ -847,6 +852,9 @@ static int p2_copy_requested_jpeg_frames(int source_channel,
         if (jpeg->jpeg_frame_phys)
             DMA_RmemFlushCache(jpeg->jpeg_frame_buffer, source->size, 1);
 #endif
+        /* the copy has another address: remember the source's pitch */
+        jpeg->jpeg_src_pitch = OpenIMP_FS_FramePitch && source->physical_address ?
+            OpenIMP_FS_FramePitch(source->physical_address) : 0u;
         memset(&jpeg->synthetic_frame, 0, sizeof(jpeg->synthetic_frame));
         jpeg->synthetic_frame.index = -1;
         jpeg->synthetic_frame.pool_index = -1;
@@ -1229,6 +1237,7 @@ extern int AL_Codec_Encode_GetStream(void *codec, void **stream, void **user_dat
 extern int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data);
 extern int AL_Codec_Encode_RequestIDR(void *codec);
 extern int AL_Codec_Encode_SetJpegSkip(void *codec, int allow);
+extern int AL_Codec_Encode_SetJpegSrcPitch(void *codec, uint32_t pitch);
 extern int AL_Codec_Encode_JpegSkipped(void *codec);
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
@@ -2976,6 +2985,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         pthread_mutex_lock(&ch->lock);
         jpeg_may_skip = p2_jpeg_reuse_fresh(ch, p2_monotonic_us());
         pthread_mutex_unlock(&ch->lock);
+        (void)AL_Codec_Encode_SetJpegSrcPitch(ch->codec, ch->jpeg_src_pitch);
         (void)AL_Codec_Encode_SetJpegSkip(ch->codec, jpeg_may_skip);
     }
     process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);

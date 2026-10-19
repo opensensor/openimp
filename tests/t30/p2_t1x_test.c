@@ -79,6 +79,7 @@ int VBMGetFrame(int chn, void **frame) { (void)chn; (void)frame; return -1; }
 int AL_Codec_Encode_InsertUserData(void *c, const void *d, unsigned int s, unsigned int n, unsigned int m)
 { (void)c; (void)d; (void)s; (void)n; (void)m; return 0; }
 int AL_Codec_Encode_SetJpegSkip(void *c, int a) { (void)c; (void)a; return 0; }
+int AL_Codec_Encode_SetJpegSrcPitch(void *c, uint32_t p) { (void)c; (void)p; return 0; }
 static int jql_calls, jql_en = -1;
 static uint8_t jql_tab[128];
 int AL_Codec_Encode_SetJpegQl(void *c, int a, const uint8_t *b)

@@ -183,6 +183,13 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user)
     stub_released++;
     return 0;
 }
+int AL_Codec_Encode_SetJpegSrcPitch(void *codec, uint32_t pitch)
+{
+    (void)codec;
+    (void)pitch;
+    return 0;
+}
+
 int AL_Codec_Encode_SetJpegSkip(void *codec, int allow)
 {
     StubCodec *c = codec;
