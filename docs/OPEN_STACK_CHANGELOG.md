@@ -7,6 +7,12 @@ Last update: 2026-10-19 (I2D follow-ups, T40 device tests, test-image results: f
 
 Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20 and cam-J a second T21.
 
+## Motion detection v2 (2026-10-19, branch `claude/t40-motion`, in next)
+
+- Pans and scene changes are detected: the global-change suppression (lamp/AE/IR switch) now needs >= 45 % of the cells following the global brightness ratio, or >= 90 % of the cells changing with the same sign; moved cells relearn fast after a scene change; objects of >= 1/10 of the grid are reported without travel.
+- Device-tested: T40 (Eufy) 8/8 pans (before 6-7/8), latency 0.60-0.87 s; T31 lamp/IR-cut switch 0 results (unchanged); T23 lamp 5 results with <= 2 cells (before 8); test-pattern mode-3 sweeps unchanged on T31/T23. T41 not tested (same code).
+- Test pattern: objects > 60 px are drawn, moving objects oscillate +-1/2 cell; motiontest scales ch0 on T23. New tools: tools/motiontest/v2replay, v2sim.
+
 ## 2026-10-19: Test pattern runtime API and logo (claude/testpattern-api)
 
 - `OpenIMP_TestPattern_Set/Get` (`include/openimp_testpattern.h`, ABI 1, capability `OpenIMP_Cap_TestPattern`): mode 0..3 and parameters (step, logo, noise, built-in object size/contrast/speed/cell/duty, script file) switchable during streaming on T20/T21/T23/T30/T31 (kernel_interface.c hook) and T40/T41 (FrameSource hook); state readback (mode, parameters, frames since Set, objects shown/active). Env variables are the start value; per-frame cost one atomic load, no lock.
