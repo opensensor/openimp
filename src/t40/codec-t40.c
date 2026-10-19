@@ -12353,6 +12353,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         hw_frame.width = width;
         hw_frame.height = height;
         hw_frame.pixfmt = pixfmt;
+        hw_frame.pitch = avpu_src_pitch_hint(phys_addr);
         hw_frame.timestamp = timestamp;
         { static unsigned int hw_count = 0; unsigned int c = __sync_add_and_fetch(&hw_count, 1);
           if (c <= 5 || (c % 50) == 0)
@@ -13240,6 +13241,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         hw_frame.width = width;
         hw_frame.height = height;
         hw_frame.pixfmt = pixfmt;
+        hw_frame.pitch = avpu_src_pitch_hint(phys_addr);
         hw_frame.timestamp = timestamp;
         if (force_idr) {
             LOG_CODEC("Process: channel=%d forcing next SW frame to IDR", enc->channel_id - 1);
