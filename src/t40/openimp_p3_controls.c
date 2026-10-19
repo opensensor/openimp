@@ -184,6 +184,26 @@ static int p3_sensor_register(int set, uint32_t addr, uint32_t *value)
     return result;
 }
 
+/* Sensor register hook of the test pattern mode 4 (src/openimp_testpattern.c). */
+int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32])
+{
+    char n[32];
+    int32_t type = 0;
+
+    memset(n, 0, sizeof n);
+    if (OpenIMP_P1_GetSensorName(n, &type) != 0 || type != 1 || !n[0]) {
+        if (name)
+            name[0] = 0;
+        return -1;
+    }
+    n[31] = 0;
+    if (name)
+        memcpy(name, n, sizeof n);
+    if (set < 0)
+        return 0;
+    return p3_sensor_register(set, reg, val);
+}
+
 #if defined(PLATFORM_T41)
 /* T41 1.2.6: one {addr, value} structure */
 int32_t IMP_ISP_SetSensorRegister(IMPVI_NUM num, IMPISPSensorRegister *reg)

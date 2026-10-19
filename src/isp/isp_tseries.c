@@ -572,6 +572,27 @@ log_error:
     return -1;
 }
 
+/* Sensor register hook of the test pattern mode 4 (src/openimp_testpattern.c): name from the ISPDevice
+ * copy of the sensor record (0x28, 32 bytes), access through the stock sensor register ioctl above. */
+int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32])
+{
+    ISPDevice *isp = gISP;
+
+    if (name)
+        name[0] = 0;
+    if (isp == NULL || *(int32_t *)((char *)isp + ISP_SENSOR_TYPE_OFF) == 0)
+        return -1;
+    if (name) {
+        memcpy(name, (char *)isp + 0x28, 32);
+        name[31] = 0;
+    }
+    if (set < 0)
+        return 0;
+    if (val == NULL)
+        return -1;
+    return set ? IMP_ISP_SetSensorRegister(reg, *val) : IMP_ISP_GetSensorRegister(reg, val);
+}
+
 #if !defined(PLATFORM_T23) /* T23: isp_t23_tuning.c */
 int IMP_ISP_Tuning_GetTotalGain(uint32_t *arg1)
 {

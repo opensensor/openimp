@@ -17,6 +17,29 @@
 static uint8_t buf[W * H * 3 / 2];
 #define Y(r, c) buf[(size_t)(r) * W + (c)]
 
+/* fake sensor for mode 4: one register file, name switchable, I/O failure switchable */
+static char fake_name[32] = "sc4336p";
+static uint8_t fake_regs[0x10000];
+static int fake_fail, fake_writes;
+
+int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32])
+{
+    memcpy(name, fake_name, 32);
+    if (!fake_name[0])
+        return -1;
+    if (set < 0)
+        return 0;
+    if (fake_fail || reg > 0xffff)
+        return -1;
+    if (set) {
+        fake_regs[reg] = (uint8_t)*val;
+        fake_writes++;
+    } else {
+        *val = fake_regs[reg];
+    }
+    return 0;
+}
+
 static int render(struct openimp_tp_chan *ch, int want3)
 {
     memset(buf, 0, sizeof buf);
@@ -101,6 +124,52 @@ int main(void)
         assert(s.size == 16 && s.abi == 1 && s.mode == 1);
     }
     assert(OpenIMP_TestPattern_Set(0, NULL) == 0 && openimp_testpattern_mode() == 0 && render(&ch, 0) == 0);
+
+    /* mode 4: sensor pattern bit set by read-modify-write, frames untouched, cleared on leave */
+    {
+        char nm[32];
+        uint32_t reg = 0, mask = 0;
+        const char *d = NULL;
+
+        fake_regs[0x3107] = 0x9c; fake_regs[0x3108] = 0x42;
+        fake_regs[0x4501] = 0xc4;
+        assert(OpenIMP_TestPattern_SensorInfo(nm, &reg, &mask, &d) == 0 && reg == 0x4501 && mask == 0x08);
+        assert(!strcmp(nm, "sc4336p") && !strcmp(d, "ramp"));
+        assert(OpenIMP_TestPattern_Set(4, NULL) == 0 && fake_regs[0x4501] == 0xcc);
+        assert(openimp_testpattern_mode() == 0 && render(&ch, 0) == 0 && render(&ch, 1) == 0);
+        s.size = sizeof s; OpenIMP_TestPattern_Get(&s);
+        assert(s.mode == 4);
+        fake_regs[0x4501] = 0xc4;                                       /* sensor restart reloaded init */
+        assert(OpenIMP_TestPattern_Set(4, NULL) == 0 && fake_regs[0x4501] == 0xcc);   /* re-assert */
+        assert(OpenIMP_TestPattern_Set(1, NULL) == 0 && fake_regs[0x4501] == 0xc4);   /* leave: cleared */
+        assert(openimp_testpattern_mode() == 1);
+        s.size = sizeof s; OpenIMP_TestPattern_Get(&s);
+        assert(s.mode == 1);
+        /* SOI JX: 0x0c bit0 */
+        snprintf(fake_name, sizeof fake_name, "jxf23");
+        fake_regs[0x0a] = 0x0f; fake_regs[0x0b] = 0x23;
+        fake_regs[0x0c] = 0x40;
+        assert(OpenIMP_TestPattern_Set(4, NULL) == 0 && fake_regs[0x0c] == 0x41);
+        assert(OpenIMP_TestPattern_Set(0, NULL) == 0 && fake_regs[0x0c] == 0x40);
+        /* unknown sensor: ENOTSUP, state unchanged */
+        snprintf(fake_name, sizeof fake_name, "gc5603");
+        assert(OpenIMP_TestPattern_Set(1, NULL) == 0);
+        errno = 0;
+        assert(OpenIMP_TestPattern_Set(4, NULL) == -1 && errno == ENOTSUP && openimp_testpattern_mode() == 1);
+        /* no sensor: ENODEV; I/O failure: EIO, nothing written */
+        fake_name[0] = 0;
+        assert(OpenIMP_TestPattern_Set(4, NULL) == -1 && errno == ENODEV);
+        /* driver with a no-op register ioctl: chip id does not match, nothing written */
+        snprintf(fake_name, sizeof fake_name, "sc5336");
+        fake_writes = 0;
+        assert(OpenIMP_TestPattern_Set(4, NULL) == -1 && errno == EIO && fake_writes == 0);
+        fake_regs[0x3107] = 0xce; fake_regs[0x3108] = 0x50;
+        fake_fail = 1;
+        fake_writes = 0;
+        assert(OpenIMP_TestPattern_Set(4, NULL) == -1 && errno == EIO && fake_writes == 0);
+        fake_fail = 0;
+        assert(OpenIMP_TestPattern_Set(0, NULL) == 0);
+    }
     puts("tp_test: ok");
     return 0;
 }

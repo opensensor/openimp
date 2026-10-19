@@ -1,7 +1,7 @@
 /* tpctl: control the test pattern of a running process (timps, roitest, ...) that loaded libimp with
  * OPENIMP_TEST_PATTERN_CTL=<socket path> (default /tmp/openimp_tp_ctl).
  *   tpctl get
- *   tpctl set <0..3> [step=N] [logo=0..1] [noise=N] [obj_size=N] [obj_contrast=N] [obj_speed=N]
+ *   tpctl set <0..4> [step=N] [logo=0..1] [noise=N] [obj_size=N] [obj_contrast=N] [obj_speed=N]
  *                    [obj_cell=X,Y] [obj_on_ms=N] [obj_period_ms=N] [script=PATH]
  * Prints the reply (the state after the call); exit 0 on "ok", 1 on error, 2 no answer.
  * Build: gcc -O2 -o tpctl tpctl.c (or the mipsel toolchain).  See include/openimp_testpattern.h. */
@@ -23,7 +23,7 @@ int main(int argc, char **argv)
     int fd, i;
 
     if (argc < 2) {
-        fprintf(stderr, "usage: %s get | set <mode 0..3> [key=value ...]\n", argv[0]);
+        fprintf(stderr, "usage: %s get | set <mode 0..4 (4 = sensor pattern)> [key=value ...]\n", argv[0]);
         return 1;
     }
     for (i = 1; i < argc; i++) {

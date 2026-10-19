@@ -23,6 +23,133 @@ static uint64_t frames;
 static struct openimp_tp_stats stats;
 static pthread_mutex_t set_lock = PTHREAD_MUTEX_INITIALIZER;   /* Set/Get only, never the frame path */
 
+/* ---- mode 4: sensor built-in test pattern.  The frame hooks keep running in mode 0 (openimp_tp_mode_v
+ * stays 0), only Get reports 4.  Register access goes through the platform hook below (stock ABI sensor
+ * register ioctl of the ISP driver -> sensor s_register, same I2C path and lock as the driver itself);
+ * builds without it (host tests may define one) report ENODEV.  The table matches the registered sensor
+ * name by prefix; entries are SoC independent (the bit lives in the sensor).  Evidence:
+ * audit/ISP_TESTINPUT_1019.md (rdwrapper scratch). */
+/* set 1 = write *val, 0 = read into *val, -1 = only fill name; name always gets the sensor name (32 bytes)
+ * when a sensor is registered.  Returns 0 or -1. */
+int openimp_tp_sensor_reg(int set, uint32_t reg, uint32_t *val, char name[32]) __attribute__((weak));
+
+struct tp_sensor_entry {
+    const char *name;                   /* registered sensor name, exact */
+    uint16_t id_hi, id_lo;              /* chip id registers: read first, proves the register path */
+    uint16_t id;
+    uint16_t reg;                       /* test pattern register and bit */
+    uint8_t mask;
+    const char *desc;
+};
+
+/* SmartSens SC*: 0x4501 bit3 = test pattern (incremental ramp), checked on sc2336 (T23), sc4336p (T31),
+ * sc5336 (T41, 0xc4 -> 0xcc), sc830ai (T40, 0xc4 -> 0xcc) by I2C; sc1a4t same family, not checked.
+ * SOI JX-*: 0x0c bit0 = test mode (Ingenic SDK jxh42.c: "0x41 test mode, 0x40 DVP output").  Device T20 .107
+ * jxf23: vertical colour columns, but the T20/T21 jxf23 drivers rewrite 0x0c in set_analog_gain, so the
+ * pattern ends at the next AE gain step (hold AE / fixed gain, or Set(4) again).
+ * GalaxyCore gc5603: no source for the register yet, no entry. */
+static const struct tp_sensor_entry tp_sensor_tab[] = {
+    { "sc2336p", 0x3107, 0x3108, 0x9b3a, 0x4501, 0x08, "ramp" },
+    { "sc2336",  0x3107, 0x3108, 0xcb3a, 0x4501, 0x08, "ramp" },
+    { "sc4336p", 0x3107, 0x3108, 0x9c42, 0x4501, 0x08, "ramp" },
+    { "sc5336",  0x3107, 0x3108, 0xce50, 0x4501, 0x08, "ramp" },
+    { "sc830ai", 0x3107, 0x3108, 0xc143, 0x4501, 0x08, "ramp" },
+    { "sc1a4t",  0x3107, 0x3108, 0xda4d, 0x4501, 0x08, "ramp (unverified)" },
+    { "jxf23",   0x000a, 0x000b, 0x0f23, 0x000c, 0x01, "colour columns (AE gain step clears it)" },
+    { "jxf22",   0x000a, 0x000b, 0x0f22, 0x000c, 0x01, "test mode (unverified)" },
+    { "jxh42",   0x000a, 0x000b, 0xa042, 0x000c, 0x01, "test mode (unverified)" },
+};
+
+static int tp_sensor_active;            /* Get reports mode 4 */
+static const struct tp_sensor_entry *tp_sensor_cur;
+
+static const struct tp_sensor_entry *tp_sensor_lookup(char name[32])
+{
+    size_t i;
+
+    if (!openimp_tp_sensor_reg) {
+        errno = ENODEV;
+        return NULL;
+    }
+    name[0] = 0;
+    if (openimp_tp_sensor_reg(-1, 0, NULL, name) != 0 || !name[0]) {
+        errno = ENODEV;
+        return NULL;
+    }
+    name[31] = 0;
+    for (i = 0; i < sizeof tp_sensor_tab / sizeof tp_sensor_tab[0]; i++)
+        if (!strcmp(name, tp_sensor_tab[i].name))
+            return &tp_sensor_tab[i];
+    errno = ENOTSUP;
+    return NULL;
+}
+
+/* chip id check (a driver whose register ioctl is a no-op returns no id), then read-modify-write and
+ * read back.  on sets, off clears the bit (also right after the driver reloaded its init table). */
+static int tp_sensor_bit(const struct tp_sensor_entry *e, int on)
+{
+    char name[32];
+    uint32_t hi = 0, lo = 0, v = 0, nv, rb = 0;
+    int r1 = openimp_tp_sensor_reg(0, e->id_hi, &hi, name);
+    int r2 = openimp_tp_sensor_reg(0, e->id_lo, &lo, name);
+
+    if (r1 != 0 || r2 != 0 || (((hi & 0xffu) << 8) | (lo & 0xffu)) != e->id ||
+        openimp_tp_sensor_reg(0, e->reg, &v, name) != 0) {
+        fprintf(stderr, "[TP] sensor %s: id read %d/%d 0x%02x%02x (want 0x%04x), no register access\n",
+                e->name, r1, r2, hi & 0xffu, lo & 0xffu, e->id);
+        goto eio;
+    }
+    nv = on ? (v | e->mask) : (v & ~(uint32_t)e->mask);
+    if (nv == v)
+        return 0;
+    if (openimp_tp_sensor_reg(1, e->reg, &nv, name) != 0 ||
+        openimp_tp_sensor_reg(0, e->reg, &rb, name) != 0 || (rb & 0xffu) != (nv & 0xffu)) {
+        fprintf(stderr, "[TP] sensor %s: 0x%04x 0x%02x -> 0x%02x, read back 0x%02x\n",
+                e->name, e->reg, v & 0xffu, nv & 0xffu, rb & 0xffu);
+        goto eio;
+    }
+    fprintf(stderr, "[TP] sensor %s: 0x%04x 0x%02x -> 0x%02x (%s)\n", e->name, e->reg, v & 0xffu,
+            nv & 0xffu, on ? e->desc : "off");
+    return 0;
+eio:
+    errno = EIO;
+    return -1;
+}
+
+VIS int OpenIMP_TestPattern_SensorInfo(char name[32], uint32_t *reg, uint32_t *mask, const char **desc)
+{
+    char n[32];
+    const struct tp_sensor_entry *e = tp_sensor_lookup(n);
+
+    if (name)
+        memcpy(name, n, sizeof n);
+    if (!e)
+        return -1;
+    if (reg) *reg = e->reg;
+    if (mask) *mask = e->mask;
+    if (desc) *desc = e->desc;
+    return 0;
+}
+
+/* called with set_lock held; mode 4 on (want != 0) or off */
+static int tp_sensor_switch(int want)
+{
+    if (want) {
+        char name[32];
+        const struct tp_sensor_entry *e = tp_sensor_lookup(name);
+
+        if (!e || tp_sensor_bit(e, 1) != 0)
+            return -1;
+        tp_sensor_cur = e;
+        tp_sensor_active = 1;
+        return 0;
+    }
+    if (tp_sensor_active) {
+        tp_sensor_active = 0;            /* even on error: a stopped sensor reloads its init table anyway */
+        return tp_sensor_bit(tp_sensor_cur, 0);
+    }
+    return 0;
+}
 
 /* ---- optional control socket (OPENIMP_TEST_PATTERN_CTL=<path>): lets tools/testpattern/tpctl drive the
  * pattern of a running process (timps, roitest) from outside.  One datagram per command:
@@ -78,8 +205,10 @@ static void tp_ctl_line(char *line, char *rep, size_t rn)
         }
         if (OpenIMP_TestPattern_Set(mode, &s.params) == 0)
             tp_state_text(rep, rn);
-        else
+        else if (errno == EINVAL)
             snprintf(rep, rn, "error: parameter out of range");
+        else
+            snprintf(rep, rn, "error: sensor pattern: %s", strerror(errno));
     } else {
 bad:
         snprintf(rep, rn, "error: usage: get | set <mode> [key=value ...]");
@@ -152,7 +281,7 @@ VIS int OpenIMP_TestPattern_Set(int mode, const OpenIMPTestPatternParams *p)
 {
     OpenIMPTestPatternParams n;
 
-    if (mode < 0 || mode > 3)
+    if (mode < 0 || mode > 4)
         goto inval;
     pthread_mutex_lock(&set_lock);
     n = slot[__atomic_load_n(&slot_idx, __ATOMIC_ACQUIRE)];
@@ -179,13 +308,25 @@ VIS int OpenIMP_TestPattern_Set(int mode, const OpenIMPTestPatternParams *p)
         }
         n.step &= ~1u;
     }
+    if (mode == 4) {                     /* also re-asserts the bit after a sensor restart */
+        int err;
+
+        if (tp_sensor_switch(1) != 0) {
+            err = errno;
+            pthread_mutex_unlock(&set_lock);
+            errno = err;
+            return -1;
+        }
+    } else if (mode != 4 && tp_sensor_active) {
+        (void)tp_sensor_switch(0);       /* the new frame mode applies regardless */
+    }
     slot[1 - __atomic_load_n(&slot_idx, __ATOMIC_ACQUIRE)] = n;
     __atomic_store_n(&slot_idx, 1 - slot_idx, __ATOMIC_RELEASE);
     __atomic_store_n(&frames, 0, __ATOMIC_RELAXED);
     stats.objects_shown = 0;
     stats.objects_active = 0;
     __atomic_add_fetch(&epoch, 1, __ATOMIC_RELEASE);
-    __atomic_store_n(&openimp_tp_mode_v, mode, __ATOMIC_RELEASE);
+    __atomic_store_n(&openimp_tp_mode_v, mode == 4 ? 0 : mode, __ATOMIC_RELEASE);
     pthread_mutex_unlock(&set_lock);
     return 0;
 inval:
@@ -206,7 +347,7 @@ VIS int OpenIMP_TestPattern_Get(OpenIMPTestPatternState *s)
     memset(&f, 0, sizeof f);
     f.size = (uint32_t)sizeof f;
     f.abi = OPENIMP_TESTPATTERN_ABI;
-    f.mode = __atomic_load_n(&openimp_tp_mode_v, __ATOMIC_ACQUIRE);
+    f.mode = tp_sensor_active ? 4 : __atomic_load_n(&openimp_tp_mode_v, __ATOMIC_ACQUIRE);
     f.params = slot[__atomic_load_n(&slot_idx, __ATOMIC_ACQUIRE)];
     f.frames = __atomic_load_n(&frames, __ATOMIC_RELAXED);
     f.objects_shown = stats.objects_shown;

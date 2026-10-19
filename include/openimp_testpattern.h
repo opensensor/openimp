@@ -13,11 +13,18 @@
  *   mode 3  motion detection test: flat grey (light noise), logo, frame
  *           counter, objects of given size/contrast/speed, either one
  *           built-in object (obj_* fields) or a script file
+ *   mode 4  sensor test pattern: the sensor itself outputs its built-in
+ *           pattern (register bit from a per-sensor table, written through
+ *           the ISP sensor register ioctl), so the picture runs through the
+ *           WHOLE ISP (BLC, WB, CCM, gamma, NR, ...) and the encoder; frames
+ *           are not replaced.  Leaving mode 4 clears the bit again.  -1 with
+ *           errno ENOTSUP when the sensor has no table entry, EIO when the
+ *           register access fails (sensor not running).
  *
  * OpenIMP_TestPattern_Set may be called at any time, also while streaming;
  * the next frame uses the new state.  Environment OPENIMP_TEST_PATTERN=0..3
- * is only the start value.  A build that has this API exports the constant
- * OpenIMP_Cap_TestPattern (1).
+ * is only the start value (0..3; mode 4 needs a running sensor, use Set).
+ * A build that has this API exports the constant OpenIMP_Cap_TestPattern (1).
  *
  * ABI: the structs start with a size field (the caller sets sizeof of ITS
  * struct).  New fields are only appended; Set copies min(size, own size)
@@ -39,6 +46,7 @@ extern "C" {
 #define OPENIMP_TP_PATTERN 1
 #define OPENIMP_TP_MOVING  2
 #define OPENIMP_TP_MOTION  3
+#define OPENIMP_TP_SENSOR  4
 
 #define OPENIMP_TP_LOGO_NONE 0
 #define OPENIMP_TP_LOGO_OPENIMP 1       /* default: OpenIMP banner (dot grid + lettering) */
@@ -64,7 +72,7 @@ typedef struct OpenIMPTestPatternParams {
 typedef struct OpenIMPTestPatternState {
     uint32_t size;          /* sizeof(OpenIMPTestPatternState) of the caller */
     uint32_t abi;           /* OPENIMP_TESTPATTERN_ABI */
-    int32_t  mode;          /* 0..3 */
+    int32_t  mode;          /* 0..4 */
     uint32_t reserved;
     uint64_t frames;        /* frames replaced since the last Set (all channels) */
     uint64_t objects_shown; /* mode 3: object appearances since the last Set */
@@ -96,6 +104,14 @@ int OpenIMP_TestPattern_Set(int mode, const OpenIMPTestPatternParams *p);
 int OpenIMP_TestPattern_Get(OpenIMPTestPatternState *s);
 
 extern const int OpenIMP_Cap_TestPattern;   /* 1 */
+
+/* Sensor test pattern of the running sensor (mode 4): fills name (sensor name
+ * as registered, NUL terminated), reg/mask and a short description of the
+ * pattern ("ramp", "colour bars").  Returns 0, or -1 with errno ENOTSUP (no
+ * table entry for this sensor) / ENODEV (no sensor running or no register
+ * access in this build).  Any pointer may be NULL. */
+int OpenIMP_TestPattern_SensorInfo(char name[32], uint32_t *reg, uint32_t *mask,
+                                   const char **desc);
 
 #ifdef __cplusplus
 }
