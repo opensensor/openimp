@@ -1845,6 +1845,9 @@ extern void openimp_fs_rotate_capture(int chn, void *frame)
 int VBMReleaseFrame(int chn, void *frame);
 
 static uint32_t vbm_last_pull_ms[MAX_VBM_POOLS];
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+static void vbm_test_pattern_fill(int chn, VBMFrame *f);
+#endif
 
 static uint32_t vbm_now_ms(void)
 {
@@ -2270,6 +2273,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         openimp_fs_rotate_capture(chn, &pool->frames[idx]);
 #endif
     VBM_DQ_STEP(chn, VBM_DQ_STEP_IVS);
+    if (openimp_testpattern_mode() == 3)   /* motion test picture: before IVS and encoder */
+        vbm_test_pattern_fill(chn, &pool->frames[idx]);
     if (openimp_t31_ivs_capture)
         openimp_t31_ivs_capture(chn, &pool->frames[idx]);
 #endif
@@ -2574,7 +2579,7 @@ static int vbm_get_frame(int chn, void **frame) {
 
 #if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
     defined(PLATFORM_T21) || defined(PLATFORM_T30)
-    if (vbm_test_pattern_enabled())
+    if (vbm_test_pattern_enabled() && openimp_testpattern_mode() != 3)
         vbm_test_pattern_fill(chn, (VBMFrame *)*frame);
 #endif
 

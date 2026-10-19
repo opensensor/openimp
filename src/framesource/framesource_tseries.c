@@ -2851,7 +2851,17 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width,
         return -1;
     }
 
-    memcpy(out_buffer, src, expected);
+    if ((fmt == PIX_FMT_NV12 || fmt == PIX_FMT_NV21) && (height & 15) &&
+        (size_t)src_size >= (size_t)width * (((size_t)height + 15u) & ~15u) * 3 / 2) {
+        /* the capture buffer holds the chroma after ALIGN16(height) luma
+         * lines (pitch = width); the snapshot is packed: luma, then chroma
+         * right behind it (a plain copy put chroma 8 lines late for 1080) */
+        size_t luma = (size_t)width * height, gap = (size_t)width * (((size_t)height + 15u) & ~15u);
+        memcpy(out_buffer, src, luma);
+        memcpy((uint8_t *)out_buffer + luma, (const uint8_t *)src + gap, expected - luma);
+    } else {
+        memcpy(out_buffer, src, expected);
+    }
     info->width = width;
     info->height = height;
 #if defined(FS_SW_ROTATE)

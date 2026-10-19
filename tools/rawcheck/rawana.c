@@ -139,6 +139,7 @@ int main(int argc, char **argv)
         /* pitch: vertical smoothness of the luma plane */
         double best = 1e30, second = 1e30; int pit = w;
         for (int p = w; p <= pmax; p++) {
+            if (nat && p != w && p != al16(w)) continue;   /* natural scene: not smooth enough to search */
             double s = 0; long n = 0;
             for (int y = h / 4; y < h / 4 + 48 && y + 1 < h; y++)
                 for (int x = 0; x < w; x += 3) { { int d_ = buf[(size_t)y * p + x] - buf[(size_t)(y + 1) * p + x]; s += d_ * d_; n++; } }
@@ -184,11 +185,26 @@ int main(int argc, char **argv)
         /* padding */
         long pz = 0, pn = 0; for (int y = 0; y < h; y += 7) for (int x = w; x < pit; x++) { pn++; if (!buf[(size_t)y * pit + x]) pz++; }
         double prow = 0; long prn = 0; for (int y = h; y < al16(h) && !snap; y++) for (int x = 0; x < w; x += 5) { prow += buf[(size_t)y * pit + x]; prn++; }
-        int ok = pit == exp_pit && S == exp_s;
-        printf("ch%d %-4s %d %dx%d size %zu: pitch %d (expect %d, smooth %.3g vs next %.3g) | uv start line %d (expect %d, shift %+d chroma = %+d luma lines)%s "
+        int sb = -1, usedb = 0;
+        {   /* vertically constant pattern: rows of one plane are alike, so rows where the content
+             * changes are plane boundaries (Y end, padding, UV end); UV start = end boundary - h/2 */
+            int nb = 0, rows = (int)(size / pit), last = -1, prev = -2;
+            printf("   row changes (diff>6):");
+            for (int r = 1; r < rows; r++) {
+                long d = 0, m = 0;
+                for (int x = 0; x < w; x += 4) { d += abs(buf[(size_t)r * pit + x] - buf[(size_t)(r - 1) * pit + x]); m++; }
+                if (d / (m ? m : 1) > 6) { if (nb < 8) printf(" %d", r); nb++; if (prev != r - 1) last = r; prev = r; }
+            }
+            printf("%s", nb > 8 ? " ..." : "");
+            if (last > h + h / 4 && last - h / 2 >= h - 8) sb = last - h / 2;
+            printf(" | end boundary %d -> UV start %d\n", last, sb);
+        }
+        if (!synth && !natmode && (flat || S < 0) && sb >= 0) { S = sb; usedb = 1; }
+        int ok = pit == exp_pit && S == exp_s && !(!synth && flat && !natmode && !usedb);
+printf("ch%d %-4s %d %dx%d size %zu: pitch %d (expect %d, smooth %.3g vs next %.3g) | uv start line %d (expect %d, shift %+d chroma = %+d luma lines)%s "
                "| %s %.3f vs %.3f | pad cols %ld/%ld zero, pad rows meanY %.0f -> %s\n",
                ch, kind, k, w, h, size, pit, exp_pit, best, second, S, exp_s, S - exp_s, 2 * (S - exp_s),
-               (!synth && flat) ? " [luma edges flat: shift not measurable]" : (S < 0 ? " [not measurable]" : ""),
+               usedb ? " [from the UV end boundary]" : (!synth && flat) ? " [luma edges flat: shift not measurable]" : (S < 0 ? " [not measurable]" : ""),
                natmode ? "grad-corr best vs 2nd" : "edge fit vs median", natmode ? corr : ebest, natmode ? ebest : med, pz, pn, prn ? prow / prn : 0.0, ok ? "OK" : ((!synth && flat) || S < 0) ? "UNDETERMINED" : "DEVIATION");
         if (!ok && S >= 0 && !(!synth && flat)) bad = 1;
         free(buf);
