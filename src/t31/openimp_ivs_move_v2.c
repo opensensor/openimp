@@ -24,6 +24,7 @@
  * Integer arithmetic only. */
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "openimp_ivs_move_v2.h"
 
@@ -34,6 +35,10 @@
 #define V2_MAX_COMPS  64
 #define V2_HIST_BINS  128       /* ratio bins of 1/32, 0..4 */
 #define V2_ACT_LIMIT  32        /* moving share above 1/8 (EMA over ~64 frames) */
+#define V2_BIG_DIV    10        /* an object of 1/10 of the grid needs no travel (camera pan) */
+#define V2_SCENE_SHIFT 2        /* background rate of moving cells during a scene change */
+#define V2_UNIF_MIN   (256 * 45 / 100) /* cells within +-6 % of the global ratio */
+#define V2_DIR_MIN   (256 * 90 / 100)  /* cells changed the same way */
 #define V2_TEX_FLOOR  (14 << 2) /* minimum texture change (2 per difference) */
 
 struct v2_comp {
@@ -84,6 +89,9 @@ struct IvsMoveV2 {
     int min_cells;              /* effective: config, vendor-sense area */
     uint16_t next_id;
     uint32_t seq;
+    uint32_t g_dir;             /* share of cells changed in the median's direction, Q8 */
+    uint32_t g_unif;            /* share of cells that follow the global ratio, Q8 */
+    int dump_fd;                /* OPENIMP_MOTION_V2_DUMPFD: analysis input trace, -1 off */
 };
 
 /* ---------------- configuration ---------------- */
@@ -237,6 +245,7 @@ IvsMoveV2 *ivs_move_v2_create(uint32_t width, uint32_t height,
     v2->gh = height / cs;
     v2->ncell = v2->gw * v2->gh;
     v2->interval = interval ? interval : 1;
+    v2->dump_fd = getenv("OPENIMP_MOTION_V2_DUMPFD") ? atoi(getenv("OPENIMP_MOTION_V2_DUMPFD")) : -1;
     v2->last_mode = -1;
     v2->next_id = 1;
     v2->cur = calloc(v2->ncell, sizeof(*v2->cur));
@@ -358,6 +367,16 @@ void ivs_move_v2_feed(IvsMoveV2 *v2, const uint8_t *luma, uint32_t stride,
     v2->fed = 1;
 }
 
+/* Feed already reduced cells (host replay of a dump, tests). */
+void ivs_move_v2_feed_cells(IvsMoveV2 *v2, const uint16_t *cur, const uint16_t *tex,
+                            int64_t timestamp)
+{
+    memcpy(v2->cur, cur, v2->ncell * sizeof(*cur));
+    memcpy(v2->tex, tex, v2->ncell * sizeof(*tex));
+    v2->ts = timestamp;
+    v2->fed = 1;
+}
+
 /* ---------------- IVS thread ---------------- */
 
 static uint16_t uf_find(uint16_t *parent, uint16_t a)
@@ -421,6 +440,23 @@ static int32_t v2_gain_ratio(IvsMoveV2 *v2)
     }
     if (bin >= V2_HIST_BINS)
         bin = V2_HIST_BINS - 1;
+    {
+        uint32_t near = 0, k;
+
+        for (k = bin > 2 ? bin - 2 : 0; k <= bin + 2 && k < V2_HIST_BINS; k++)
+            near += hist[k];
+        v2->g_unif = near * 256 / n;
+        /* share of the cells that changed in the direction of the median (outside +-6 %):
+         * lamp, AE and IR-cut changes move (nearly) every cell the same way, a pan mixes */
+        near = 0;
+        if (bin > 32)
+            for (k = 34; k < V2_HIST_BINS; k++)
+                near += hist[k];
+        else if (bin < 32)
+            for (k = 0; k <= 30; k++)
+                near += hist[k];
+        v2->g_dir = near * 256 / n;
+    }
     /* sums stay below 2^32: at most 80x60/3 cells of at most 65280 */
     for (c = 0; c < v2->ncell; c += V2_RATIO_STEP) {
         uint32_t r = ratio[c];
@@ -447,7 +483,8 @@ static void v2_report_tracks(IvsMoveV2 *v2)
 
         t->reported = t->miss == 0 &&
                       t->age >= v2->cfg.min_frames &&
-                      (t->moved || v2->cfg.min_move < 0);
+                      (t->moved || v2->cfg.min_move < 0 ||
+                       t->cells * V2_BIG_DIV >= v2->ncell);
         if (t->reported && t->label > 0)
             v2->rep[t->label] = 1;
     }
@@ -673,6 +710,27 @@ static const uint8_t v2_sense_scale[9] = { 32, 24, 16, 12, 8, 7, 6, 5, 4 };
  * same object size in both. */
 static const uint16_t v2_sense_area[9] = { 1365, 455, 151, 50, 16, 8, 4, 2, 1 };
 
+/* Diagnostic trace of the analysis input (replay on the host): header
+ * "V2D1" w h cs gw gh ncell, then per analysed frame seq, ts, now_ms,
+ * isp_mode, total_gain, sense, cur[ncell], tex[ncell]. */
+static void v2_dump(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain, int64_t now_ms, int sense)
+{
+    int32_t hdr[8] = { 0x31443256, (int32_t)v2->w, (int32_t)v2->h, (int32_t)v2->cs,
+                       (int32_t)v2->gw, (int32_t)v2->gh, (int32_t)v2->ncell, 0 };
+    int64_t rec[3] = { v2->seq, v2->ts, now_ms };
+    int32_t r2[3] = { isp_mode, (int32_t)total_gain, sense };
+    int fd = v2->dump_fd;
+
+    if (v2->seq == 1 && write(fd, hdr, sizeof(hdr)) < 0)
+        goto off;
+    if (write(fd, rec, sizeof(rec)) < 0 || write(fd, r2, sizeof(r2)) < 0 ||
+        write(fd, v2->cur, v2->ncell * 2) < 0 || write(fd, v2->tex, v2->ncell * 2) < 0)
+        goto off;
+    return;
+off:
+    v2->dump_fd = -1;
+}
+
 void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
                      int64_t now_ms, int sense)
 {
@@ -688,12 +746,15 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
     int nmov;
     int32_t g;
     int suppressed, learning;
+    const int scene_change = v2->nmov * 5 >= (int)v2->ncell;
 
     if (!v2->fed)
         return;
     v2->fed = 0;
     v2->last_ts = v2->ts;
     v2->seq++;
+    if (v2->dump_fd >= 0)
+        v2_dump(v2, isp_mode, total_gain, now_ms, sense);
     v2->min_cells = (int)((area + cell_px / 2) / cell_px);
     if (v2->min_cells < cfg->min_cells)
         v2->min_cells = cfg->min_cells;
@@ -733,8 +794,12 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
     g = v2_gain_ratio(v2);      /* mu < 2^17, g clamped: product < 2^32 */
     if (g > 32767)
         g = 32767;
+    /* A global brightness jump suppresses only when (nearly) the whole
+     * picture follows it (lamp, AE step, IR): a camera pan shifts the
+     * median too, but the cells scatter and real motion must not be held
+     * off (the 300-step pans of the Eufy were lost to this). */
     if ((int64_t)(g > 4096 ? g - 4096 : 4096 - g) * 100 >
-        (int64_t)cfg->jump_pct * 4096)
+            (int64_t)cfg->jump_pct * 4096 && (v2->g_unif >= V2_UNIF_MIN || v2->g_dir >= V2_DIR_MIN))
         reason |= OPENIMP_MOVE_SUPP_LUMA;
     if ((cfg->features & OPENIMP_MOVE_F_SUPPRESS) && reason) {
         if (now_ms >= v2->supp_until && !v2->supp_frames)
@@ -808,8 +873,13 @@ void ivs_move_v2_run(IvsMoveV2 *v2, int isp_mode, uint32_t total_gain,
             mu += (v4 - mu) >> ls;
             tb += (t4 - tb) >> ls;
         } else {
-            mu += (v4 - mu) >> (ls + 4);
-            tb += (t4 - tb) >> (ls + 4);
+            /* moving cells follow slowly, except after a scene change
+             * (pan, big object): then the old scene must not be kept as
+             * background, or panning back is invisible */
+            int sh = scene_change ? V2_SCENE_SHIFT : ls + 4;
+
+            mu += (v4 - mu) >> sh;
+            tb += (t4 - tb) >> sh;
         }
         v2->mu[c] = (uint16_t)mu;   /* between old and new value: fits */
         v2->tbg[c] = (uint16_t)tb;

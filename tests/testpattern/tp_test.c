@@ -130,6 +130,24 @@ int main(void)
     s.size = sizeof s; OpenIMP_TestPattern_Get(&s);
     assert(s.mode == 3 && s.objects_active == 1 && s.objects_shown == 1 && s.params.obj_size == 48);
 
+    /* objects bigger than a cell (> 60 px of 640x360) are drawn, and moving ones travel +-half a cell */
+    p.obj_size = 96; p.obj_contrast = 60; p.obj_speed = 0;
+    assert(OpenIMP_TestPattern_Set(3, &p) == 0 && render(&ch, 0) == 0 && render(&ch, 1) == 1);
+    assert(Y(H / 6 * 1 + H / 12, W / 8 * 1 + W / 16) == 110 + 60);
+    {   /* moving 48 px object: the centre travels the full +-half cell (W/16) */
+        int minx = W, maxx = -1, k, r0 = H / 6 * 2 + H / 12, c;
+        double ts;
+        for (ts = 0; ts < 4.0; ts += 0.02) {
+            memset(buf, 110, sizeof buf);
+            openimp_tp_object(buf, W, H, W, 2, 2, 48, 60, 100.0, ts);
+            for (c = 0; c < W; c++)
+                if (Y(r0, c) == 170) { if (c < minx) minx = c; if (c > maxx) maxx = c; }
+        }
+        k = (maxx - minx) - (48 * W / 640 - 1);
+        assert(k >= W / 8 - 4);
+    }
+    p.obj_speed = 0; p.obj_size = 48; assert(OpenIMP_TestPattern_Set(3, &p) == 0);
+
     /* ABI: an older (shorter) caller struct keeps the new fields at their defaults */
     {
         struct { uint32_t size, step, logo; } old = { 12, 4, 0 };

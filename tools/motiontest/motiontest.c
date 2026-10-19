@@ -82,7 +82,7 @@ int main(int argc, char **argv)
     fa.outFrmRateNum = getenv("MT_FPS") ? atoi(getenv("MT_FPS")) : 25; fa.outFrmRateDen = 1; fa.nrVBs = 3; fa.type = FS_PHY_CHANNEL;
     if (ow != W || oh != H) {
         fa.scaler.enable = 1; fa.scaler.outwidth = ow; fa.scaler.outheight = oh;
-#if defined(PLATFORM_T41) || defined(PLATFORM_T31)
+#if defined(PLATFORM_T41) || defined(PLATFORM_T31) || defined(PLATFORM_T23)
         fa.picWidth = ow; fa.picHeight = oh;
 #endif
     }
