@@ -22,6 +22,9 @@
  *      attr + SetI2dAttr, vendor semantics: picture size stays the capture size, the encoder
  *      gets the rotated size for 90/270).  Output 1 gets no I2D unless ROITEST_CH1_I2D (same
  *      format, ch1 encoder takes the rotated size for 90/270).
+ * T41: ROITEST_OSD=x,y puts a 128x64 BGRA test picture (red top-left square, green
+ *      bottom-right square, white border) at x,y of the frame the OSD group sees (ch0;
+ *      FS -> OSD group 0 -> encoder), to check OSD placement with ROITEST_I2D.
  * OUTDIR "-": the ch0 stream of all phases goes to stdout (pipe it to the host, the camera's
  *      /tmp is small); every other output goes to stderr.
  * Stop the streamer first; the camera's /tmp is RAM, use short phases.
@@ -40,6 +43,9 @@
 #include <imp/imp_isp.h>
 #include <imp/imp_framesource.h>
 #include <imp/imp_encoder.h>
+#ifdef PLATFORM_T41
+#include <imp/imp_osd.h>
+#endif
 
 #if defined(PLATFORM_T40)
 # define PLATFORM_T41 1   /* same API shape (IMPVI_NUM, family B ROI) */
@@ -280,6 +286,9 @@ static void dump_counters(const char *lab)
     printf("\n");
 }
 
+#ifdef PLATFORM_T41
+static int osd_h;
+#endif
 #ifdef ENC_NEW
 static void *jpeg_thread(void *arg)
 {
@@ -558,6 +567,41 @@ int main(int argc, char **argv)
     mk_enc(chn, W, H, fps, fixqp, qp, kbps, minqp, maxqp);
     CK(IMP_Encoder_CreateGroup(0), "CreateGroup");
     CK(IMP_Encoder_RegisterChn(0, chn), "RegisterChn");
+#ifdef PLATFORM_T41
+    if (getenv("ROITEST_OSD")) {
+        IMPCell osd = { DEV_ID_OSD, 0, 0 };
+        static uint32_t pic[128 * 64];
+        IMPOSDRgnAttr ra;
+        IMPOSDGrpRgnAttr ga;
+        int ox = 16, oy = 16, px, py, h;
+        sscanf(getenv("ROITEST_OSD"), "%d,%d", &ox, &oy);
+        for (py = 0; py < 64; py++)
+            for (px = 0; px < 128; px++) {
+                uint32_t c = 0xff202020u;
+                if (px < 3 || py < 3 || px >= 125 || py >= 61) c = 0xffffffffu;
+                else if (px < 40 && py < 40) c = 0xffff0000u;
+                else if (px >= 100 && py >= 40) c = 0xff00ff00u;
+                pic[py * 128 + px] = c;
+            }
+        CK(IMP_OSD_CreateGroup(0), "OSD_CreateGroup");
+        memset(&ra, 0, sizeof(ra));
+        ra.type = OSD_REG_PIC;
+        ra.rect.p0.x = ox; ra.rect.p0.y = oy;
+        ra.rect.p1.x = ox + 127; ra.rect.p1.y = oy + 63;
+        ra.fmt = PIX_FMT_BGRA;
+        ra.data.picData.pData = pic;
+        h = osd_h = IMP_OSD_CreateRgn(&ra);
+        fprintf(stderr, "[OSD] CreateRgn -> %d\n", h);
+        memset(&ga, 0, sizeof(ga));
+        ga.show = 1; ga.gAlphaEn = 1; ga.fgAlhpa = 255; ga.layer = 1;
+        fprintf(stderr, "[OSD] Register -> %d SetRgnAttr -> %d\n", IMP_OSD_RegisterRgn(h, 0, &ga),
+                IMP_OSD_SetRgnAttr(h, &ra));
+        fprintf(stderr, "[OSD] ShowRgn -> %d\n", IMP_OSD_ShowRgn(h, 0, 1));
+        CK(IMP_System_Bind(&fs, &osd), "Bind fs-osd");
+        CK(IMP_System_Bind(&osd, &enc), "Bind osd-enc");
+        CK(IMP_OSD_Start(0), "OSD_Start");
+    } else
+#endif
     CK(IMP_System_Bind(&fs, &enc), "Bind");
     if (ch1_on) {
         IMPCell fs1 = { DEV_ID_FS, 1, 0 }, enc1 = { DEV_ID_ENC, 1, 0 };
@@ -582,6 +626,19 @@ int main(int argc, char **argv)
             CK(IMP_Encoder_RegisterChn(1, 4), "RegisterChn jpeg");
             jpeg_on = 1;
         }
+#endif
+#ifdef PLATFORM_T41
+        if (getenv("ROITEST_OSD")) {   /* the same picture on ch1 (JPEG path), group 1 */
+            IMPCell osd1 = { DEV_ID_OSD, 1, 0 };
+            IMPOSDGrpRgnAttr ga1;
+            memset(&ga1, 0, sizeof(ga1));
+            ga1.show = 1; ga1.gAlphaEn = 1; ga1.fgAlhpa = 255; ga1.layer = 1;
+            CK(IMP_OSD_CreateGroup(1), "OSD_CreateGroup1");
+            fprintf(stderr, "[OSD] Register1 -> %d\n", IMP_OSD_RegisterRgn(osd_h, 1, &ga1));
+            CK(IMP_System_Bind(&fs1, &osd1), "Bind fs1-osd1");
+            CK(IMP_System_Bind(&osd1, &enc1), "Bind osd1-enc1");
+            CK(IMP_OSD_Start(1), "OSD_Start1");
+        } else
 #endif
         CK(IMP_System_Bind(&fs1, &enc1), "Bind1");
     }

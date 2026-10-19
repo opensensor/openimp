@@ -28,6 +28,11 @@
 #include "t23/openimp_t23_osd_abi.h"
 #include "t23/openimp_t23_osd_pack.h"
 
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
+/* I2D output pitch by physical address (openimp_p1.c); 0 = not an I2D frame */
+extern uint32_t OpenIMP_FS_FramePitch(uint32_t physical) __attribute__((weak));
+#endif
+
 #define T23_OSD_GROUPS  9
 #define T23_OSD_REGIONS 512
 #define T23_OSD_MAX_IPU_ERRORS 10
@@ -336,6 +341,7 @@ typedef struct {
     uint8_t *y;
     uint8_t *uv;
     uint32_t w, h;
+    uint32_t pitch;                 /* line stride in bytes, >= w */
     uint32_t band_y0, band_y1;      /* rows written, for the cache flush */
 } T23Frame;
 
@@ -351,10 +357,10 @@ static void fill_box(T23Frame *f, int x0, int y0, int x1, int y1,
     if (x0 > x1 || y0 > y1)
         return;
     for (y = y0; y <= y1; y++)
-        memset(f->y + (uint32_t)y * f->w + (uint32_t)x0, yy,
+        memset(f->y + (uint32_t)y * f->pitch + (uint32_t)x0, yy,
                (size_t)(x1 - x0 + 1));
     for (y = y0 & ~1; y <= y1; y += 2) {
-        uint8_t *p = f->uv + (uint32_t)(y / 2) * f->w;
+        uint8_t *p = f->uv + (uint32_t)(y / 2) * f->pitch;
 
         for (x = x0 & ~1; x <= x1; x += 2) {
             p[x] = u;
@@ -438,7 +444,7 @@ static void draw_line_region(T23Frame *f, const struct t23_osd_region *r,
 
 /* Vendor IMP_OSD_SetMosaic: luma only, every pixel of a mosaic cell takes
  * the value of the cell's top-left pixel. */
-static int mosaic(uint8_t *frame, const IMPOSDMosaicAttr *m)
+static int mosaic(uint8_t *frame, const IMPOSDMosaicAttr *m, int stride)
 {
     int i, j, cell;
 
@@ -454,8 +460,8 @@ static int mosaic(uint8_t *frame, const IMPOSDMosaicAttr *m)
         for (j = 0; j < m->mosaic_height; j++) {
             int sy = j - j % cell;
 
-            frame[(m->y + j) * m->frame_width + m->x + i] =
-                frame[(m->y + sy) * m->frame_width + m->x + sx];
+            frame[(m->y + j) * stride + m->x + i] =
+                frame[(m->y + sy) * stride + m->x + sx];
         }
     }
     return 0;
@@ -465,7 +471,7 @@ int IMP_OSD_SetMosaic(unsigned char *frame_virAddr, IMPOSDMosaicAttr *attr)
 {
     if (!frame_virAddr || !attr)
         return T23_OSD_ERR_NULL_PTR;
-    return mosaic(frame_virAddr, attr);
+    return mosaic(frame_virAddr, attr, attr->frame_width);
 }
 
 /* ---- per-frame application -------------------------------------------- */
@@ -497,7 +503,7 @@ static int region_draws_ipu(const struct t23_osd_region *r)
 static void osd_apply_draw(int group, void *frame)
 {
     const uint8_t *fi = frame;
-    uint32_t width, height, phys, virt, bg_h;
+    uint32_t width, height, phys, virt, bg_h, pitch;
     int order[T23_OSD_REGIONS];
     uint32_t band_y0[T23_OSD_REGIONS], band_y1[T23_OSD_REGIONS];
     int count = 0, i;
@@ -509,7 +515,20 @@ static void osd_apply_draw(int group, void *frame)
     memcpy(&height, fi + 0x0c, 4);
     memcpy(&phys, fi + 0x18, 4);
     memcpy(&virt, fi + 0x1c, 4);
-    if (!width || !height || (width & 15u))
+    /* An I2D-rotated frame (T40/T41 90/270) is portrait and its lines sit at
+     * the I2D output pitch (ALIGN32), not at the width: the IPU and the CPU
+     * draw with that stride and clip at the visible width.  The vendor OSD
+     * group gets the same rotated frame after the FrameSource I2D pass. */
+    pitch = width;
+#if defined(PLATFORM_T41) || defined(PLATFORM_T40)
+    if (OpenIMP_FS_FramePitch && phys) {
+        uint32_t p = OpenIMP_FS_FramePitch(phys);
+
+        if (p >= width)
+            pitch = p ? p : width;
+    }
+#endif
+    if (!width || !height || (pitch & 15u))
         return;
     bg_h = (height + 15u) & ~15u;
 
@@ -545,7 +564,7 @@ static void osd_apply_draw(int group, void *frame)
         int n = count - i < 4 ? count - i : 4;
 
         memset(&p, 0, sizeof(p));
-        p.bg_w = width;
+        p.bg_w = pitch;
         p.bg_h = bg_h;
         p.bg_fmt = T23_IPU_FMT_NV12;
         p.out_fmt = T23_IPU_FMT_NV12;
@@ -611,20 +630,21 @@ static void osd_apply_draw(int group, void *frame)
      * blended bands before anything reads or draws them with the CPU. */
     if (virt) {
         for (i = 0; i < count; i++) {
-            DMA_RmemFlushCache((void *)(uintptr_t)(virt + band_y0[i] * width),
-                               (band_y1[i] - band_y0[i]) * width, 2);
-            DMA_RmemFlushCache((void *)(uintptr_t)(virt + width * bg_h +
-                                                   (band_y0[i] / 2u) * width),
+            DMA_RmemFlushCache((void *)(uintptr_t)(virt + band_y0[i] * pitch),
+                               (band_y1[i] - band_y0[i]) * pitch, 2);
+            DMA_RmemFlushCache((void *)(uintptr_t)(virt + pitch * bg_h +
+                                                   (band_y0[i] / 2u) * pitch),
                                ((band_y1[i] + 1u) / 2u - band_y0[i] / 2u) *
-                                   width, 2);
+                                   pitch, 2);
         }
     }
 
     /* 2. CPU: mosaics and line-type regions */
     memset(&f, 0, sizeof(f));
     f.y = (uint8_t *)(uintptr_t)virt;
-    f.uv = f.y ? f.y + width * bg_h : NULL;
+    f.uv = f.y ? f.y + pitch * bg_h : NULL;
     f.w = width;
+    f.pitch = pitch;
     f.h = height;
     f.band_y0 = height;
     if (f.y) {
@@ -640,7 +660,7 @@ static void osd_apply_draw(int group, void *frame)
                 m = r->attr.mosaicAttr;
                 m.frame_width = (int)width;
                 m.frame_height = (int)height;
-                if (mosaic(f.y, &m) == 0) {
+                if (mosaic(f.y, &m, (int)pitch) == 0) {
                     if ((uint32_t)m.y < f.band_y0)
                         f.band_y0 = (uint32_t)m.y;
                     if ((uint32_t)(m.y + m.mosaic_height) > f.band_y1)
@@ -664,10 +684,10 @@ static void osd_apply_draw(int group, void *frame)
     /* Write CPU-drawn lines back so a later DMA reuse of the buffer cannot
      * be overwritten by their eviction (and DMA readers see them). */
     if (f.y && f.band_y1 > f.band_y0) {
-        DMA_RmemFlushCache(f.y + f.band_y0 * width,
-                           (f.band_y1 - f.band_y0) * width, 1);
-        DMA_RmemFlushCache(f.uv + (f.band_y0 / 2u) * width,
-                           ((f.band_y1 + 1u) / 2u - f.band_y0 / 2u) * width, 1);
+        DMA_RmemFlushCache(f.y + f.band_y0 * pitch,
+                           (f.band_y1 - f.band_y0) * pitch, 1);
+        DMA_RmemFlushCache(f.uv + (f.band_y0 / 2u) * pitch,
+                           ((f.band_y1 + 1u) / 2u - f.band_y0 / 2u) * pitch, 1);
     }
 }
 
