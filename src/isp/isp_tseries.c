@@ -633,7 +633,7 @@ int openimp_tp_sensor_hold(int on, int ae, int awb)
                 return -1;
             }
             memset(&man, 0, sizeof man);
-            man.mode = ISP_CORE_WB_MODE_MANUAL;
+            man.mode = (IMPISPWBMode)ISP_CORE_WB_MODE_MANUAL;
             man.rgain = cur.rgain;
             man.bgain = cur.bgain;
             if (IMP_ISP_Tuning_SetWB(&man) != 0) {
