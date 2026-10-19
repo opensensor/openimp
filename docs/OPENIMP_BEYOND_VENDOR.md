@@ -261,6 +261,8 @@ force; `OPENIMP_MOTION_V2=0` (or `features = 0` via `SetConfigEx`) is the vendor
 
 ### 6.1 Test pattern with runtime control (extension, all SoCs)
 
+Complete description (modes 0-4, API, tpctl, host tools, per-SoC status table, limits): [TESTPATTERN.md](TESTPATTERN.md). Mode 4 (sensor test pattern through the whole ISP, AE/AWB hold) is device-tested on T20, T21 and T23.
+
 For streamers and test setups: `#include "openimp_testpattern.h"`, `OpenIMP_TestPattern_Set(mode, &params)` replaces the encoder/IVS input by a synthetic picture (1 pattern with the OpenIMP logo in the middle, 2 moving square + frame counter, 3 motion test with object size/contrast/speed or script), `OpenIMP_TestPattern_Get` reads the state back; switchable while streaming, no lock in the frame path. Detect: symbol `OpenIMP_Cap_TestPattern` (absent on vendor libimp, use `dlsym`/weak). Status: T23 device-tested (switching during one stream); other SoCs build + host test. Outside a streamer: `OPENIMP_TEST_PATTERN_CTL=<socket>` and `tools/testpattern/tpctl`.
 
 ## 7. Environment variables
