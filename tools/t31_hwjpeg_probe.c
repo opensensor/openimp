@@ -23,7 +23,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include "../src/openimp_testpattern.h"
+#include "../src/openimp_testpattern_gen.h"
 #include <time.h>
 #include <unistd.h>
 
@@ -260,7 +260,7 @@ static void ep1_build(uint8_t *ep1, int quality)
     ep1_codebook(ep1 + 0x708, k_dc_chroma_bits, k_dc_vals, 12, 0);
 }
 
-/* Gradients, colour bars and a checkerboard (src/openimp_testpattern.h). */
+/* Gradients, colour bars and a checkerboard (src/openimp_testpattern_gen.h). */
 #define make_pattern openimp_testpattern_nv12
 
 static int load_nv12(const char *path, uint8_t *y, uint8_t *uv, uint32_t w, uint32_t h,

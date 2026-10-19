@@ -58,6 +58,7 @@ check:
 	$(MAKE) -C tests/t31 check
 	$(MAKE) -C tests/t40 check
 	$(MAKE) -C tests/t41 check
+	$(MAKE) -C tests/testpattern check
 	$(MAKE) -C tests/device check
 
 # Built libimp.so exports vs vendor export lists vs streamer-used IMP_ names (tools/export-check/README.md)

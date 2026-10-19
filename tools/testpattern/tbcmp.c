@@ -1,12 +1,12 @@
 /* tbcmp: host helper for the encoder test pattern (I420 planar files)
- *  tbcmp gen W H out.yuv                 pattern (openimp_testpattern.h) as I420
+ *  tbcmp gen W H out.yuv                 pattern (openimp_testpattern_gen.h) as I420
  *  tbcmp cmp ref.yuv dec.yuv W H [rot]   stats; rot = 0|cw|ccw: dec is rotated
  *                                         (dec size HxW), rotate back first      */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../../src/openimp_testpattern.h"
+#include "../../src/openimp_testpattern_gen.h"
 
 static unsigned char *rd(const char *p, size_t n)
 { FILE *f = fopen(p, "rb"); unsigned char *b = malloc(n);

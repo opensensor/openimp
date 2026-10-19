@@ -96,6 +96,10 @@ repo_includes="-I$project_dir/include -I$project_dir/src"
     -o "$output_dir/openimp_profile.o"
 
 "$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/openimp_testpattern.c" \
+    -o "$output_dir/openimp_testpattern.o"
+
+"$compiler" $strict_flags $repo_includes \
     -c "$project_dir/src/openimp_tuning.c" \
     -o "$output_dir/openimp_tuning.o"
 
@@ -177,6 +181,7 @@ done
     "$output_dir/core_video_drop.o" \
     "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/openimp_profile.o" \
+    "$output_dir/openimp_testpattern.o" \
     "$output_dir/openimp_tuning.o" \
     "$output_dir/openimp_p1.o" \
     "$output_dir/openimp_p2_dma.o" \

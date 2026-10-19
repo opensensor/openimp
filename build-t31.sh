@@ -59,6 +59,7 @@ compile()
 # One encoder implementation: the proven T40 public graph and AVPU backend.
 compile openimp_p0 src/t40/openimp_p0.c -Werror
 compile openimp_profile src/openimp_profile.c -Werror
+compile openimp_testpattern src/openimp_testpattern.c -Werror
 compile openimp_tuning src/openimp_tuning.c -Werror
 compile openimp_p2_encoder src/t40/openimp_p2_encoder.c -Werror
 compile openimp_avc src/t40/openimp_avc.c -Werror
@@ -108,6 +109,7 @@ compile t31_extras src/t31/openimp_t31_extras.c -Werror
     -o "$output_dir/libimp.so" \
     "$output_dir/openimp_p0.o" \
     "$output_dir/openimp_profile.o" \
+    "$output_dir/openimp_testpattern.o" \
     "$output_dir/openimp_tuning.o" \
     "$output_dir/openimp_p2_encoder.o" \
     "$output_dir/openimp_avc.o" \

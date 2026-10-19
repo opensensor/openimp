@@ -3,7 +3,7 @@
  *   rawana [-s] frames.raw
  *
  * -s : the frames hold the synthetic pattern (OPENIMP_TEST_PATTERN=1): the chroma start is found
- *      by an exact comparison with openimp_testpattern.h.  Default: sensor test pattern (vertically
+ *      by an exact comparison with openimp_testpattern_gen.h.  Default: sensor test pattern (vertically
  *      constant, left to right black | colour gradient | white, curved edges from the lens shading).
  * -n : natural scene (or a sensor pattern without colour, e.g. T31 sc4336p: chroma all 128): the chroma
  *      start is the line S where the gradient magnitude of the chroma correlates best with that of the
@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../../src/openimp_testpattern.h"
+#include "../../src/openimp_testpattern_gen.h"
 
 static int al16(int v) { return (v + 15) & ~15; }
 
