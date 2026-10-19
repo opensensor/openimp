@@ -5,6 +5,9 @@
  * -s : the frames hold the synthetic pattern (OPENIMP_TEST_PATTERN=1): the chroma start is found
  *      by an exact comparison with openimp_testpattern.h.  Default: sensor test pattern (vertically
  *      constant, left to right black | colour gradient | white, curved edges from the lens shading).
+ * -n : natural scene (or a sensor pattern without colour, e.g. T31 sc4336p: chroma all 128): the chroma
+ *      start is the line S where the gradient magnitude of the chroma correlates best with that of the
+ *      luma; needs a scene with coloured edges.
  *
  * Per frame:
  *   pitch   - found from the luma plane (the pattern is vertically smooth only with the right pitch)
@@ -92,13 +95,37 @@ static double pat_resid(const unsigned char *buf, int p, int w, int h, int S, co
     return n ? se / n : -1;
 }
 
+/* natural scene: Pearson correlation of the gradient magnitude of the (2x2 mean) luma with that of
+ * the chroma planes for the chroma start line S; -2 = not measurable */
+static double grad_corr(const unsigned char *buf, int p, int w, int h, int S)
+{
+    const unsigned char *uv = buf + (size_t)S * p;
+    int cw = w / 2, ch = h / 2;
+    double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0; long n = 0;
+    for (int r = 2; r < ch - 2; r += 2)
+        for (int c = 2; c < cw - 2; c += 2) {
+#define YD(rr, cc) ((buf[(size_t)(2*(rr)) * p + 2*(cc)] + buf[(size_t)(2*(rr)) * p + 2*(cc) + 1] + \
+                     buf[(size_t)(2*(rr)+1) * p + 2*(cc)] + buf[(size_t)(2*(rr)+1) * p + 2*(cc) + 1]) / 4.0)
+#define CV(rr, cc, k) ((double)uv[(size_t)(rr) * p + 2*(cc) + (k)])
+            double gy = fabs(YD(r, c + 1) - YD(r, c - 1)) + fabs(YD(r + 1, c) - YD(r - 1, c));
+            double gc = 0;
+            for (int k = 0; k < 2; k++) gc += fabs(CV(r, c + 1, k) - CV(r, c - 1, k)) + fabs(CV(r + 1, c, k) - CV(r - 1, c, k));
+            sx += gy; sy += gc; sxx += gy * gy; syy += gc * gc; sxy += gy * gc; n++;
+        }
+    if (n < 100) return -2;
+    double vx = sxx / n - (sx / n) * (sx / n), vy = syy / n - (sy / n) * (sy / n);
+    if (vx < 1e-6 || vy < 1e-6) return -2;
+    return (sxy / n - (sx / n) * (sy / n)) / sqrt(vx * vy);
+}
+
 int main(int argc, char **argv)
 {
-    int synth = 0, bad = 0, a = 1;
+    int synth = 0, nat = 0, bad = 0, a = 1;
     FILE *f;
     char line[256];
 
     if (argc > 1 && !strcmp(argv[1], "-s")) { synth = 1; a = 2; }
+    if (argc > 1 && !strcmp(argv[1], "-n")) { nat = 1; a = 2; }
     if (a >= argc || !(f = fopen(argv[a], "rb"))) { fprintf(stderr, "usage: rawana [-s] frames.raw\n"); return 2; }
     while (fgets(line, sizeof line, f)) {
         int ch, k, w, h; unsigned pixfmt; size_t size; char kind[8];
@@ -143,6 +170,15 @@ int main(int argc, char **argv)
             if (ns < 512) emed[ns++] = r;
             if (r < ebest) { ebest = r; S = s; }
         }
+        double corr = -9; int natmode = 0;
+        if (!synth && (nat || S < 0)) {
+            double bc = -9, c2 = -9; int bs = -1;
+            for (int s2 = h - 16; s2 <= smax && s2 >= 0; s2++) {
+                double c = grad_corr(buf, pit, w, h, s2);
+                if (c > bc) { c2 = bc; bc = c; bs = s2; } else if (c > c2) c2 = c;
+            }
+            if (bs >= 0 && bc > 0.05 && bc > c2 + 0.02) { S = bs; corr = bc; natmode = 1; flat = 0; ebest = c2; }
+        }
         double med = 0;
         if (ns) { for (int i = 0; i < ns; i++) for (int j = i + 1; j < ns; j++) if (emed[j] < emed[i]) { double t = emed[i]; emed[i] = emed[j]; emed[j] = t; } med = emed[ns / 2]; }
         /* padding */
@@ -150,10 +186,10 @@ int main(int argc, char **argv)
         double prow = 0; long prn = 0; for (int y = h; y < al16(h) && !snap; y++) for (int x = 0; x < w; x += 5) { prow += buf[(size_t)y * pit + x]; prn++; }
         int ok = pit == exp_pit && S == exp_s;
         printf("ch%d %-4s %d %dx%d size %zu: pitch %d (expect %d, smooth %.3g vs next %.3g) | uv start line %d (expect %d, shift %+d chroma = %+d luma lines)%s "
-               "| fit %.3f vs median %.3f | pad cols %ld/%ld zero, pad rows meanY %.0f -> %s\n",
+               "| %s %.3f vs %.3f | pad cols %ld/%ld zero, pad rows meanY %.0f -> %s\n",
                ch, kind, k, w, h, size, pit, exp_pit, best, second, S, exp_s, S - exp_s, 2 * (S - exp_s),
                (!synth && flat) ? " [luma edges flat: shift not measurable]" : (S < 0 ? " [not measurable]" : ""),
-               ebest, med, pz, pn, prn ? prow / prn : 0.0, ok ? "OK" : ((!synth && flat) || S < 0) ? "UNDETERMINED" : "DEVIATION");
+               natmode ? "grad-corr best vs 2nd" : "edge fit vs median", natmode ? corr : ebest, natmode ? ebest : med, pz, pn, prn ? prow / prn : 0.0, ok ? "OK" : ((!synth && flat) || S < 0) ? "UNDETERMINED" : "DEVIATION");
         if (!ok && S >= 0 && !(!synth && flat)) bad = 1;
         free(buf);
     }

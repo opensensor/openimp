@@ -2504,6 +2504,12 @@ static void vbm_test_pattern_fill(int chn, VBMFrame *f)
         cache_w[chn] = w;
         cache_h[chn] = h;
     }
+    if (openimp_testpattern_mode() == 3) {   /* motion detection test picture */
+        uint8_t *dst = (uint8_t *)(uintptr_t)f->virt_addr;
+        openimp_testpattern_motion3(dst, dst + pitch * lines, w, h, pitch, counter[chn]++);
+        (void)DMA_RmemFlushCache((void *)(uintptr_t)f->virt_addr, need, 1 /* WBACK */);
+        return;
+    }
     memcpy((void *)(uintptr_t)f->virt_addr, cache[chn], need);
     if (openimp_testpattern_mode() == 2) {   /* moving square + frame counter */
         uint8_t *dst = (uint8_t *)(uintptr_t)f->virt_addr;

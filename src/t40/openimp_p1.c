@@ -1886,6 +1886,12 @@ static void p1_test_pattern_fill(struct openimp_fs_channel *chn,
         cache_w[channel] = w;
         cache_h[channel] = h;
     }
+    if (openimp_testpattern_mode() == 3) {   /* motion detection test picture */
+        uint8_t *dst = buffer->virtual_address;
+        openimp_testpattern_motion3(dst, dst + pitch * lines, w, h, pitch, counter[channel]++);
+        (void)DMA_RmemFlushCache(buffer->virtual_address, need, 1 /* WBACK */);
+        return;
+    }
     memcpy(buffer->virtual_address, cache[channel], need);
     if (openimp_testpattern_mode() == 2) {   /* moving square + frame counter */
         uint8_t *dst = buffer->virtual_address;

@@ -38,3 +38,4 @@ tools/rawcheck/rawcheck_t*
 tools/rawcheck/rawana
 tools/testpattern/tbmotion
 tools/testpattern/tbcmp
+tools/motiontest/motiontest_t*
