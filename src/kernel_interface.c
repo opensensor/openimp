@@ -23,6 +23,7 @@
 #include "trace_control.h"
 #include "vbm_dq_step.h"
 #include "vbm_delay.h"
+#include "openimp_testpattern.h"
 /* T31: frame-ready events of the encoder pull path; T23 shares that VBM
  * block (IVS capture, idle drain) since claude/t23-stub-fixes. */
 #if defined(PLATFORM_T31) || defined(PLATFORM_T23)
@@ -1844,6 +1845,9 @@ extern void openimp_fs_rotate_capture(int chn, void *frame)
 int VBMReleaseFrame(int chn, void *frame);
 
 static uint32_t vbm_last_pull_ms[MAX_VBM_POOLS];
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+static void vbm_test_pattern_fill(int chn, VBMFrame *f);
+#endif
 
 static uint32_t vbm_now_ms(void)
 {
@@ -2269,6 +2273,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         openimp_fs_rotate_capture(chn, &pool->frames[idx]);
 #endif
     VBM_DQ_STEP(chn, VBM_DQ_STEP_IVS);
+    if (openimp_testpattern_mode() == 3)   /* motion test picture: before IVS and encoder */
+        vbm_test_pattern_fill(chn, &pool->frames[idx]);
     if (openimp_t31_ivs_capture)
         openimp_t31_ivs_capture(chn, &pool->frames[idx]);
 #endif
@@ -2464,6 +2470,61 @@ int VBMGetFrame(int chn, void **frame) {
     return ret;
 }
 
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
+/* Test hook: OPENIMP_TEST_PATTERN=1 replaces every NV12 frame handed out by
+ * VBMGetFrame with the synthetic pattern (src/openimp_testpattern.h), so the
+ * encoder path can be checked against a known picture on the device. Layout:
+ * pitch = width, chroma after ALIGN16(height) luma rows. Off unless
+ * the variable is set. */
+static int vbm_test_pattern_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0)
+        enabled = openimp_testpattern_mode() != 0;
+    return enabled;
+}
+
+static void vbm_test_pattern_fill(int chn, VBMFrame *f)
+{
+    static uint8_t *cache[MAX_VBM_POOLS];
+    static uint32_t cache_w[MAX_VBM_POOLS], cache_h[MAX_VBM_POOLS];
+    static uint32_t counter[MAX_VBM_POOLS];
+    uint32_t w = (uint32_t)f->width, h = (uint32_t)f->height;
+    uint32_t pitch = w, lines = (h + 15u) & ~15u;   /* FrameSource capture: pitch = width */
+    uint32_t need = pitch * lines + pitch * (h / 2u);
+
+    if (f->pixfmt != 0xa && f->pixfmt != 0x3231564e)
+        return;
+    if (!f->virt_addr || (uint32_t)f->size < need || w < 2 || h < 2)
+        return;
+    if (!cache[chn] || cache_w[chn] != w || cache_h[chn] != h) {
+        free(cache[chn]);
+        cache[chn] = calloc(1, need);
+        if (!cache[chn])
+            return;
+        openimp_testpattern_nv12(cache[chn], cache[chn] + pitch * lines,
+                                 w, h, pitch);
+        cache_w[chn] = w;
+        cache_h[chn] = h;
+    }
+    if (openimp_testpattern_mode() == 3) {   /* motion detection test picture */
+        uint8_t *dst = (uint8_t *)(uintptr_t)f->virt_addr;
+        openimp_testpattern_motion3(dst, dst + pitch * lines, w, h, pitch, counter[chn]++);
+        (void)DMA_RmemFlushCache((void *)(uintptr_t)f->virt_addr, need, 1 /* WBACK */);
+        return;
+    }
+    memcpy((void *)(uintptr_t)f->virt_addr, cache[chn], need);
+    if (openimp_testpattern_mode() == 2) {   /* moving square + frame counter */
+        uint8_t *dst = (uint8_t *)(uintptr_t)f->virt_addr;
+        openimp_testpattern_overlay(dst, dst + pitch * lines, w, h, pitch,
+                                    counter[chn]++, openimp_testpattern_step());
+    }
+    (void)DMA_RmemFlushCache((void *)(uintptr_t)f->virt_addr, need, 1 /* WBACK */);
+}
+#endif
+
 static int vbm_get_frame(int chn, void **frame) {
     VBMPool *pool = vbm_instance[chn];
     if (pool == NULL) {
@@ -2515,6 +2576,12 @@ static int vbm_get_frame(int chn, void **frame) {
         *frame = NULL;
         return -1;
     }
+
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T21) || defined(PLATFORM_T30)
+    if (vbm_test_pattern_enabled() && openimp_testpattern_mode() != 3)
+        vbm_test_pattern_fill(chn, (VBMFrame *)*frame);
+#endif
 
     OPENIMP_TRACE_STDERR("[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
             chn, *frame, frame_idx, pool->queue_count);

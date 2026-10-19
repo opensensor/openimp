@@ -36,6 +36,7 @@
 #if defined(P1_CAPTURE_FEEDER)
 #include "t40/t41_snap.h"
 #include "t40/p1_i2d.h"
+#include "openimp_testpattern.h"
 #endif
 
 #define OPENIMP_P1_MAGIC        0x50315434U /* "P1T4" */
@@ -1849,6 +1850,57 @@ done:
     return result;
 }
 
+/* Test hook: OPENIMP_TEST_PATTERN=1 replaces every captured NV12 frame with
+ * the synthetic pattern (src/openimp_testpattern.h) before I2D and the
+ * consumers see it, so the encoder path (stage 2) can be checked against a
+ * known picture on the device. Capture layout: pitch ALIGN16(width), chroma
+ * after ALIGN16(height) luma rows. Off unless the variable is set. */
+static int p1_test_pattern_enabled(void)
+{
+    static int enabled = -1;
+
+    if (enabled < 0)
+        enabled = openimp_testpattern_mode() != 0;
+    return enabled;
+}
+
+static void p1_test_pattern_fill(struct openimp_fs_channel *chn,
+                                 struct openimp_fs_buffer *buffer, int channel)
+{
+    static uint8_t *cache[OPENIMP_FS_CHANNELS];
+    static uint32_t cache_w[OPENIMP_FS_CHANNELS], cache_h[OPENIMP_FS_CHANNELS];
+    static uint32_t counter[OPENIMP_FS_CHANNELS];
+    uint32_t w = (uint32_t)chn->attr.picWidth, h = (uint32_t)chn->attr.picHeight;
+    uint32_t pitch = (w + 15u) & ~15u, lines = (h + 15u) & ~15u;
+    uint32_t need = pitch * lines + pitch * (h / 2u);
+
+    if (!buffer->virtual_address || buffer->size < need || w < 2 || h < 2)
+        return;
+    if (!cache[channel] || cache_w[channel] != w || cache_h[channel] != h) {
+        free(cache[channel]);
+        cache[channel] = calloc(1, need);
+        if (!cache[channel])
+            return;
+        openimp_testpattern_nv12(cache[channel], cache[channel] + pitch * lines,
+                                 w, h, pitch);
+        cache_w[channel] = w;
+        cache_h[channel] = h;
+    }
+    if (openimp_testpattern_mode() == 3) {   /* motion detection test picture */
+        uint8_t *dst = buffer->virtual_address;
+        openimp_testpattern_motion3(dst, dst + pitch * lines, w, h, pitch, counter[channel]++);
+        (void)DMA_RmemFlushCache(buffer->virtual_address, need, 1 /* WBACK */);
+        return;
+    }
+    memcpy(buffer->virtual_address, cache[channel], need);
+    if (openimp_testpattern_mode() == 2) {   /* moving square + frame counter */
+        uint8_t *dst = buffer->virtual_address;
+        openimp_testpattern_overlay(dst, dst + pitch * lines, w, h, pitch,
+                                    counter[channel]++, openimp_testpattern_step());
+    }
+    (void)DMA_RmemFlushCache(buffer->virtual_address, need, 1 /* WBACK */);
+}
+
 static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_attempts)
 {
     struct openimp_fs_channel *chn;
@@ -1959,6 +2011,8 @@ static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_atte
     }
     buffer = &chn->buffers[index];
     buffer->queued = 0;
+    if (p1_test_pattern_enabled())   /* EnableChn admits NV12 only */
+        p1_test_pattern_fill(chn, buffer, channel);
     if (chn->i2d_on) {
         /* vendor: the consumers get the I2D output, not the capture */
         int ok;

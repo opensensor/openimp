@@ -23,6 +23,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include "../src/openimp_testpattern.h"
 #include <time.h>
 #include <unistd.h>
 
@@ -259,30 +260,8 @@ static void ep1_build(uint8_t *ep1, int quality)
     ep1_codebook(ep1 + 0x708, k_dc_chroma_bits, k_dc_vals, 12, 0);
 }
 
-/* Gradients, colour bars and a checkerboard, so orientation, chroma order
- * and block alignment errors are visible at a glance. */
-static void make_pattern(uint8_t *y, uint8_t *uv, uint32_t w, uint32_t h, uint32_t pitch)
-{
-    for (uint32_t r = 0; r < h; r++)
-        for (uint32_t c = 0; c < w; c++) {
-            uint8_t v;
-            if (r < h / 3)
-                v = (uint8_t)(c * 255 / (w - 1));
-            else if (r < 2 * h / 3)
-                v = (uint8_t)(((c / 32) ^ (r / 32)) & 1 ? 235 : 16);
-            else
-                v = (uint8_t)(r * 255 / (h - 1));
-            y[(size_t)r * pitch + c] = v;
-        }
-    for (uint32_t r = 0; r < h / 2; r++)
-        for (uint32_t c = 0; c < w / 2; c++) {
-            unsigned bar = c * 8 / (w / 2);
-            static const uint8_t bars_u[8] = {128, 16, 166, 54, 202, 90, 240, 128};
-            static const uint8_t bars_v[8] = {128, 146, 16, 34, 222, 240, 110, 128};
-            uv[(size_t)r * pitch + 2 * c] = r < h / 6 ? 128 : bars_u[bar];
-            uv[(size_t)r * pitch + 2 * c + 1] = r < h / 6 ? 128 : bars_v[bar];
-        }
-}
+/* Gradients, colour bars and a checkerboard (src/openimp_testpattern.h). */
+#define make_pattern openimp_testpattern_nv12
 
 static int load_nv12(const char *path, uint8_t *y, uint8_t *uv, uint32_t w, uint32_t h,
                      uint32_t pitch)
