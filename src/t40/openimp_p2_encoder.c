@@ -920,6 +920,35 @@ static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
     return 0;
 }
 
+/*
+ * A JPEG channel that takes its frames from the fan-out copy of a video
+ * channel needs the wait below to be long enough for that copy to happen.
+ * The budget can arrive as 0: IMP_Encoder_PollingStream() subtracts the time
+ * it spent waiting for poll_serial, and the GetFd pump polls the same channel.
+ * A 0 ms wait sets jpeg_frame_requested and clears it again within the same
+ * microsecond window, so the video poll never sees the request, no copy is
+ * made and PollingStream returns -1 forever (snapshot: HTTP 503, measured on
+ * T31/7.2 with timps' JPEG-on-video1 channel).
+ *
+ * So the wait always gets at least one fan-out period. A copy is broadcast as
+ * soon as it lands, so the added latency in the normal case is one video frame
+ * interval, not the whole floor. OPENIMP_JPEG_MIN_WAIT_MS overrides the floor
+ * (0 restores the old behaviour, for A/B tests).
+ */
+static uint32_t p2_jpeg_wait_floor_ms(void)
+{
+    static int value = -1;
+
+    if (value < 0) {
+        const char *env = getenv("OPENIMP_JPEG_MIN_WAIT_MS");
+
+        value = env && env[0] ? atoi(env) : (int)(P2_FANOUT_IDLE_US / 1000u);
+        if (value < 0 || value > 5000)
+            value = (int)(P2_FANOUT_IDLE_US / 1000u);
+    }
+    return (uint32_t)value;
+}
+
 static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
                                   uint32_t timeout_ms, void **frame)
 {
@@ -927,9 +956,22 @@ static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
     uint64_t generation;
     int wait_result = 0;
     int slice_used = 0;
+    uint32_t floor_ms;
 
     if (!channel || !frame)
         return -1;
+    floor_ms = p2_jpeg_wait_floor_ms();
+    if (timeout_ms < floor_ms) {
+        static int raised_logged;
+
+        timeout_ms = floor_ms;
+        if (!raised_logged) {
+            raised_logged = 1;
+            IMP_LOG(LOG_NOTICE, "Encoder",
+                    "JPEG: wait budget raised to %ums (fan-out copy needs one "
+                    "period; OPENIMP_JPEG_MIN_WAIT_MS overrides)", floor_ms);
+        }
+    }
     clock_gettime(CLOCK_REALTIME, &deadline);
     deadline.tv_sec += timeout_ms / 1000u;
     deadline.tv_nsec += (long)(timeout_ms % 1000u) * 1000000l;
