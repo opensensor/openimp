@@ -920,6 +920,33 @@ static int p2_jpeg_frames_from_fanout(const P2EncoderChannel *jpeg)
     return 0;
 }
 
+/*
+ * Minimum JPEG wait budget in ms. A JPEG channel fed by fan-out first waits
+ * for poll_serial, and PollingStream hands only the rest of the caller's
+ * timeout down. That rest is often 0 ms, and a 0 ms wait sets and clears
+ * jpeg_frame_requested before any video poll can copy a frame (snapshot
+ * 503). The default is one fan-out slice; OPENIMP_JPEG_MIN_WAIT_MS
+ * overrides it, 0 restores the old behaviour. The budget never exceeds the
+ * caller's own timeout.
+ */
+static uint32_t p2_jpeg_min_wait_ms(void)
+{
+    static int value = -1;
+
+    if (value < 0) {
+        const char *env = getenv("OPENIMP_JPEG_MIN_WAIT_MS");
+        int parsed = (int)(P2_FANOUT_IDLE_US / 1000u);
+
+        if (env && env[0]) {
+            parsed = atoi(env);
+            if (parsed < 0 || parsed > 5000)
+                parsed = (int)(P2_FANOUT_IDLE_US / 1000u);
+        }
+        value = parsed;
+    }
+    return (uint32_t)value;
+}
+
 static int p2_wait_for_jpeg_frame(P2EncoderChannel *channel,
                                   uint32_t timeout_ms, void **frame)
 {
@@ -2702,11 +2729,32 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
         uint64_t start_us = p2_monotonic_us();
         uint64_t spent_ms;
 
+        uint32_t budget_ms;
+
         pthread_mutex_lock(&ch->poll_serial);
         spent_ms = (p2_monotonic_us() - start_us) / 1000u;
-        ret = p2_polling_stream(channel,
-                                spent_ms >= timeout_ms ? 0u
-                                    : timeout_ms - (uint32_t)spent_ms);
+        budget_ms = spent_ms >= timeout_ms ? 0u
+                        : timeout_ms - (uint32_t)spent_ms;
+        if (ch->codec_type == IMP_ENC_TYPE_JPEG) {
+            /* Waiting for the serial lock must not leave the JPEG fan-out
+             * wait without time to see a frame (p2_jpeg_min_wait_ms). */
+            uint32_t floor_ms = p2_jpeg_min_wait_ms();
+            static int raised_logged;
+
+            if (floor_ms > timeout_ms)
+                floor_ms = timeout_ms;
+            if (budget_ms < floor_ms) {
+                if (!raised_logged) {
+                    raised_logged = 1;
+                    IMP_LOG(LOG_NOTICE, "Encoder",
+                            "JPEG wait budget raised %ums -> %ums on ch=%d "
+                            "(OPENIMP_JPEG_MIN_WAIT_MS, 0 disables)",
+                            budget_ms, floor_ms, channel);
+                }
+                budget_ms = floor_ms;
+            }
+        }
+        ret = p2_polling_stream(channel, budget_ms);
         pthread_mutex_unlock(&ch->poll_serial);
     }
     pthread_mutex_lock(&ch->lock);
