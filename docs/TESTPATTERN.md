@@ -69,14 +69,19 @@ Parameters (`OpenIMPTestPatternParams`):
 | `obj_cell_x/y` | 3 | grid cell of the 8 x 6 grid, 1,1 |
 | `obj_on_ms`, `obj_period_ms` | 3 | visible for `on` every `period` (0 = always), 3000 / 6000 |
 | `script` | 3 | object script file, lines `t=<s> cell=<cx>,<cy> size=<px> contrast=<dY> [dur=<s>] [speed=<px/s>]`; time counts from the Set; empty = `OPENIMP_TEST_PATTERN_EVENTS` or `/tmp/openimp_tp_events` |
-| `ae_hold` | 4 | 1 (default): AE frozen at the values of the moment mode 4 starts; 0: AE keeps running |
+| `ae_hold` | 4 | 1 (default): fixed AE. T20-T31: neutral exposure (gain ceilings 1x, manual integration time = half of max; mode 0 restores the saved state), T40/T41: frozen at the current values; 0: AE keeps running |
 | `awb_hold` | 4 | 0 (default): AWB keeps running; 1: AWB gains frozen (colour measurement) |
 
 Leaving mode 4 clears the sensor bit (read-modify-write, correct also after a sensor restart)
-and restores AE/AWB to the state before mode 4. Hold implementation per SoC: T23/T31
-`SetAeFreeze`; T21 a new driver control (0x8000034, sensor exposure/gain are no longer queued);
-T20 manual exposure with the gain ceiling at the current gain; T40/T41 manual AE mode / AWB
-freeze (implemented, not device-tested).
+and restores AE/AWB to the state before mode 4. AE with `ae_hold=1` (T20/T21/T23/T31, T-series
+driver path): not frozen at the current values but a neutral exposure, because a frozen dark-scene AE
+sits at maximum gain/integration and clips the ramp (white -> magenta -> black). The sensor/ISP gain
+ceilings (`SetMaxAgain`/`SetMaxDgain`) go to 1 (= 1x, the smallest cap) and the integration time goes
+manual at half of `integration_time_max`; no `SetAeFreeze`. Mode 0 puts back expression mode/time and
+both ceilings. The T-series interface has no separate ISP digital gain, `SetMaxDgain` covers it. AWB
+(`awb_hold=1`) is unchanged: T23/T31 manual WB with the current gains, T40/T41 `awb_frz`. T40/T41 AE
+keeps the old behaviour (manual AE mode = frozen at the current values): the exposure struct units of
+that path are not verified, so no neutral values are written there (implemented, not device-tested).
 
 ## Control from outside: environment, socket, tpctl
 

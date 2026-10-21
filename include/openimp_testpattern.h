@@ -17,8 +17,10 @@
  *           pattern (register bit from a per-sensor table, written through
  *           the ISP sensor register ioctl), so the picture runs through the
  *           WHOLE ISP (BLC, WB, CCM, gamma, NR, ...) and the encoder; frames
- *           are not replaced.  AE is frozen first (ae_hold, default), AWB on
- *           request (awb_hold).  Leaving mode 4 clears the bit and restores
+ *           are not replaced.  ae_hold (default): AE is set to a neutral
+ *           exposure first (T20-T31: gain ceilings 1x, manual integration time
+ *           at half of the maximum; T40/T41: AE frozen at the current values),
+ *           AWB frozen on request (awb_hold).  Leaving mode 4 clears the bit and restores
  *           AE/AWB to the state before mode 4.  -1 with
  *           errno ENOTSUP when the sensor has no table entry, EIO when the
  *           register access fails (sensor not running).
@@ -70,9 +72,11 @@ typedef struct OpenIMPTestPatternParams {
                                contrast=<dY> [dur=<s>] [speed=<px/s>]", time from this Set);
                                empty = OPENIMP_TEST_PATTERN_EVENTS or /tmp/openimp_tp_events */
     /* appended in ABI 1 (callers with the shorter struct get the defaults) */
-    uint32_t ae_hold;       /* mode 4: 1 (default) = AE frozen at the values of the moment mode 4 starts
-                               (constant brightness; keeps sensor drivers from rewriting the pattern
-                               register with a gain step), 0 = AE keeps running */
+    uint32_t ae_hold;       /* mode 4: 1 (default) = fixed AE: T20-T31 neutral exposure (sensor/ISP gain
+                               minimum, integration time half of max, so a dark scene does not clip
+                               the ramp), T40/T41 frozen at the values of the moment mode 4 starts;
+                               keeps sensor drivers from rewriting the pattern register with a gain
+                               step.  Mode 0 restores the saved AE state.  0 = AE keeps running */
     uint32_t awb_hold;      /* mode 4: 0 (default) = AWB keeps running (AWB on the pattern),
                                1 = AWB gains frozen (colour measurement with fixed gains) */
 } OpenIMPTestPatternParams;

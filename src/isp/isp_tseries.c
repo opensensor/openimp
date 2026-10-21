@@ -572,10 +572,11 @@ log_error:
     return -1;
 }
 
-/* AE/AWB hold of the test pattern mode 4 (src/openimp_testpattern.c).  AE: the vendor freeze control
- * (T23/T31 IMP_ISP_Tuning_SetAeFreeze) where the driver has it; in addition (and as the only way on
- * T20/T21, whose drivers have no AE freeze) manual integration time at the current value and the
- * gain ceilings set to the current gains.  AWB: manual mode with the current gains.  on = 0 puts
+/* AE/AWB hold of the test pattern mode 4 (src/openimp_testpattern.c).  AE (T-series): NOT frozen at the
+ * current values but set to a neutral exposure (gain ceilings 1 = 1x, manual integration time at half
+ * of the maximum), the saved state (expr mode/time, gain ceilings) comes back on release.  Gain
+ * ceilings are the only gain control that works on all T-series drivers (T20/T21 have no AE freeze).
+ * AWB: manual mode with the current gains.  on = 0 puts
  * back exactly what was read before. */
 int IMP_ISP_Tuning_GetMaxAgain(uint32_t *pgain);
 int IMP_ISP_Tuning_GetMaxDgain(uint32_t *pgain);
@@ -596,6 +597,7 @@ int openimp_tp_sensor_hold(int on, int ae, int awb)
         if (ae) {
             IMPISPExpr e;
             IMPISPEVAttr ev;
+            uint16_t neutral_it, it_max;
 
             memset(&e, 0, sizeof e);
             memset(&ev, 0, sizeof ev);
@@ -605,22 +607,29 @@ int openimp_tp_sensor_hold(int on, int ae, int awb)
                 return -1;
             tp_hold_saved.expr_mode = e.g_attr.mode;
             tp_hold_saved.expr_time = e.g_attr.integration_time;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T31) || (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
-            tp_hold_saved.freeze = IMP_ISP_Tuning_SetAeFreeze(1) == 0;
-#endif
-            /* ev[3]/ev[4]: current again/dgain in the units of Set/GetMaxAgain/Dgain (log2); a ceiling
-             * of 0 means "no cap" in the drivers, so 1x is held with the smallest cap 1 */
-            (void)IMP_ISP_Tuning_SetMaxAgain(ev.ev[3] ? ev.ev[3] : 1);
-            (void)IMP_ISP_Tuning_SetMaxDgain(ev.ev[4] ? ev.ev[4] : 1);
+            /* neutral exposure instead of freezing the current AE: a frozen dark-scene AE sits at
+             * max gain / integration and the sensor ramp comes out clipped.  Gain ceilings of 1 (the
+             * smallest cap, 1x; a cap of 0 means "no cap") pin sensor again and dgain to the minimum,
+             * the integration time goes manual at half of its maximum.  No AeFreeze: the ceilings
+             * only bind while the AE runs, and with manual time it has nothing left to move. */
+            it_max = e.g_attr.integration_time_max;
+            neutral_it = it_max / 2;
+            if (neutral_it < e.g_attr.integration_time_min)
+                neutral_it = e.g_attr.integration_time_min;
+            if (!neutral_it)
+                neutral_it = tp_hold_saved.expr_time ? tp_hold_saved.expr_time : 1;
+            (void)IMP_ISP_Tuning_SetMaxAgain(1);
+            (void)IMP_ISP_Tuning_SetMaxDgain(1);
             memset(&e, 0, sizeof e);
             e.s_attr.mode = ISP_CORE_EXPR_MODE_MANUAL;
             e.s_attr.unit = ISP_CORE_EXPR_UNIT_LINE;
-            e.s_attr.time = tp_hold_saved.expr_time;
+            e.s_attr.time = neutral_it;
             (void)IMP_ISP_Tuning_SetExpr(&e);
             tp_hold_saved.ae = 1;
-            fprintf(stderr, "[TP] AE hold: it=%u lines again=%u dgain=%u (max was %u/%u) freeze=%d\n",
-                    tp_hold_saved.expr_time, ev.ev[3], ev.ev[4], tp_hold_saved.max_again,
-                    tp_hold_saved.max_dgain, tp_hold_saved.freeze);
+            fprintf(stderr, "[TP] AE neutral: it=%u lines (was %u, max %u), gain caps 1/1 (was %u/%u, "
+                    "ev again=%u dgain=%u)\n",
+                    neutral_it, tp_hold_saved.expr_time, it_max, tp_hold_saved.max_again,
+                    tp_hold_saved.max_dgain, ev.ev[3], ev.ev[4]);
         }
         if (awb) {
             IMPISPWB cur, man;
