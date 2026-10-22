@@ -1854,10 +1854,12 @@ done:
  * captured NV12 frame with the synthetic picture before I2D and the consumers see it, so the encoder path
  * can be checked against a known picture on the device.  Capture layout: pitch ALIGN16(width), chroma
  * after ALIGN16(height) luma rows.  Mode 0 costs one atomic load per frame; switchable at any time. */
+static struct openimp_tp_chan p1_tpc[OPENIMP_FS_CHANNELS];
+
 static void p1_test_pattern_fill(struct openimp_fs_channel *chn,
                                  struct openimp_fs_buffer *buffer, int channel)
 {
-    static struct openimp_tp_chan tpc[OPENIMP_FS_CHANNELS];
+    struct openimp_tp_chan *tpc = p1_tpc;
     uint32_t w = (uint32_t)chn->attr.picWidth, h = (uint32_t)chn->attr.picHeight;
     uint32_t pitch = (w + 15u) & ~15u, lines = (h + 15u) & ~15u;
     uint32_t need = pitch * lines + pitch * (h / 2u);
@@ -1980,6 +1982,11 @@ static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_atte
     buffer->queued = 0;
     if (openimp_testpattern_mode() != 0)   /* EnableChn admits NV12 only */
         p1_test_pattern_fill(chn, buffer, channel);
+    if (openimp_testpattern_mode() != 1 && openimp_testpattern_mode() != 2 &&
+        __atomic_load_n(&openimp_tp_cache_live, __ATOMIC_RELAXED))
+        /* modes 0 and 3 do not use the static pattern: free this channel's
+         * frame-sized copy instead of keeping it for the rest of the run */
+        openimp_tp_release(&p1_tpc[channel]);
     if (chn->i2d_on) {
         /* vendor: the consumers get the I2D output, not the capture */
         int ok;
