@@ -16,6 +16,7 @@
 VIS const int OpenIMP_Cap_TestPattern = 1;
 
 int openimp_tp_mode_v;
+int openimp_tp_cache_live;
 static OpenIMPTestPatternParams slot[2];
 static int slot_idx;
 static uint32_t epoch;
@@ -419,10 +420,11 @@ int openimp_tp_render(struct openimp_tp_chan *c, uint8_t *dst, uint32_t w, uint3
     } else {
         if (!c->cache || c->w != w || c->h != h || c->pitch != pitch || c->lines != lines ||
             c->logo != p.logo) {
-            free(c->cache);
+            openimp_tp_release(c);
             c->cache = calloc(1, need);
             if (!c->cache)
                 return 0;
+            __atomic_add_fetch(&openimp_tp_cache_live, 1, __ATOMIC_RELAXED);
             openimp_testpattern_nv12_logo(c->cache, c->cache + (size_t)pitch * lines, w, h, pitch, p.logo);
             c->w = w; c->h = h; c->pitch = pitch; c->lines = lines; c->logo = p.logo;
         }
@@ -432,4 +434,13 @@ int openimp_tp_render(struct openimp_tp_chan *c, uint8_t *dst, uint32_t w, uint3
     }
     __atomic_add_fetch(&frames, 1, __ATOMIC_RELAXED);
     return 1;
+}
+
+void openimp_tp_release(struct openimp_tp_chan *c)
+{
+    if (!c->cache)
+        return;
+    free(c->cache);
+    c->cache = NULL;
+    __atomic_sub_fetch(&openimp_tp_cache_live, 1, __ATOMIC_RELAXED);
 }

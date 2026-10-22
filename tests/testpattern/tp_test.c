@@ -106,6 +106,15 @@ int main(void)
     s.size = sizeof s; OpenIMP_TestPattern_Get(&s);
     assert(s.mode == 1 && s.frames == 1);
 
+    /* the rendered frame is held once and dropped by openimp_tp_release (hooks: mode 0/3) */
+    assert(ch.cache && openimp_tp_cache_live == 1);
+    assert(render(&ch, 0) == 1 && openimp_tp_cache_live == 1);       /* reused, not re-allocated */
+    openimp_tp_release(&ch);
+    assert(!ch.cache && openimp_tp_cache_live == 0);
+    openimp_tp_release(&ch);                                          /* idempotent */
+    assert(openimp_tp_cache_live == 0);
+    assert(render(&ch, 0) == 1 && ch.cache && openimp_tp_cache_live == 1);
+
     /* no logo: plain pattern */
     p.logo = 0; assert(OpenIMP_TestPattern_Set(1, &p) == 0); render(&ch, 0);
     assert(Y(by, bx) == ref[(size_t)by * W + bx]);
