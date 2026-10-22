@@ -2477,9 +2477,11 @@ int VBMGetFrame(int chn, void **frame) {
  * synthetic picture, so the encoder path can be checked against a known picture on the device.  Layout:
  * pitch = width, chroma after ALIGN16(height) luma rows.  Mode 0 costs one atomic load per frame and
  * can be switched at any time. */
+static struct openimp_tp_chan vbm_tpc[MAX_VBM_POOLS][2];
+
 static void vbm_test_pattern_fill(int chn, VBMFrame *f, int want3)
 {
-    static struct openimp_tp_chan tpc[MAX_VBM_POOLS][2];
+    struct openimp_tp_chan (*tpc)[2] = vbm_tpc;
     uint32_t w = (uint32_t)f->width, h = (uint32_t)f->height;
     uint32_t pitch = w, lines = (h + 15u) & ~15u;   /* FrameSource capture: pitch = width */
     uint32_t need = pitch * lines + pitch * (h / 2u);
@@ -2550,6 +2552,10 @@ static int vbm_get_frame(int chn, void **frame) {
     defined(PLATFORM_T21) || defined(PLATFORM_T30)
     if (openimp_testpattern_mode() != 0 && openimp_testpattern_mode() != 3)
         vbm_test_pattern_fill(chn, (VBMFrame *)*frame, 0);
+    else if (__atomic_load_n(&openimp_tp_cache_live, __ATOMIC_RELAXED))
+        /* modes 0 and 3 do not use the static pattern: free this channel's
+         * frame-sized copy instead of keeping it for the rest of the run */
+        openimp_tp_release(&vbm_tpc[chn][0]);
 #endif
 
     OPENIMP_TRACE_STDERR("[VBM] GetFrame: chn=%d, frame=%p (idx=%d, %d remaining)\n",
