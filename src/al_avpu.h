@@ -287,6 +287,23 @@ typedef struct ALAvpuContext {
     uint32_t t41_payload_size_by_buf[16];
     uint32_t t41_rate_control_qp;
     uint32_t t41_rate_control_qp_by_buf[16];
+    /* SetChnQpBoundsPerFrame: the I-picture window (the P window is
+     * min_qp/max_qp); t41_qp_i_set 0 = I uses the P window. */
+    uint32_t t41_qp_i_set;
+    uint32_t t41_qp_i_min;
+    uint32_t t41_qp_i_max;
+    /* Latched by avpu_t41_prepare_picture() for the picture being built:
+     * header, command and HWRC all use these, so a rate-control call from
+     * another thread takes effect at the next picture (as the OEM applies
+     * its pending values before a picture), never inside one. */
+    /* uMaxPictureSize per picture type in bits ([0] B, [1] P, [2] I; 0 =
+     * bit rate based) and the values the EP3 rows were generated for */
+    uint32_t t41_max_picture_bits[3];
+    uint32_t t41_hwrc_max_picture_bits[3];
+    uint32_t t41_picture_valid;
+    uint32_t t41_picture_qp;
+    uint32_t t41_picture_min_qp;
+    uint32_t t41_picture_max_qp;
     OpenIMPT41RateController t41_rate_controller;
     OpenIMPT41HWRCLevelState t41_hwrc_level;
     /* Bit rate the EP3 row thresholds were generated for (0 = no ring);

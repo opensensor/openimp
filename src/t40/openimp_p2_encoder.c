@@ -1284,6 +1284,12 @@ extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
 #endif
 extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
 extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
+#if defined(PLATFORM_T41)
+extern int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI,
+                                               int maxI, int minP, int maxP);
+extern int AL_Codec_Encode_SetMaxPictureSizeT41(void *codec, uint32_t i_bits,
+                                                uint32_t p_bits, int set_p);
+#endif
 extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
 extern int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
 extern int AL_Codec_Encode_SetGopParam(void *codec, void *gop);
@@ -1666,7 +1672,7 @@ static const char *p2_rc_mode_name(unsigned int mode)
     }
 }
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
 static int p2_t40_auto_initial_qp(const IMPEncoderCHNAttr *attr,
                                   uint32_t codec_type, uint32_t bitrate,
                                   uint32_t fps_num, uint32_t fps_den,
@@ -1770,6 +1776,15 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
             /* the initial QP is derived (or given) inside the range */
 #if defined(PLATFORM_T40)
             if (qp < 0)
+                qp = p2_t40_auto_initial_qp(attr, codec_type, bitrate,
+                                            fps_num, fps_den,
+                                            min_qp, max_qp);
+#elif defined(PLATFORM_T41)
+            /* T41 1.2.6 AL_Common_Encoder_ComputeRCParam (0xdb880) /
+             * GetInitialQP (0xdb798): the same bits-per-pixel table as the
+             * T40.  CBR only: its controller starts from this I QP. */
+            if (qp < 0 &&
+                attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
                 qp = p2_t40_auto_initial_qp(attr, codec_type, bitrate,
                                             fps_num, fps_den,
                                             min_qp, max_qp);
@@ -2211,6 +2226,16 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
                      ch->codec);
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
+#if defined(PLATFORM_T41)
+    /* vendor channel_encoder_init_avpu: pMaxPictureSize[I] =
+     * uMaxPictureSize * 1000 (the P/B entries stay unset).  CBR only so
+     * far (device-tested); the other modes keep the bit-rate target. */
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR &&
+        attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize <= 0xffffffffu / 1000u)
+        AL_Codec_Encode_SetMaxPictureSizeT41(
+            ch->codec, attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize * 1000u,
+            0u, 0);
+#endif
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
@@ -4692,9 +4717,15 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int channel, int minimum_i,
             return 0;   /* vendor: applied only when all four are > 0 */
         p2_t41_clamp_bounds(&minimum_i, &maximum_i);
         p2_t41_clamp_bounds(&minimum_p, &maximum_p);
-        minimum = minimum_i < minimum_p ? minimum_i : minimum_p;
-        maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
-        ret = IMP_Encoder_SetChnQpBounds(channel, minimum, maximum);
+        (void)minimum;
+        (void)maximum;
+        if (!p2_channels[channel].created)
+            return -1;
+        /* vendor: a window per picture type (P controller in the P
+         * window, the I picture clamped into the I window) */
+        ret = AL_Codec_Encode_SetQpBoundsPerFrame(
+            p2_channels[channel].codec, minimum_i, maximum_i, minimum_p,
+            maximum_p);
         /* vendor read-back: the I window */
         if (ret == 0)
             p2_set_qp_bounds(&p2_channels[channel].attr.rcAttr.attrRcMode,
@@ -4728,6 +4759,13 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
             return err;
         if (!maximum_i || !maximum_p)
             return 0;   /* vendor: applied only when both are non-zero */
+        /* vendor: the HW rate control limits I and P pictures to ~95 %
+         * of these (measured 200 kbit -> 24 kB I, 40 kbit -> 4.6 kB P) */
+        if (!p2_channels[channel].created ||
+            AL_Codec_Encode_SetMaxPictureSizeT41(
+                p2_channels[channel].codec, maximum_i * 1000u,
+                maximum_p * 1000u, 1) != 0)
+            return -1;
         /* vendor read-back keeps the I value times 1000 (bits) */
         mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
         if (mode->rcMode == IMP_ENC_RC_MODE_CBR)

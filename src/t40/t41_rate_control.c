@@ -1111,6 +1111,8 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     controller->updater.last_picture_target_bits = (uint32_t)target_bits;
     controller->updater.max_model_adjustment = 1u;
     controller->smoothed_p_bits = (uint32_t)target_bits;
+    controller->i_min_qp = min_qp;
+    controller->i_max_qp = max_qp;
     controller->initialized = 1;
     return 0;
 }
@@ -1176,4 +1178,61 @@ uint32_t openimp_t41_rate_controller_qp(
 {
     return controller && controller->initialized
         ? controller->current_qp : 0u;
+}
+
+uint32_t openimp_t41_rate_control_ip_delta(int32_t configured,
+                                           uint32_t gop_length)
+{
+    if (gop_length < 2u)
+        return 0u;
+    if (configured < 0)
+        return 4u;
+    return configured > 51 ? 51u : (uint32_t)configured;
+}
+
+uint32_t openimp_t41_rate_control_initial_p_qp(uint32_t initial_i_qp,
+                                               uint32_t ip_delta,
+                                               uint32_t min_qp,
+                                               uint32_t max_qp)
+{
+    return openimp_t41_clamp_qp(initial_i_qp + ip_delta, min_qp, max_qp);
+}
+
+int openimp_t41_rate_controller_set_i_picture(
+    OpenIMPT41RateController *controller, uint32_t ip_delta,
+    uint32_t i_min_qp, uint32_t i_max_qp)
+{
+    if (!controller || !controller->initialized || ip_delta > 51u)
+        return -1;
+    if (i_min_qp > 51u)
+        i_min_qp = 51u;
+    if (i_max_qp > 51u)
+        i_max_qp = 51u;
+    if (i_min_qp > i_max_qp) {
+        uint32_t swap = i_min_qp;
+
+        i_min_qp = i_max_qp;
+        i_max_qp = swap;
+    }
+    controller->ip_delta = ip_delta;
+    controller->i_min_qp = i_min_qp;
+    controller->i_max_qp = i_max_qp;
+    return 0;
+}
+
+uint32_t openimp_t41_rate_controller_picture_qp(
+    const OpenIMPT41RateController *controller, int is_idr)
+{
+    int32_t qp;
+
+    if (!controller || !controller->initialized)
+        return 0u;
+    if (!is_idr)
+        return controller->current_qp;
+    qp = (int32_t)controller->current_qp - (int32_t)controller->ip_delta;
+    if (qp < (int32_t)controller->i_min_qp)
+        qp = (int32_t)controller->i_min_qp;
+    if (qp > (int32_t)controller->i_max_qp)
+        qp = (int32_t)controller->i_max_qp;
+    return (uint32_t)qp;
 }

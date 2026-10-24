@@ -4046,6 +4046,19 @@ static void avpu_t41_qp_bounds(const ALAvpuContext *ctx,
         *max_qp_out = max_qp;
 }
 
+/* The QP window of one picture type: P = min_qp/max_qp, I = the
+ * SetChnQpBoundsPerFrame I window when one is set. */
+static void avpu_t41_type_qp_bounds(const ALAvpuContext *ctx, int is_idr,
+                                    uint32_t *min_qp_out,
+                                    uint32_t *max_qp_out)
+{
+    avpu_t41_qp_bounds(ctx, min_qp_out, max_qp_out);
+    if (is_idr && ctx->t41_qp_i_set) {
+        *min_qp_out = ctx->t41_qp_i_min;
+        *max_qp_out = ctx->t41_qp_i_max;
+    }
+}
+
 /* The picture QP avpu_t41_fill_command() packs into cmd[24]; HEVC slice
  * headers are written before the command and must carry the same QP. */
 static uint32_t avpu_t41_command_picture_qp(const ALAvpuContext *ctx)
@@ -4055,6 +4068,8 @@ static uint32_t avpu_t41_command_picture_qp(const ALAvpuContext *ctx)
     uint32_t picture_qp;
     uint32_t rate_control_qp;
 
+    if (ctx->t41_picture_valid)
+        return ctx->t41_picture_qp;
     avpu_t41_qp_bounds(ctx, &min_qp, &max_qp);
     picture_qp = ctx->qp <= 51u ? ctx->qp : 34u;
     if (picture_qp < min_qp)
@@ -4113,26 +4128,52 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
     if (avpu_t41_exact_rate_control_enabled(ctx)) {
         OpenIMPT41RateController *controller =
             &ctx->t41_rate_controller;
+        uint32_t ip_delta = openimp_t41_rate_control_ip_delta(
+            ctx->qp_ip_delta, gop_length);
+        uint32_t i_min_qp;
+        uint32_t i_max_qp;
 
+        avpu_t41_type_qp_bounds(ctx, 1, &i_min_qp, &i_max_qp);
+        /* OEM AL_Common_Encoder_SetMaxPictureSize re-applies the RC
+         * parameters (setParam on the running controller) like a bit-rate
+         * change: restart the models on the new targets, keep the QP. */
         if (!controller->initialized ||
+            (ctx->t41_hwrc_bitrate &&
+             memcmp(ctx->t41_hwrc_max_picture_bits,
+                    ctx->t41_max_picture_bits,
+                    sizeof(ctx->t41_max_picture_bits)) != 0) ||
             controller->bitrate != bitrate ||
             controller->fps_num != fps_num ||
             controller->fps_den != fps_den ||
             controller->gop_length != gop_length ||
             controller->min_qp != min_qp ||
             controller->max_qp != max_qp) {
-            /* Both live T41 controller objects observed in OEM start at 38;
-             * a run-time change (SetChnBitRate, SetChnQpBounds) carries the
-             * running QP on. */
+            /* OEM (AL ComputeRCParam + oIIo): iInitialQP (given, or from
+             * the bits-per-pixel table, see p2_codec_params) is the first
+             * I QP, clamped into the I window; the P controller starts at
+             * that plus the IP delta.  A run-time change (SetChnBitRate,
+             * SetChnQpBounds) carries the running QP on. */
+            uint32_t initial_i_qp = ctx->qp <= 51u ? ctx->qp : 26u;
+
+            if (initial_i_qp < i_min_qp)
+                initial_i_qp = i_min_qp;
+            if (initial_i_qp > i_max_qp)
+                initial_i_qp = i_max_qp;
             if (openimp_t41_rate_controller_reconfigure(
                     controller, bitrate, fps_num, fps_den, gop_length,
-                    min_qp, max_qp, 38u) != 0)
+                    min_qp, max_qp,
+                    openimp_t41_rate_control_initial_p_qp(
+                        initial_i_qp, ip_delta, min_qp, max_qp)) != 0)
                 return -1;
-            LOG_CODEC("AVPU: T41 rate controller initialized bitrate=%u fps=%u/%u gop=%u qp=%u bounds=%u/%u",
+            LOG_CODEC("AVPU: T41 rate controller initialized bitrate=%u fps=%u/%u gop=%u qp=%u bounds=%u/%u ipd=%u",
                       bitrate, fps_num, fps_den, gop_length,
-                      controller->current_qp, min_qp, max_qp);
+                      controller->current_qp, min_qp, max_qp, ip_delta);
         }
-        selected_qp = openimp_t41_rate_controller_qp(controller);
+        if (openimp_t41_rate_controller_set_i_picture(
+                controller, ip_delta, i_min_qp, i_max_qp) != 0)
+            return -1;
+        selected_qp = openimp_t41_rate_controller_picture_qp(controller,
+                                                             is_idr);
     } else {
         /* A later CBR transition must reconstruct OEM defaults instead of
          * resuming history accumulated under an earlier channel mode. */
@@ -4150,19 +4191,48 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
         }
     }
     ctx->t41_rate_control_qp = selected_qp;
+    {
+        uint32_t picture_min_qp;
+        uint32_t picture_max_qp;
+        uint32_t picture_qp = ctx->qp <= 51u ? ctx->qp : 34u;
+
+        avpu_t41_type_qp_bounds(ctx, is_idr, &picture_min_qp,
+                                &picture_max_qp);
+        if (picture_qp < picture_min_qp)
+            picture_qp = picture_min_qp;
+        if (picture_qp > picture_max_qp)
+            picture_qp = picture_max_qp;
+        if (ctx->rc_mode != HW_RC_MODE_FIXQP &&
+            selected_qp >= picture_min_qp && selected_qp <= picture_max_qp &&
+            (avpu_t41_exact_rate_control_enabled(ctx) ||
+             avpu_t41_capped_rc_active(ctx)))
+            picture_qp = selected_qp;
+        ctx->t41_picture_qp = picture_qp;
+        ctx->t41_picture_min_qp = picture_min_qp;
+        ctx->t41_picture_max_qp = picture_max_qp;
+        ctx->t41_picture_valid = 1u;
+    }
 
     /* Run-time SetChnBitRate: the row thresholds of the three EP3 tables
      * came from the bit rate at channel start; the OEM regenerates them
      * (PreprocessHwRateCtrl) when a new rate is applied, and clears the
      * level.  The command words (cmd[177]/[178]) follow ctx->bitrate on
      * every picture already. */
-    if (ctx->t41_hwrc_bitrate && ctx->t41_hwrc_bitrate != bitrate) {
-        if (openimp_t41_hwrc_ring_retarget(ep3_cpu, ctx->rec_trace_buf.size,
-                                           bitrate) != 0)
+    if (ctx->t41_hwrc_bitrate &&
+        (ctx->t41_hwrc_bitrate != bitrate ||
+         memcmp(ctx->t41_hwrc_max_picture_bits, ctx->t41_max_picture_bits,
+                sizeof(ctx->t41_max_picture_bits)) != 0)) {
+        if (openimp_t41_hwrc_ring_retarget_max(
+                ep3_cpu, ctx->rec_trace_buf.size, bitrate,
+                ctx->t41_max_picture_bits) != 0)
             return -1;
         openimp_t41_hwrc_level_init(&ctx->t41_hwrc_level);
-        LOG_CODEC("AVPU: T41 hwrc ring retargeted %u -> %u bit/s",
-                  ctx->t41_hwrc_bitrate, bitrate);
+        LOG_CODEC("AVPU: T41 hwrc ring retargeted %u -> %u bit/s max I/P %u/%u",
+                  ctx->t41_hwrc_bitrate, bitrate,
+                  ctx->t41_max_picture_bits[2],
+                  ctx->t41_max_picture_bits[1]);
+        memcpy(ctx->t41_hwrc_max_picture_bits, ctx->t41_max_picture_bits,
+               sizeof(ctx->t41_max_picture_bits));
     }
     ctx->t41_hwrc_bitrate = bitrate;
 
@@ -4351,6 +4421,19 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     current_slot = picture_number & 1u;
     previous_slot = current_slot ^ 1u;
 
+    if (ctx->t41_picture_valid) {
+        /* the values avpu_t41_prepare_picture() latched for this picture
+         * (the slice header carries the same QP) */
+        min_qp = ctx->t41_picture_min_qp;
+        max_qp = ctx->t41_picture_max_qp;
+        picture_qp = ctx->t41_picture_qp;
+        rate_control_qp = ctx->t41_rate_control_qp;
+        if (ctx->rc_mode == HW_RC_MODE_FIXQP || rate_control_qp < min_qp ||
+            rate_control_qp > max_qp ||
+            avpu_t41_exact_rate_control_enabled(ctx) ||
+            avpu_t41_capped_rc_active(ctx))
+            rate_control_qp = picture_qp;
+    } else {
     avpu_t41_qp_bounds(ctx, &min_qp, &max_qp);
     picture_qp = ctx->qp <= 51u ? ctx->qp : 34u;
     if (picture_qp < min_qp)
@@ -4364,6 +4447,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     else if (avpu_t41_exact_rate_control_enabled(ctx) ||
              avpu_t41_capped_rc_active(ctx))
         picture_qp = rate_control_qp;
+    }
 
     memset(&params, 0, sizeof(params));
     params.width = ctx->enc_w;
@@ -4377,6 +4461,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     params.rate_control_qp = rate_control_qp;
     params.picture_number = picture_number;
     params.is_idr = is_idr;
+    params.max_picture_bits = ctx->t41_max_picture_bits[is_idr ? 2 : 1];
 
     params.source_y = src_phys;
     params.source_pitch = avpu_src_pitch_hint(src_phys);
@@ -8332,6 +8417,13 @@ struct AL_CodecEncode {
     uint32_t rc_options;
     int32_t rc_pb_delta;
 #endif
+#if defined(PLATFORM_T41)
+    /* SetChnQpBoundsPerFrame I window (restored after the lazy AVPU init) */
+    uint32_t t41_qp_i_set;
+    uint32_t t41_qp_i_min;
+    uint32_t t41_qp_i_max;
+    uint32_t t41_max_picture_bits[3];
+#endif
     IMPEncoderFrmRate fps_cache;
     IMPEncoderGopAttr gop_cache;
     int loop_filter_beta_offset;
@@ -9011,6 +9103,13 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
 #endif
     enc->avpu.gop_length = enc->gop_cache.gopLength ? enc->gop_cache.gopLength : enc->hw_params.gop_length;
     enc->avpu.format_word = *(uint32_t *)(enc->codec_param + 0x10);
+#if defined(PLATFORM_T41)
+    enc->avpu.t41_qp_i_set = enc->t41_qp_i_set;
+    enc->avpu.t41_qp_i_min = enc->t41_qp_i_min;
+    enc->avpu.t41_qp_i_max = enc->t41_qp_i_max;
+    memcpy(enc->avpu.t41_max_picture_bits, enc->t41_max_picture_bits,
+           sizeof(enc->avpu.t41_max_picture_bits));
+#endif
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     /* Lazy AVPU initialization clears the entire hardware shadow.  Restore
      * the configured I/P delta from the control-plane cache along with the
@@ -13955,6 +14054,11 @@ int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp)
                                 enc->hw_params.max_qp);
     enc->avpu.min_qp = enc->hw_params.min_qp;
     enc->avpu.max_qp = enc->hw_params.max_qp;
+#if defined(PLATFORM_T41)
+    /* one window for all picture types again */
+    enc->t41_qp_i_set = 0u;
+    enc->avpu.t41_qp_i_set = 0u;
+#endif
     codec_sync_rc_cache(enc);
     codec_set_error(enc, 0);
 
@@ -13962,6 +14066,62 @@ int AL_Codec_Encode_SetQpBounds(void *codec, int minQp, int maxQp)
               codec, enc->hw_params.min_qp, enc->hw_params.max_qp);
     return 0;
 }
+
+#if defined(PLATFORM_T41)
+/* T41 SetChnQpBoundsPerFrame: the OEM keeps a QP window per picture type
+ * (AL iMinQP/iMaxQP[AL_SLICE_I/P]); the P controller runs in the P window,
+ * the I picture QP (P QP - IP delta) is clamped into the I window. */
+int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI, int maxI,
+                                        int minP, int maxP)
+{
+    AL_CodecEncode *enc;
+    uint32_t lo;
+    uint32_t hi;
+
+    if (codec == NULL || minI < 0 || maxI < 0 ||
+        AL_Codec_Encode_SetQpBounds(codec, minP, maxP) != 0)
+        return -1;
+    enc = (AL_CodecEncode *)codec;
+    lo = clamp_qp_u32((uint32_t)minI);
+    hi = clamp_qp_u32((uint32_t)maxI);
+    if (lo > hi) {
+        uint32_t tmp = lo;
+
+        lo = hi;
+        hi = tmp;
+    }
+    enc->t41_qp_i_set = 1u;
+    enc->t41_qp_i_min = lo;
+    enc->t41_qp_i_max = hi;
+    enc->avpu.t41_qp_i_set = 1u;
+    enc->avpu.t41_qp_i_min = lo;
+    enc->avpu.t41_qp_i_max = hi;
+    LOG_CODEC("SetQpBoundsPerFrame: codec=%p I=%u..%u P=%u..%u", codec, lo,
+              hi, enc->hw_params.min_qp, enc->hw_params.max_qp);
+    return 0;
+}
+
+/* uMaxPictureSize in bits per picture type (0 = bit rate based target):
+ * the OEM HW rate control limits each picture to ~95 % of it.  CreateChn
+ * sets the I value (uMaxPictureSize * 1000), SetChnMaxPictureSize I and P. */
+int AL_Codec_Encode_SetMaxPictureSizeT41(void *codec, uint32_t i_bits,
+                                         uint32_t p_bits, int set_p)
+{
+    AL_CodecEncode *enc;
+
+    if (codec == NULL)
+        return -1;
+    enc = (AL_CodecEncode *)codec;
+    enc->t41_max_picture_bits[2] = i_bits;
+    if (set_p)
+        enc->t41_max_picture_bits[1] = p_bits;
+    memcpy(enc->avpu.t41_max_picture_bits, enc->t41_max_picture_bits,
+           sizeof(enc->avpu.t41_max_picture_bits));
+    LOG_CODEC("SetMaxPictureSize: codec=%p I=%u P=%u bits", codec,
+              enc->t41_max_picture_bits[2], enc->t41_max_picture_bits[1]);
+    return 0;
+}
+#endif
 
 int AL_Codec_Encode_SetBitRate(void *codec, int targetBitrate, int maxBitrate)
 {

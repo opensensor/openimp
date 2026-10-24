@@ -311,7 +311,9 @@ int openimp_t41_build_command(void *slot, size_t slot_size,
     target = params->bitrate;
     if (!params->is_idr)
         target = target * 5u / 7u;
-    target = target * 95u / 100u;
+    if (params->max_picture_bits)
+        target = params->max_picture_bits;
+    target = (uint32_t)((uint64_t)target * 95u / 100u);
     target = target * group_count / lcu_count;
     if ((uint64_t)params->bitrate >
         UINT64_MAX / params->fps_den / group_count)

@@ -1074,8 +1074,44 @@ static void test_controller_runtime_reconfigure(void)
     }
 }
 
+/* OEM I-picture rule measured with the vendor libimp 1.2.6 on .34
+ * (CBR 600 kbit/s 720p15, iInitialQP -1 -> table QP 37): first I 37,
+ * first P 37 + delta; later I = running P QP - delta, I window clamp. */
+static void test_ip_delta_rule(void)
+{
+    OpenIMPT41RateController controller;
+
+    assert(openimp_t41_rate_control_ip_delta(-1, 60u) == 4u);
+    assert(openimp_t41_rate_control_ip_delta(0, 60u) == 0u);
+    assert(openimp_t41_rate_control_ip_delta(6, 60u) == 6u);
+    assert(openimp_t41_rate_control_ip_delta(8, 1u) == 0u);
+    assert(openimp_t41_rate_control_ip_delta(80, 60u) == 51u);
+    assert(openimp_t41_rate_control_initial_p_qp(37u, 6u, 18u, 45u) == 43u);
+    assert(openimp_t41_rate_control_initial_p_qp(42u, 6u, 18u, 45u) == 45u);
+
+    assert(openimp_t41_rate_controller_init(&controller, 600000u, 15u, 1u,
+                                            60u, 18u, 45u, 43u) == 0);
+    assert(controller.i_min_qp == 18u && controller.i_max_qp == 45u);
+    assert(openimp_t41_rate_controller_set_i_picture(&controller, 6u, 18u,
+                                                     45u) == 0);
+    assert(openimp_t41_rate_controller_picture_qp(&controller, 1) == 37u);
+    assert(openimp_t41_rate_controller_picture_qp(&controller, 0) == 43u);
+    controller.current_qp = 22u;
+    assert(openimp_t41_rate_controller_picture_qp(&controller, 1) == 18u);
+    assert(openimp_t41_rate_controller_set_i_picture(&controller, 2u, 35u,
+                                                     30u) == 0);
+    assert(controller.i_min_qp == 30u && controller.i_max_qp == 35u);
+    assert(openimp_t41_rate_controller_picture_qp(&controller, 1) == 30u);
+    assert(openimp_t41_rate_controller_set_i_picture(&controller, 52u, 18u,
+                                                     45u) != 0);
+    assert(openimp_t41_rate_controller_set_i_picture(NULL, 2u, 18u,
+                                                     45u) != 0);
+    assert(openimp_t41_rate_controller_picture_qp(NULL, 1) == 0u);
+}
+
 int main(void)
 {
+    test_ip_delta_rule();
     test_oem_main_idr_oracle();
     test_oem_main_p_oracle();
     test_oem_subchannel_oracle();
