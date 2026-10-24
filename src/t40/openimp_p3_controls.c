@@ -1086,9 +1086,11 @@ int IMP_ISP_Tuning_Awb_GetRgbCoefft(IMPVI_NUM num, IMPISPCoefftWb *attr)
  * the public structure on the tuning ioctl.  open-tx-isp implements
  *   AeScenceAttr  - AeTargetComp (0..255, 128 neutral) on the open AE,
  *   AeExprInfo    - AeMaxIntegrationTime / AeMaxAGain caps (SET),
- *   Module_Ratio  - SINTER (2D NR) and TEMPER (3D NR) strength;
- * and answers -EOPNOTSUPP for HLC/BLC, manual exposure, DRC/DPC/defog
- * ratios, CCM, gamma, CSC, module bypass and WDR output mode, so callers
+ *   Module_Ratio  - SINTER (2D NR) and TEMPER (3D NR) strength, DRC (ADR
+ *                   calibration strength fields, stock tisp_s_drc_ratio
+ *                   formula, 128 neutral) and DPC strength;
+ * and answers -EOPNOTSUPP for HLC/BLC, manual exposure, defog
+ * ratio, CCM, gamma, CSC, module bypass and WDR output mode, so callers
  * see the failure instead of an acknowledged no-op.  AutoZoom (60 bytes,
  * en/left/top/width/height[3]) goes 1:1 to the kernel as in the vendor
  * library; open-tx-isp claude/t41-zoom-mask stores it and applies it at
