@@ -295,6 +295,10 @@ typedef struct ALAvpuContext {
      * header, command and HWRC all use these, so a rate-control call from
      * another thread takes effect at the next picture (as the OEM applies
      * its pending values before a picture), never inside one. */
+    /* uMaxPictureSize per picture type in bits ([0] B, [1] P, [2] I; 0 =
+     * bit rate based) and the values the EP3 rows were generated for */
+    uint32_t t41_max_picture_bits[3];
+    uint32_t t41_hwrc_max_picture_bits[3];
     uint32_t t41_picture_valid;
     uint32_t t41_picture_qp;
     uint32_t t41_picture_min_qp;

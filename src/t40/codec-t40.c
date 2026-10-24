@@ -4095,13 +4095,21 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
      * (PreprocessHwRateCtrl) when a new rate is applied, and clears the
      * level.  The command words (cmd[177]/[178]) follow ctx->bitrate on
      * every picture already. */
-    if (ctx->t41_hwrc_bitrate && ctx->t41_hwrc_bitrate != bitrate) {
-        if (openimp_t41_hwrc_ring_retarget(ep3_cpu, ctx->rec_trace_buf.size,
-                                           bitrate) != 0)
+    if (ctx->t41_hwrc_bitrate &&
+        (ctx->t41_hwrc_bitrate != bitrate ||
+         memcmp(ctx->t41_hwrc_max_picture_bits, ctx->t41_max_picture_bits,
+                sizeof(ctx->t41_max_picture_bits)) != 0)) {
+        if (openimp_t41_hwrc_ring_retarget_max(
+                ep3_cpu, ctx->rec_trace_buf.size, bitrate,
+                ctx->t41_max_picture_bits) != 0)
             return -1;
         openimp_t41_hwrc_level_init(&ctx->t41_hwrc_level);
-        LOG_CODEC("AVPU: T41 hwrc ring retargeted %u -> %u bit/s",
-                  ctx->t41_hwrc_bitrate, bitrate);
+        LOG_CODEC("AVPU: T41 hwrc ring retargeted %u -> %u bit/s max I/P %u/%u",
+                  ctx->t41_hwrc_bitrate, bitrate,
+                  ctx->t41_max_picture_bits[2],
+                  ctx->t41_max_picture_bits[1]);
+        memcpy(ctx->t41_hwrc_max_picture_bits, ctx->t41_max_picture_bits,
+               sizeof(ctx->t41_max_picture_bits));
     }
     ctx->t41_hwrc_bitrate = bitrate;
 
@@ -4333,6 +4341,7 @@ static int avpu_t41_fill_command(ALAvpuContext *ctx, void *slot,
     params.rate_control_qp = rate_control_qp;
     params.picture_number = picture_number;
     params.is_idr = is_idr;
+    params.max_picture_bits = ctx->t41_max_picture_bits[is_idr ? 2 : 1];
 
     params.source_y = src_phys;
     params.source_pitch = avpu_src_pitch_hint(src_phys);
@@ -8293,6 +8302,7 @@ struct AL_CodecEncode {
     uint32_t t41_qp_i_set;
     uint32_t t41_qp_i_min;
     uint32_t t41_qp_i_max;
+    uint32_t t41_max_picture_bits[3];
 #endif
     IMPEncoderFrmRate fps_cache;
     IMPEncoderGopAttr gop_cache;
@@ -8977,6 +8987,8 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.t41_qp_i_set = enc->t41_qp_i_set;
     enc->avpu.t41_qp_i_min = enc->t41_qp_i_min;
     enc->avpu.t41_qp_i_max = enc->t41_qp_i_max;
+    memcpy(enc->avpu.t41_max_picture_bits, enc->t41_max_picture_bits,
+           sizeof(enc->avpu.t41_max_picture_bits));
 #endif
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     /* Lazy AVPU initialization clears the entire hardware shadow.  Restore
@@ -13905,6 +13917,27 @@ int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI, int maxI,
     enc->avpu.t41_qp_i_max = hi;
     LOG_CODEC("SetQpBoundsPerFrame: codec=%p I=%u..%u P=%u..%u", codec, lo,
               hi, enc->hw_params.min_qp, enc->hw_params.max_qp);
+    return 0;
+}
+
+/* uMaxPictureSize in bits per picture type (0 = bit rate based target):
+ * the OEM HW rate control limits each picture to ~95 % of it.  CreateChn
+ * sets the I value (uMaxPictureSize * 1000), SetChnMaxPictureSize I and P. */
+int AL_Codec_Encode_SetMaxPictureSizeT41(void *codec, uint32_t i_bits,
+                                         uint32_t p_bits, int set_p)
+{
+    AL_CodecEncode *enc;
+
+    if (codec == NULL)
+        return -1;
+    enc = (AL_CodecEncode *)codec;
+    enc->t41_max_picture_bits[2] = i_bits;
+    if (set_p)
+        enc->t41_max_picture_bits[1] = p_bits;
+    memcpy(enc->avpu.t41_max_picture_bits, enc->t41_max_picture_bits,
+           sizeof(enc->avpu.t41_max_picture_bits));
+    LOG_CODEC("SetMaxPictureSize: codec=%p I=%u P=%u bits", codec,
+              enc->t41_max_picture_bits[2], enc->t41_max_picture_bits[1]);
     return 0;
 }
 #endif

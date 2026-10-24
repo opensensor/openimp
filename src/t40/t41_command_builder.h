@@ -24,6 +24,9 @@ typedef struct OpenIMPT41CommandParams {
     uint32_t rate_control_qp;
     uint32_t picture_number;
     int is_idr;
+    /* uMaxPictureSize of this picture type in bits (0 = bit rate based):
+     * the OEM HW rate-control target is 95 % of it (GetTargetSize). */
+    uint32_t max_picture_bits;
 
     uint32_t source_y;
     uint32_t source_uv;

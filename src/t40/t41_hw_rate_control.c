@@ -49,13 +49,22 @@ static uint32_t openimp_t41_hwrc_target(uint32_t bitrate,
 /* One picture-class table (OEM PreprocessHwRateCtrl): the 11 row records,
  * the trailer record and the lambda table.  Everything the OEM rewrites
  * is in [0, 0x39c); the history at HISTORY_OFFSET is hardware state. */
+static void openimp_t41_hwrc_slot_fill_target(uint32_t *words,
+                                              uint32_t target);
+
 static void openimp_t41_hwrc_slot_fill(uint32_t *words, uint32_t bitrate,
                                        unsigned int slot)
+{
+    openimp_t41_hwrc_slot_fill_target(
+        words, openimp_t41_hwrc_target(bitrate, slot));
+}
+
+static void openimp_t41_hwrc_slot_fill_target(uint32_t *words,
+                                              uint32_t target)
 {
     static const uint8_t row_percent[11] = {
         150u, 130u, 120u, 110u, 105u, 100u, 95u, 90u, 80u, 70u, 50u,
     };
-    uint32_t target = openimp_t41_hwrc_target(bitrate, slot);
     uint32_t base_target = (uint32_t)((uint64_t)target * 95u / 100u);
     unsigned int row;
 
@@ -111,6 +120,28 @@ int openimp_t41_hwrc_ring_retarget(void *ring, size_t ring_size,
         uint8_t *slot_base = base + (size_t)slot * OPENIMP_T41_EP3_SLOT_STRIDE;
 
         openimp_t41_hwrc_slot_fill((uint32_t *)slot_base, bitrate, slot);
+        memset(slot_base + OPENIMP_T41_EP3_LEVEL_OFFSET, 0, 0x20u);
+    }
+    return 0;
+}
+
+int openimp_t41_hwrc_ring_retarget_max(void *ring, size_t ring_size,
+                                       uint32_t bitrate,
+                                       const uint32_t max_picture_bits[3])
+{
+    uint8_t *base = (uint8_t *)ring;
+    unsigned int slot;
+
+    if (!base || ring_size < OPENIMP_T41_EP3_RING_SIZE)
+        return -1;
+
+    for (slot = 0u; slot < OPENIMP_T41_EP3_SLOT_COUNT; ++slot) {
+        uint8_t *slot_base = base + (size_t)slot * OPENIMP_T41_EP3_SLOT_STRIDE;
+        uint32_t target = max_picture_bits && max_picture_bits[slot]
+            ? max_picture_bits[slot]
+            : openimp_t41_hwrc_target(bitrate, slot);
+
+        openimp_t41_hwrc_slot_fill_target((uint32_t *)slot_base, target);
         memset(slot_base + OPENIMP_T41_EP3_LEVEL_OFFSET, 0, 0x20u);
     }
     return 0;

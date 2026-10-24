@@ -28,6 +28,13 @@ size_t openimp_t41_hwrc_ring_init(void *ring, size_t ring_size,
 int openimp_t41_hwrc_ring_retarget(void *ring, size_t ring_size,
                                    uint32_t bitrate);
 
+/* As _retarget, with uMaxPictureSize per picture class in bits
+ * (max_picture_bits[slot], slot 0 B, 1 P, 2 I; 0 = bit rate based): the
+ * OEM GetTargetSize takes it as the row target when it is set. */
+int openimp_t41_hwrc_ring_retarget_max(void *ring, size_t ring_size,
+                                       uint32_t bitrate,
+                                       const uint32_t max_picture_bits[3]);
+
 /* These helpers reproduce the OEM manager's scalar transition. The caller
  * must provide a cache-coherent or explicitly synchronized EP3 mapping. */
 void openimp_t41_hwrc_level_init(OpenIMPT41HWRCLevelState *state);

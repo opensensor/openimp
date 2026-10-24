@@ -1230,6 +1230,8 @@ extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
 #if defined(PLATFORM_T41)
 extern int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI,
                                                int maxI, int minP, int maxP);
+extern int AL_Codec_Encode_SetMaxPictureSizeT41(void *codec, uint32_t i_bits,
+                                                uint32_t p_bits, int set_p);
 #endif
 extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
 extern int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
@@ -2167,6 +2169,16 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     p2_startup_trace("openimp/P2 startup: CreateChn codec created %p\n",
                      ch->codec);
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
+#if defined(PLATFORM_T41)
+    /* vendor channel_encoder_init_avpu: pMaxPictureSize[I] =
+     * uMaxPictureSize * 1000 (the P/B entries stay unset).  CBR only so
+     * far (device-tested); the other modes keep the bit-rate target. */
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR &&
+        attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize <= 0xffffffffu / 1000u)
+        AL_Codec_Encode_SetMaxPictureSizeT41(
+            ch->codec, attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize * 1000u,
+            0u, 0);
+#endif
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
         AL_Codec_Encode_SetQpIPDelta(
             ch->codec, attr->rcAttr.attrRcMode.attrCbr.iIPDelta);
@@ -4555,6 +4567,13 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
             return err;
         if (!maximum_i || !maximum_p)
             return 0;   /* vendor: applied only when both are non-zero */
+        /* vendor: the HW rate control limits I and P pictures to ~95 %
+         * of these (measured 200 kbit -> 24 kB I, 40 kbit -> 4.6 kB P) */
+        if (!p2_channels[channel].created ||
+            AL_Codec_Encode_SetMaxPictureSizeT41(
+                p2_channels[channel].codec, maximum_i * 1000u,
+                maximum_p * 1000u, 1) != 0)
+            return -1;
         /* vendor read-back keeps the I value times 1000 (bits) */
         mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
         if (mode->rcMode == IMP_ENC_RC_MODE_CBR)
