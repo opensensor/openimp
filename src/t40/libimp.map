@@ -6,6 +6,7 @@
         AL_Codec_Encode_*;
         OpenIMP_AVC_*;
         OpenIMP_Encoder_StreamIsRmem;
+        OpenIMP_Encoder_GetTelemetry;
         OpenIMP_Tuning_*;
         OpenIMP_Cap_*;
         OpenIMP_TestPattern_*;
