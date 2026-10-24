@@ -299,6 +299,7 @@ typedef struct ALAvpuContext {
     /* uMaxPictureSize per picture type in bits ([0] B, [1] P, [2] I; 0 =
      * bit rate based) and the values the EP3 rows were generated for */
     uint32_t t41_max_picture_bits[3];
+    uint32_t t41_rc_options;        /* CBR eRcOptions of CreateChn */
     uint32_t t41_hwrc_max_picture_bits[3];
     uint32_t t41_picture_valid;
     uint32_t t41_picture_qp;
