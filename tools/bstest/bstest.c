@@ -38,6 +38,8 @@ __attribute__((weak)) int imp_log_fun(int level, int option, int type, const cha
 
 #define CK(e, m) do { int r_ = (e); if (r_ < 0) { printf("[E] %s -> 0x%08x\n", m, (unsigned)r_); exit(1); } } while (0)
 
+#include "../save_guard.h"
+
 static char outdir[256];
 
 static int64_t now_ms(void)
@@ -199,7 +201,7 @@ int main(int argc, char **argv)
             if (frames[c] < 4)
                 printf("[S] ch%d f%ld virAddr=0x%08x phyAddr=0x%08x size=%u packs=%u\n", c, frames[c], (unsigned)s.virAddr, (unsigned)s.phyAddr, (unsigned)s.streamSize, s.packCount);
             IMP_Encoder_ReleaseStream(c, &s);
-            fwrite(buf, 1, len, f[c]);
+            if (f[c] && save_guard_ok(len)) fwrite(buf, 1, len, f[c]);
             bytes[c] += (long)len; frames[c]++;
         }
     }

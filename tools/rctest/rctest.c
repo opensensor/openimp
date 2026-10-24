@@ -59,6 +59,8 @@ int IMP_Encoder_SetChnAttrRcMode(int encChn, IMPEncoderAttrRcMode *mode);
 #define CK(e, m) do { int r_ = (e); if (r_ < 0) { printf("[E] %s -> 0x%08x\n", m, (unsigned)r_); exit(1); } } while (0)
 
 static int chn = 0;
+#include "../save_guard.h"
+
 static char outdir[256];
 static unsigned char *buf;
 
@@ -277,7 +279,7 @@ static long drain(FILE *f, FILE *csv, int64_t t0, int *idrs, long *idr_b, long *
         len += p->length;
     }
     IMP_Encoder_ReleaseStream(chn, &s);
-    if (f) fwrite(buf, 1, len, f);
+    if (f && save_guard_ok(len)) fwrite(buf, 1, len, f);
     {
         int idr = nal_has_idr(buf, len);
         if (csv) fprintf(csv, "%lld,%zu,%d\n", (long long)(now_ms() - t0), len, idr);
