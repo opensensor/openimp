@@ -4074,6 +4074,49 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 
         if (err)
             return err;
+        if (!mode)
+            return -1;
+        /* vendor T41 1.2.6: at run time the call is SetChnBitRate (if the
+         * target/max changed) plus SetChnQpBounds (if the window changed);
+         * initial QP, IPDelta, PBDelta, eRcOptions, MaxPictureSize, PSNR and
+         * a mode change are ignored and not read back (tools/rctest) */
+        {
+            const IMPEncoderAttrRcMode *cur =
+                &p2_channels[channel].attr.rcAttr.attrRcMode;
+            uint32_t t = 0, m = 0;
+            int mn = 0, mx = 0, c_mn = 0, c_mx = 0;
+            uint32_t c_t = 0, c_m = 0;
+            int have_rate = 1;
+
+            if (mode->rcMode == IMP_ENC_RC_MODE_CBR) {
+                t = m = mode->attrCbr.uTargetBitRate;
+                mn = mode->attrCbr.iMinQP; mx = mode->attrCbr.iMaxQP;
+            } else if (mode->rcMode == IMP_ENC_RC_MODE_FIXQP) {
+                return 0;
+            } else {
+                t = mode->attrVbr.uTargetBitRate;
+                m = mode->attrVbr.uMaxBitRate;
+                mn = mode->attrVbr.iMinQP; mx = mode->attrVbr.iMaxQP;
+            }
+            if (cur->rcMode == IMP_ENC_RC_MODE_CBR) {
+                c_t = c_m = cur->attrCbr.uTargetBitRate;
+                c_mn = cur->attrCbr.iMinQP; c_mx = cur->attrCbr.iMaxQP;
+            } else if (cur->rcMode != IMP_ENC_RC_MODE_FIXQP) {
+                c_t = cur->attrVbr.uTargetBitRate;
+                c_m = cur->attrVbr.uMaxBitRate;
+                c_mn = cur->attrVbr.iMinQP; c_mx = cur->attrVbr.iMaxQP;
+            } else {
+                have_rate = 0;
+            }
+            if (have_rate) {
+                if (t != c_t || m != c_m)
+                    (void)IMP_Encoder_SetChnBitRate(channel,
+                        (int)(t * 1000u), (int)(m * 1000u));
+                if (mn != c_mn || mx != c_mx)
+                    (void)IMP_Encoder_SetChnQpBounds(channel, mn, mx);
+            }
+            return 0;
+        }
     }
 #endif
     if (!p2_valid_channel(channel) || !mode)
