@@ -212,7 +212,23 @@ STUB1(AL_Codec_Encode_SetEntropyMode, int)
 STUB1(AL_Codec_Encode_SetGopLength, int)
 STUB1(AL_Codec_Encode_SetJpegQuality, int)
 int AL_Codec_Encode_SetQp(void *c, void *a) { (void)c; (void)a; return 0; }
-STUB1(AL_Codec_Encode_SetStreamBufferCount, int)
+static int stub_stream_count;
+int AL_Codec_Encode_SetStreamBufferCount(void *codec, int a)
+{ (void)codec; stub_stream_count = a; return 0; }
+#if defined(PLATFORM_T41)
+/* the codec side of IMP_Encoder_SetAvpuBsShare: only the state the encoder
+ * layer asks for (the allocation and the copy are device-tested) */
+static uint32_t stub_bs_size;
+static int stub_bs_fit = 1;
+int AL_Codec_Encode_SetAvpuBsShare(int enable, uint32_t size)
+{
+    stub_bs_size = enable ? (size ? size : 0x23b700u) : 0;
+    return 0;
+}
+uint32_t AL_Codec_Encode_BsShareSize(void) { return stub_bs_size; }
+int AL_Codec_Encode_CheckBsShare(void *codec)
+{ (void)codec; return stub_bs_size && !stub_bs_fit ? -1 : 0; }
+#endif
 STUB1(AL_Codec_Encode_SetStreamBufferSize, int)
 int AL_Codec_Encode_SetDefaultParam(void *params) { (void)params; return 0; }
 int AL_Codec_Encode_SetFrameRate(void *c, void *a) { (void)c; (void)a; return 0; }
@@ -334,6 +350,43 @@ int main(void)
     CHECK(IMP_Encoder_CreateChn(3, &jpeg) == 0, "JPEG sharing itself");
     CHECK(IMP_Encoder_DestroyChn(3) == 0 && IMP_Encoder_DestroyChn(1) == 0 &&
           IMP_Encoder_DestroyChn(2) == 0, "cleanup");
+
+
+#if defined(PLATFORM_T41)
+    /* IMP_Encoder_SetAvpuBsShare (vendor T41 1.2.6 0x36c78 / CreateChn
+     * 0x38bc0): a stream count that was not set is 2, or (vendor) 1 while the shared
+     * bitstream buffer is on, kept at 2 here; JPEG is not affected; a set count wins; a
+     * buffer that does not fit fails CreateChn with 0x80048008. */
+    {
+        int c = -1;
+
+        CHECK(IMP_Encoder_CreateGroup(4) == 0, "group 4");
+        CHECK(IMP_Encoder_CreateChn(4, &video) == 0, "video CreateChn (4)");
+        CHECK(stub_stream_count == 2 &&
+              IMP_Encoder_GetMaxStreamCnt(4, &c) == 0 && c == 2,
+              "default stream count %d / %d", stub_stream_count, c);
+        CHECK(IMP_Encoder_DestroyChn(4) == 0, "destroy 4");
+        CHECK(IMP_Encoder_SetAvpuBsShare(true, 0) == 0 &&
+              AL_Codec_Encode_BsShareSize() == 0x23b700u, "share on");
+        CHECK(IMP_Encoder_CreateChn(4, &video) == 0 &&
+              stub_stream_count == 2 &&
+              IMP_Encoder_GetMaxStreamCnt(4, &c) == 0 && c == 2,
+              "shared default stream count %d / %d", stub_stream_count, c);
+        CHECK(IMP_Encoder_DestroyChn(4) == 0, "destroy 4 (shared)");
+        CHECK(IMP_Encoder_SetMaxStreamCnt(4, 3) == 0 &&
+              IMP_Encoder_CreateChn(4, &video) == 0 && stub_stream_count == 3,
+              "a set count wins (%d)", stub_stream_count);
+        CHECK(IMP_Encoder_DestroyChn(4) == 0, "destroy 4 (count 3)");
+        stub_bs_fit = 0;
+        CHECK(IMP_Encoder_CreateChn(4, &video) == (int)0x80048008u &&
+              !p2_channels[4].created, "CreateChn with a buffer that does not fit");
+        CHECK(IMP_Encoder_CreateChn(4, &jpeg) == 0 &&
+              IMP_Encoder_DestroyChn(4) == 0, "JPEG ignores the shared buffer");
+        stub_bs_fit = 1;
+        CHECK(IMP_Encoder_SetAvpuBsShare(false, 0) == 0 &&
+              AL_Codec_Encode_BsShareSize() == 0, "share off");
+    }
+#endif
 
 #if defined(PLATFORM_T40)
     /* T40 1.3.1 Set/GetFisheyeEnableStatus: a flag, settable only while the

@@ -67,6 +67,7 @@ typedef struct AvpuDMABuf {
     void *uncached_map;  /* optional /dev/mem uncached mirror mapping */
     size_t size;         /* size in bytes */
     int from_rmem;       /* 1 if allocated via rmem/IMP_Alloc (do not munmap) */
+    int shared;          /* 1: alias of the IMP_Encoder_SetAvpuBsShare region (T41), owns nothing */
 } AvpuDMABuf;
 
 /* ---- LinuxIpControl vtable (OEM: LinuxIpControlVtable at AL_Board_Create) ----

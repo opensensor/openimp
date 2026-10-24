@@ -1240,6 +1240,18 @@ int IMP_Encoder_GetJpegeQl(int encChn, IMPEncoderJpegeQl *attr);
 int IMP_Encoder_SetbufshareChn(int encChn, int shareChn);
 
 /**
+ * Shared AVPU bitstream buffer (T41 only)
+ *
+ * @param enAvpuBs 1: one bitstream buffer shared by all video channels created
+ *                 afterwards (call before IMP_Encoder_CreateChn); 0: free it
+ *                 (call after IMP_Encoder_DestroyChn)
+ * @param avpuBsSize size of the shared buffer, 0 = default (0x23b700)
+ * @return 0 on success (also when nothing changes), 0x80040100 if the buffer
+ *         cannot be allocated
+ */
+int IMP_Encoder_SetAvpuBsShare(bool enAvpuBs, uint32_t avpuBsSize);
+
+/**
  * Enable/disable fisheye (T31)
  * 
  * @param encChn Encoder channel number

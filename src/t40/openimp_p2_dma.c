@@ -488,6 +488,40 @@ int OpenIMP_P2_DMAState(uint32_t *base, uint32_t *used)
     return ready ? 0 : -1;
 }
 
+/* Diagnostic for test tools (tools/bstest): bytes in use, the arena size
+ * (from the floor), the largest free block, and the bytes/count of live
+ * allocations whose tag starts with tag_prefix. */
+int OpenIMP_P2_DMAUsage(uint32_t *used, uint32_t *total, uint32_t *largest,
+                        const char *tag_prefix, uint32_t *tag_bytes,
+                        uint32_t *tag_count)
+{
+    uint32_t tb = 0, tc = 0, i;
+    size_t n = tag_prefix ? strlen(tag_prefix) : 0;
+    int ready;
+
+    p2_lock();
+    ready = p2_dma.mapping != NULL;
+    if (used)
+        *used = p2_dma_used_bytes();
+    if (total)
+        *total = p2_dma.size - p2_dma.floor;
+    if (largest)
+        *largest = p2_dma_largest_gap();
+    for (i = 0; n && i < P2_DMA_MAX_ALLOCS; ++i) {
+        if (p2_dma.allocations[i].active &&
+            strncmp(p2_dma.allocations[i].tag, tag_prefix, n) == 0) {
+            tb += p2_dma.allocations[i].size;
+            tc++;
+        }
+    }
+    if (tag_bytes)
+        *tag_bytes = tb;
+    if (tag_count)
+        *tag_count = tc;
+    p2_unlock();
+    return ready ? 0 : -1;
+}
+
 int OpenIMP_P2_DMARegion(uint32_t *base, uint32_t *size, void **mapping)
 {
     int result;

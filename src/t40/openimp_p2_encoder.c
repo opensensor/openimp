@@ -145,7 +145,7 @@
  * count only rotated through more 0.93 MB (1080p) rmem buffers and heap
  * snapshots without ever using them together.
  */
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #define P2_DEFAULT_STREAM_COUNT 2
 #else
 #define P2_DEFAULT_STREAM_COUNT 4
@@ -304,6 +304,7 @@ typedef struct {
     uint32_t sequence;
     uint32_t stream_buf_size;
     int max_stream_count;
+    int stream_count_set;           /* SetMaxStreamCnt was called (T41: else the vendor default) */
     /* IMP_Encoder_SetbufshareChn: channel whose stream buffers a JPEG
      * channel would share, -1 none (the vendor's default and its value
      * after DestroyChn).  Bookkeeping only, see the function. */
@@ -1249,6 +1250,11 @@ static uint32_t p2_fill_legacy_packs(P2EncoderChannel *channel,
 extern int AL_Codec_Encode_SetDefaultParam(void *param);
 extern int AL_Codec_Encode_Create(void **codec, void *params);
 extern int AL_Codec_Encode_SetStreamBufferCount(void *codec, int count);
+#if defined(PLATFORM_T41)
+extern int AL_Codec_Encode_SetAvpuBsShare(int enable, uint32_t size);
+extern uint32_t AL_Codec_Encode_BsShareSize(void);
+extern int AL_Codec_Encode_CheckBsShare(void *codec);
+#endif
 extern int AL_Codec_Encode_SetStreamBufferSize(void *codec, int size);
 extern int AL_Codec_Encode_SetFrameRate(void *codec, void *fps);
 extern int AL_Codec_Encode_SetBitRate(void *codec, int target_bitrate,
@@ -2292,6 +2298,16 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         }
     }
 #endif
+#if defined(PLATFORM_T41)
+    /* Vendor T41 1.2.6 CreateChn (0x38bc0): a count that was not set is 2,
+     * or 1 for a channel using the shared bitstream buffer
+     * (IMP_Encoder_SetAvpuBsShare).  OpenIMP keeps 2 there as well (beyond
+     * vendor, user decision 10-24): the slots alias the shared region, so
+     * the second one costs only heap and avoids a stall while the app still
+     * holds a stream. */
+    if (!ch->stream_count_set && p2_attr_codec_type(attr) != IMP_ENC_TYPE_JPEG)
+        ch->max_stream_count = P2_DEFAULT_STREAM_COUNT;
+#endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
         AL_Codec_Encode_Destroy(ch->codec);
@@ -2309,6 +2325,15 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
         pthread_mutex_unlock(&ch->lock);
         return -1;
     }
+#if defined(PLATFORM_T41)
+    if (p2_attr_codec_type(attr) != IMP_ENC_TYPE_JPEG &&
+        AL_Codec_Encode_CheckBsShare(ch->codec) != 0) {
+        AL_Codec_Encode_Destroy(ch->codec);
+        ch->codec = NULL;
+        pthread_mutex_unlock(&ch->lock);
+        return (int)0x80048008u;
+    }
+#endif
     ch->attr = *attr;
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21)
     ch->denoise = attr->rcAttr.attrDenoise;
@@ -3978,6 +4003,23 @@ static void p2_drop_unread_stream(P2EncoderChannel *ch)
 #define P2_BUFSHARE_ERROR (-1)
 #endif
 
+#if defined(PLATFORM_T41)
+/* IMP_Encoder_SetAvpuBsShare(bool enAvpuBs, uint32_t avpuBsSize), vendor T41
+ * 1.2.6 0x36c78 (disassembled, run against the open driver on a T41 board):
+ * on, before CreateChn: one shared AVPU bitstream buffer of avpuBsSize bytes
+ * (0: 0x23b700) replaces the private stream buffers of every H.264/H.265
+ * channel created while it is on; their stream count defaults to 2 (the vendor: 1) and the
+ * pictures are handed out from heap copies (phyAddr 0).  off, after
+ * DestroyChn: frees it.  Returns 0 in every case except an allocation
+ * failure (0x80040100); CreateChn of a channel whose stream buffer does not
+ * fit fails with 0x80048008. */
+int IMP_Encoder_SetAvpuBsShare(bool enAvpuBs, uint32_t avpuBsSize)
+{
+    EncoderInit();
+    return AL_Codec_Encode_SetAvpuBsShare(enAvpuBs ? 1 : 0, avpuBsSize);
+}
+#endif
+
 int IMP_Encoder_SetbufshareChn(int channel, int share_channel)
 {
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
@@ -4063,6 +4105,7 @@ int IMP_Encoder_SetMaxStreamCnt(int channel, int count)
         return -1;
     }
     ch->max_stream_count = count;
+    ch->stream_count_set = 1;
     pthread_mutex_unlock(&ch->lock);
     p2_trace("openimp/P2: SetMaxStreamCnt ch=%d count=%d\n",
              channel, count);
