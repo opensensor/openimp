@@ -4018,7 +4018,14 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
         uint32_t i_max_qp;
 
         avpu_t41_type_qp_bounds(ctx, 1, &i_min_qp, &i_max_qp);
+        /* OEM AL_Common_Encoder_SetMaxPictureSize re-applies the RC
+         * parameters (setParam on the running controller) like a bit-rate
+         * change: restart the models on the new targets, keep the QP. */
         if (!controller->initialized ||
+            (ctx->t41_hwrc_bitrate &&
+             memcmp(ctx->t41_hwrc_max_picture_bits,
+                    ctx->t41_max_picture_bits,
+                    sizeof(ctx->t41_max_picture_bits)) != 0) ||
             controller->bitrate != bitrate ||
             controller->fps_num != fps_num ||
             controller->fps_den != fps_den ||
