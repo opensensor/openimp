@@ -864,6 +864,114 @@ static int avpu_alloc_encoder(int fd, size_t size, const char *tag,
     return avpu_alloc_mmap(fd, size, out);
 }
 
+#if defined(PLATFORM_T41)
+/* IMP_Encoder_SetAvpuBsShare (vendor T41 1.2.6 0x36c78): one bitstream buffer
+ * of avpuBsSize bytes (default 0x23b700, IMP_Alloc tag "avpuBs") that every
+ * H.264/H.265 channel created while the option is on uses as its AVPU
+ * stream buffer instead of count private ones.  The AVPU core is exclusive
+ * to one picture at a time (g_t41_core lease, held from Process to the
+ * completion callback), so the hardware only ever writes one picture into
+ * it; the completion path copies the picture into a per-slot heap buffer
+ * before the lease is released, the vendor's streams then point into the
+ * heap with phyAddr 0 (measured with the vendor libimp on .34). */
+#define OPENIMP_BS_SHARE_DEFAULT_SIZE 0x23b700u
+static struct {
+    pthread_mutex_t lock;
+    int enabled;                /* vendor flag 1: option on */
+    int created;                /* vendor flag 2: region allocated */
+    uint32_t size;
+    int users;                  /* stream slots aliasing the region */
+    int free_pending;           /* disabled while slots still alias it */
+    AvpuDMABuf region;
+} g_bs_share = { PTHREAD_MUTEX_INITIALIZER, 0, 0, OPENIMP_BS_SHARE_DEFAULT_SIZE,
+                 0, 0, {0} };
+
+static void avpu_bs_share_free_locked(void)
+{
+    if (g_bs_share.region.from_rmem && g_bs_share.region.phy_addr)
+        (void)DMA_FreePhys(g_bs_share.region.phy_addr);
+    memset(&g_bs_share.region, 0, sizeof(g_bs_share.region));
+    g_bs_share.region.dmabuf_fd = -1;
+    g_bs_share.created = 0;
+    g_bs_share.free_pending = 0;
+}
+
+static void avpu_bs_share_unref(void)
+{
+    pthread_mutex_lock(&g_bs_share.lock);
+    if (g_bs_share.users > 0)
+        g_bs_share.users--;
+    if (g_bs_share.users == 0 && g_bs_share.free_pending)
+        avpu_bs_share_free_locked();
+    pthread_mutex_unlock(&g_bs_share.lock);
+}
+
+/* 0, or the vendor error 0x80040100 when the region cannot be allocated.
+ * Every other case returns 0 like the vendor (already on, channels exist). */
+int AL_Codec_Encode_SetAvpuBsShare(int enable, uint32_t size)
+{
+    int ret = 0;
+
+    pthread_mutex_lock(&g_bs_share.lock);
+    if (enable) {
+        if (!g_bs_share.enabled && !g_bs_share.created) {
+            if (size)
+                g_bs_share.size = size;
+            g_bs_share.enabled = 1;
+            if (avpu_alloc_imp(g_bs_share.size, "AVPU_BSSH",
+                               &g_bs_share.region) != 0) {
+                g_bs_share.enabled = 0;
+                ret = (int)0x80040100u;
+            } else {
+                g_bs_share.created = 1;
+                g_bs_share.free_pending = 0;
+                LOG_CODEC("AVPU: shared bitstream buffer phys=0x%08x size=%u",
+                          g_bs_share.region.phy_addr, g_bs_share.size);
+            }
+        }
+    } else if (g_bs_share.enabled && g_bs_share.created) {
+        g_bs_share.enabled = 0;
+        if (g_bs_share.users == 0)
+            avpu_bs_share_free_locked();
+        else
+            g_bs_share.free_pending = 1;    /* channels still alias it */
+    }
+    pthread_mutex_unlock(&g_bs_share.lock);
+    return ret;
+}
+
+/* Size of the shared region while the option is on, else 0. */
+uint32_t AL_Codec_Encode_BsShareSize(void)
+{
+    uint32_t size = 0;
+
+    pthread_mutex_lock(&g_bs_share.lock);
+    if (g_bs_share.enabled && g_bs_share.created)
+        size = g_bs_share.size;
+    pthread_mutex_unlock(&g_bs_share.lock);
+    return size;
+}
+
+/* A stream slot of the codec in *tmp = the shared region; 0 on success. */
+static int avpu_bs_share_alias(AvpuDMABuf *tmp, size_t slot_size)
+{
+    int ret = -1;
+
+    pthread_mutex_lock(&g_bs_share.lock);
+    if (g_bs_share.enabled && g_bs_share.created &&
+        slot_size <= g_bs_share.size) {
+        *tmp = g_bs_share.region;
+        tmp->shared = 1;
+        tmp->from_rmem = 0;
+        tmp->size = slot_size;
+        g_bs_share.users++;
+        ret = 0;
+    }
+    pthread_mutex_unlock(&g_bs_share.lock);
+    return ret;
+}
+#endif
+
 /* Release every userspace reference carried by a DMA descriptor.  Coherent
  * GET_DMA_MMAP allocations are VMAs of /dev/avpu, so closing the channel fd
  * before unmapping all of them does not invoke the driver's release method:
@@ -878,6 +986,14 @@ static void avpu_release_dma_buf(AvpuDMABuf *buf)
     if (!buf)
         return;
 
+    if (buf->shared) {
+#if defined(PLATFORM_T41)
+        avpu_bs_share_unref();
+#endif
+        memset(buf, 0, sizeof(*buf));
+        buf->dmabuf_fd = -1;
+        return;
+    }
     phys_addr = buf->phy_addr;
     from_rmem = buf->from_rmem;
 
@@ -9604,6 +9720,26 @@ static int avpu_queue_completed_stream(ALAvpuContext *ctx, int buf_idx, void *us
         }
     }
 #endif
+#if defined(PLATFORM_T41)
+    if (ctx->stream_bufs[buf_idx].shared) {
+        /* Shared bitstream buffer: the next picture of any channel may
+         * overwrite it as soon as the core lease is released after this
+         * callback, so the user gets a heap copy (phyAddr 0, as the vendor). */
+        if (!ctx->stream_public_copy[buf_idx])
+            ctx->stream_public_copy[buf_idx] =
+                malloc((size_t)ctx->stream_buf_size);
+        if (!ctx->stream_public_copy[buf_idx] ||
+            frame_size > (uint32_t)ctx->stream_buf_size) {
+            LOG_CODEC("%s: shared bitstream copy failed buf[%d] len=%u",
+                      source ? source : "EndEncoding", buf_idx, frame_size);
+            return 0;
+        }
+        memcpy(ctx->stream_public_copy[buf_idx],
+               (const void *)(uintptr_t)virt_addr, frame_size);
+        virt_addr = (uint32_t)(uintptr_t)ctx->stream_public_copy[buf_idx];
+        phys_addr = 0;
+    }
+#endif
     hw_stream->phys_addr = phys_addr;
     hw_stream->virt_addr = virt_addr;
     hw_stream->length = frame_size;
@@ -9763,6 +9899,26 @@ int AL_Codec_Encode_SetDefaultParam(void *param) {
     LOG_CODEC("SetDefaultParam: initialized (OEM-aligned)");
     return 0;
 }
+
+#if defined(PLATFORM_T41)
+/* CreateChn with IMP_Encoder_SetAvpuBsShare on: one stream buffer of this
+ * channel must fit the shared region (vendor: CreateChn fails with
+ * 0x80048008 otherwise).  0 when the option is off or it fits. */
+int AL_Codec_Encode_CheckBsShare(void *codec)
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+    uint32_t size = AL_Codec_Encode_BsShareSize();
+
+    if (!enc || !size)
+        return 0;
+    if (enc->stream_buf_size > 0 && (uint32_t)enc->stream_buf_size > size) {
+        LOG_CODEC("CheckBsShare: stream buffer %d B exceeds the shared bitstream buffer (%u B)",
+                  enc->stream_buf_size, size);
+        return -1;
+    }
+    return 0;
+}
+#endif
 
 /**
  * AL_Codec_Encode_GetSrcFrameCntAndSize - based on decompilation at 0x7a694
@@ -11753,6 +11909,23 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
                         for (int i = 0; i < enc->avpu.stream_buf_count; ++i) {
                             LOG_CODEC("AVPU: alloc stream buf[%d] size=%d (IMP_Alloc)", i, enc->avpu.stream_buf_size);
                             AvpuDMABuf tmp = (AvpuDMABuf){0};
+#if defined(PLATFORM_T41)
+                            if (1 &&
+                                avpu_bs_share_alias(&tmp, (size_t)enc->avpu.stream_buf_size) == 0) {
+                                /* Shared bitstream buffer: another channel's
+                                 * picture may be in flight in it, so no
+                                 * pre-zero and no flush here (the picture
+                                 * path clears the header prefix under the
+                                 * core lease). */
+                                enc->avpu.stream_bufs[filled] = tmp;
+                                enc->avpu.stream_in_hw[filled] = 0;
+                                enc->avpu.stream_buf_state[filled] = AVPU_STREAM_BUF_FREE;
+                                LOG_CODEC("AVPU: stream buf[%d] = shared bitstream buffer phys=0x%08x size=%d",
+                                          filled, tmp.phy_addr, enc->avpu.stream_buf_size);
+                                filled++;
+                                continue;
+                            }
+#endif
                             if (avpu_alloc_encoder(fd, (size_t)enc->avpu.stream_buf_size, "AVPU_STRM", &tmp) == 0) {
 #if defined(PLATFORM_T31)
                                 /*
@@ -13704,7 +13877,11 @@ int AL_Codec_Encode_ReleaseStream(void *codec, void *stream, void *user_data) {
 
         if (ctx->session_ready) {
             for (int i = 0; i < ctx->stream_bufs_used; ++i) {
-                if (ctx->stream_bufs[i].phy_addr == hw_stream->phys_addr) {
+                /* Slots of a shared bitstream buffer have one phys address:
+                 * the embedded descriptor index is the slot. */
+                if (ctx->stream_bufs[i].shared ?
+                        hw_stream == &enc->avpu_stream_descriptors[i] :
+                        ctx->stream_bufs[i].phy_addr == hw_stream->phys_addr) {
                     avpu_mark_stream_buffer_released(ctx, i);
                     if (ctx->frames_consumed % 50 == 0)
                     LOG_CODEC("ReleaseStream[AVPU]: released stream buf[%d] stream=%p phys=0x%08x virt=0x%08x len=%u",
