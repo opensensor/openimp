@@ -63,7 +63,7 @@ Further items (night 2026-10-03):
 
 ### 1.0 Encoder telemetry (T41, 2026-10-24)
 
-`OpenIMP_Encoder_GetTelemetry(chn, &t)` (`include/openimp/openimp_encoder_telemetry.h`, weak-link it): frames, bytes, IDR count, last frame size, encode time last/avg/max (microseconds, source frame to stream back), delivered fps x100 and average kbit/s since CreateChn, and whether a picture is in the codec right now. The vendor library has only `IMP_Encoder_Query` (6 words). Device-tested on T41 (.34): matches the consumer's own count exactly, fps 15.02 at 15, 2073 kbit/s at CBR 2000. Merged into next; `IMP_Encoder_Query` on T41 now also reports real values (`work_done` 0 for 38.7 % of the samples = the measured encode time of 25.9 ms average, polled-not-fetched stream shows frames=1) instead of the constant `leftPics=1`.
+`OpenIMP_Encoder_GetTelemetry(chn, &t)` (`include/openimp/openimp_encoder_telemetry.h`, weak-link it): set `t.size = sizeof(t)` first (versioned ABI: the library fills at most `size` bytes, writes back the filled size and `version`, fields are only appended); frames, bytes, IDR count, last frame size, encode time last/avg/max (microseconds, source frame to stream back), delivered fps x100 and average kbit/s since CreateChn, and whether a picture is in the codec right now. The vendor library has only `IMP_Encoder_Query` (6 words). Device-tested on T41 (.34): matches the consumer's own count exactly, fps 15.02 at 15, 2073 kbit/s at CBR 2000. Merged into next; `IMP_Encoder_Query` on T41 now also reports real values (`work_done` 0 for 38.7 % of the samples = the measured encode time of 25.9 ms average, polled-not-fetched stream shows frames=1) instead of the constant `leftPics=1`.
 
 ### 1.1 Encoder ROI (region QP) and the valid-H.264 rules (agg-34)
 

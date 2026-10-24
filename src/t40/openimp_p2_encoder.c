@@ -3614,10 +3614,15 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
 int OpenIMP_Encoder_GetTelemetry(int channel, OpenIMPEncoderTelemetry *t)
 {
     P2EncoderChannel *ch;
+    OpenIMPEncoderTelemetry full, *out = t;
     uint64_t span_us;
+    uint32_t n;
 
-    if (!p2_valid_channel(channel) || !t || !p2_channels[channel].created)
+    if (!p2_valid_channel(channel) || !out || !p2_channels[channel].created ||
+        out->size < 2 * sizeof(uint32_t))
         return -1;
+    n = out->size < sizeof(full) ? out->size : (uint32_t)sizeof(full);
+    t = &full;
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
     memset(t, 0, sizeof(*t));
@@ -3638,6 +3643,9 @@ int OpenIMP_Encoder_GetTelemetry(int channel, OpenIMPEncoderTelemetry *t)
     }
     t->encoding = (uint32_t)__atomic_load_n(&ch->encoding, __ATOMIC_ACQUIRE);
     pthread_mutex_unlock(&ch->lock);
+    full.size = n;
+    full.version = OPENIMP_ENCODER_TELEMETRY_VERSION;
+    memcpy(out, &full, n);
     return 0;
 }
 

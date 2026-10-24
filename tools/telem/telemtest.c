@@ -121,7 +121,7 @@ int main(int argc, char **argv)
     printf("[A] %d s: %u frames, %u bytes, %u Query samples\n", secs, frames - f0, bytes - b0, nsamp);
     ph("leftPics", hist_lp, 8); ph("leftStreamFrames", hist_sf, 8); ph("curPacks", hist_pk, 8); ph("work_done 0/1", hist_wd, 2);
     if (OpenIMP_Encoder_GetTelemetry) {
-        OpenIMPEncoderTelemetry t; int r = OpenIMP_Encoder_GetTelemetry(0, &t);
+        OpenIMPEncoderTelemetry t = { .size = sizeof(t) }; int r = OpenIMP_Encoder_GetTelemetry(0, &t);
         printf("[T] rc=%d frames=%llu bytes=%llu idr=%llu last=%u enc_us last/avg/max=%u/%u/%u fps=%u.%02u kbps=%u (consumer count %u/%u)\n", r,
                (unsigned long long)t.frames, (unsigned long long)t.bytes, (unsigned long long)t.idr_frames, t.last_frame_bytes,
                t.encode_us_last, t.encode_us_avg, t.encode_us_max, t.fps_x100 / 100, t.fps_x100 % 100, t.avg_kbps, frames - f0, bytes - b0);
