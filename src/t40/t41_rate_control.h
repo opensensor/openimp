@@ -136,6 +136,7 @@ typedef struct OpenIMPT41RateController {
     uint32_t rc_options;
     uint32_t initial_p_qp;      /* OEM +116: P start QP of setParam */
     uint32_t scene_change_raises;   /* diagnostics: SC_PREVENTION steps */
+    uint32_t picture_skipped;   /* OEM update argument 5; never set on T41 */
     int initialized;
 } OpenIMPT41RateController;
 
