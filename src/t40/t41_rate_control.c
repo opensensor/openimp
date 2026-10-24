@@ -1183,11 +1183,18 @@ int openimp_t41_rate_controller_complete(
     controller->last_selection = selection;
     controller->current_qp =
         (uint32_t)controller->selector.models.current_qp;
-    /* IMP_ENC_RC_OPT_SC_PREVENTION (OEM OIIo +431 / IiIo): a P picture
-     * that looks like a scene change (field_20 >= 96 %, or >= 86 % with
-     * field_14 < 70 %) raises the next QP by 3 steps; with SCN_CHG_RES
-     * (+384) not while the QP is already at or above the start QP. */
+    /* IMP_ENC_RC_OPT_SC_PREVENTION (OEM OIIo +431 / IiIo): the OEM update
+     * o1II applies the scene-change step only to a picture the encoder
+     * skipped (update argument 5, request +2760; UpdateRateCtrl in SDK
+     * 1.2.5 ChannelMngr.c) or in its filler path: the +3 step for a skipped
+     * picture that looks like a scene change (field_20 >= 96 %, or >= 86 %
+     * with field_14 < 70 %), unless SCN_CHG_RES is set and the QP is at or
+     * above its start; with filler data -2 while above the minimum.  The
+     * T41 OpenIMP encoder neither skips pictures nor inserts filler, so
+     * neither branch is reachable and the bit has no effect, exactly as in
+     * the vendor library without skip/filler. */
     if (!is_idr && feedback && (controller->rc_options & 0x10u) &&
+        controller->picture_skipped &&
         (effective_feedback.field_20_percent >= 96u ||
          (effective_feedback.field_20_percent >= 86u &&
           effective_feedback.field_14_bit_percent < 70u)) &&
