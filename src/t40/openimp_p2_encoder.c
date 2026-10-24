@@ -82,7 +82,7 @@
 #elif defined(PLATFORM_T41) || defined(PLATFORM_T40)
 #include "t23/openimp_t23_osd.h"
 #endif
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
 #include "t40/t40_vendor_cmd.h"
 #endif
 #if defined(PLATFORM_T30)
@@ -1335,6 +1335,38 @@ static int p2_valid_channel_at(int channel, const char *function)
 #define p2_valid_group(group) p2_valid_group_at((group), __func__)
 #define p2_valid_channel(channel) p2_valid_channel_at((channel), __func__)
 
+#if defined(PLATFORM_T41)
+/* T41 1.2.6 libimp: the rate-control calls return 0x80040001 for a channel
+ * number >= 8 and 0x80040008 for a channel that was not created (checked on
+ * .32 with the vendor libimp, tools/rctest); a frame rate with a zero part
+ * is refused with 0x80040010 before the channel is looked at. */
+#define P2_T41_ERR_CHN   ((int)0x80040001u)
+#define P2_T41_ERR_NOCHN ((int)0x80040008u)
+#define P2_T41_ERR_PARAM ((int)0x80040010u)
+
+static int p2_t41_chn_check(int channel)
+{
+    if (channel < 0 || channel >= P2_MAX_CHANNELS) {
+        IMP_LOG_LIMITED(LOG_ERR, "Encoder", "%s: invalid channel %d (0..%d)",
+                        __func__, channel, P2_MAX_CHANNELS - 1);
+        return P2_T41_ERR_CHN;
+    }
+    if (!p2_channels[channel].created)
+        return P2_T41_ERR_NOCHN;
+    return 0;
+}
+
+/* the AL layer clamps a QP window: max to 0..51, min >= 0, min <= max */
+static void p2_t41_clamp_bounds(int *minimum, int *maximum)
+{
+    if (*maximum < 0) *maximum = 0;
+    if (*maximum > 51) *maximum = 51;
+    if (*minimum < 0) *minimum = 0;
+    if (*minimum > *maximum) *minimum = *maximum;
+}
+#endif
+
+
 /* A NULL out/attr pointer of an API call: one limited line, then -1. */
 static int p2_null_arg(const char *function, const void *pointer)
 {
@@ -1467,7 +1499,7 @@ static uint32_t p2_attr_gop_length(const IMPEncoderCHNAttr *attr)
 {
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     return attr->rcAttr.maxGop;
-#elif defined(PLATFORM_T40)
+#elif defined(PLATFORM_T40) || defined(PLATFORM_T41)
     return t40_vendor_gop_length(attr->gopAttr.uGopLength,
                                  attr->gopAttr.uMaxSameSenceCnt);
 #else
@@ -3683,6 +3715,11 @@ int IMP_Encoder_GetChnAttr(int channel, IMPEncoderChnAttr *attr)
     if (!p2_valid_channel(channel) || !attr || !p2_channels[channel].created)
         return -1;
     *attr = p2_channels[channel].attr;
+#if defined(PLATFORM_T41)
+    /* vendor: the GOP read-back is the IDR distance (length * same-scene) */
+    attr->gopAttr.uGopLength = (uint16_t)t40_vendor_gop_length(
+        attr->gopAttr.uGopLength, attr->gopAttr.uMaxSameSenceCnt);
+#endif
     return 0;
 }
 
@@ -3742,6 +3779,62 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
     attr->rcAttr.outFrmRate.frmRateDen = (uint32_t)fps_den;
     attr->gopAttr.uGopLength = (uint16_t)gop_length;
     attr->gopAttr.uMaxSameSenceCnt = (uint32_t)max_same_scene;
+#if defined(PLATFORM_T41)
+    /* T41 1.2.6 IMP_Encoder_SetDefaultParam (0x38014), read back on .32
+     * with the vendor libimp: GOP mode DEFAULT (2), encOptions 0x1040028
+     * (JPEG 0x40028), encTools 0x1c; iInitialQP the caller's value
+     * unchecked; FIXQP and H.264/H.265 rate control iMinQP 18, iMaxQP 45,
+     * CBR/VBR/capped iIPDelta/iPBDelta -1, eRcOptions 1, uMaxPictureSize
+     * 2 * bitrate, VBR and capped uMaxBitRate (bitrate * 4) / 3, capped
+     * uMaxPSNR 42.  JPEG forces FIXQP with iMinQP 1, iMaxQP 100. */
+    attr->gopAttr.uGopCtrlMode = IMP_ENC_GOP_CTRL_MODE_DEFAULT;
+    attr->encAttr.encOptions = codec_type == IMP_ENC_TYPE_JPEG ? 0x40028u
+                                                               : 0x1040028u;
+    attr->encAttr.encTools = 0x1cu;
+    if (codec_type == IMP_ENC_TYPE_JPEG) {
+        attr->rcAttr.attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
+        attr->rcAttr.attrRcMode.attrFixQp.iInitialQP = (int16_t)quality;
+        attr->rcAttr.attrRcMode.attrFixQp.iMinQP = 1;
+        attr->rcAttr.attrRcMode.attrFixQp.iMaxQP = 100;
+    } else if (rc_mode == IMP_ENC_RC_MODE_FIXQP) {
+        attr->rcAttr.attrRcMode.attrFixQp.iInitialQP = (int16_t)quality;
+        attr->rcAttr.attrRcMode.attrFixQp.iMinQP = 18;
+        attr->rcAttr.attrRcMode.attrFixQp.iMaxQP = 45;
+    } else if (rc_mode == IMP_ENC_RC_MODE_CBR ||
+               rc_mode == IMP_ENC_RC_MODE_VBR ||
+               rc_mode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+               rc_mode == IMP_ENC_RC_MODE_CAPPED_QUALITY) {
+        IMPEncoderAttrVbr *vbr = &attr->rcAttr.attrRcMode.attrVbr;
+
+        /* CBR has the same prefix up to eRcOptions/uMaxPictureSize, which
+         * sit 4 bytes earlier (no uMaxBitRate) */
+        if (rc_mode == IMP_ENC_RC_MODE_CBR) {
+            IMPEncoderAttrCbr *cbr = &attr->rcAttr.attrRcMode.attrCbr;
+
+            cbr->uTargetBitRate = (uint32_t)bitrate;
+            cbr->iInitialQP = (int16_t)quality;
+            cbr->iMinQP = 18;
+            cbr->iMaxQP = 45;
+            cbr->iIPDelta = -1;
+            cbr->iPBDelta = -1;
+            cbr->eRcOptions = 1;
+            cbr->uMaxPictureSize = (uint32_t)bitrate * 2u;
+        } else {
+            vbr->uTargetBitRate = (uint32_t)bitrate;
+            vbr->uMaxBitRate = ((uint32_t)bitrate * 4u) / 3u;
+            vbr->iInitialQP = (int16_t)quality;
+            vbr->iMinQP = 18;
+            vbr->iMaxQP = 45;
+            vbr->iIPDelta = -1;
+            vbr->iPBDelta = -1;
+            vbr->eRcOptions = 1;
+            vbr->uMaxPictureSize = (uint32_t)bitrate * 2u;
+            if (rc_mode != IMP_ENC_RC_MODE_VBR)
+                attr->rcAttr.attrRcMode.attrCappedVbr.uMaxPSNR = 42;
+        }
+    }
+    return 0;
+#endif
     if (codec_type == IMP_ENC_TYPE_JPEG || rc_mode == IMP_ENC_RC_MODE_FIXQP) {
         attr->rcAttr.attrRcMode.attrFixQp.iInitialQP =
             (int16_t)((quality >= 1 && quality <= 99) ? quality : 25);
@@ -4021,6 +4114,16 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
     (void)unused;
 #endif
+#if defined(PLATFORM_T41)
+    if (rate && (!rate->frmRateNum || !rate->frmRateDen))
+        return P2_T41_ERR_PARAM;
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+    }
+#endif
     if (!p2_valid_channel(channel) || !rate || !rate->frmRateNum ||
         !rate->frmRateDen)
         return -1;
@@ -4058,6 +4161,14 @@ int IMP_Encoder_GetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
 #if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
     (void)unused;
 #endif
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+    }
+#endif
     if (!p2_valid_channel(channel) || !rate || !p2_channels[channel].created)
         return -1;
     *rate = p2_channels[channel].attr.rcAttr.outFrmRate;
@@ -4066,6 +4177,19 @@ int IMP_Encoder_GetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
 
 int IMP_Encoder_GetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 {
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+        if (!mode)
+            return -1;
+        /* a JPEG channel: the vendor returns 0 and leaves *mode alone */
+        if (p2_channels[channel].codec_type == IMP_ENC_TYPE_JPEG)
+            return 0;
+    }
+#endif
     if (!p2_valid_channel(channel) || !mode || !p2_channels[channel].created)
         return -1;
     *mode = p2_channels[channel].attr.rcAttr.attrRcMode;
@@ -4085,6 +4209,57 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     uint32_t maximum_kbps = 0;
 #endif
 
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+        if (!mode)
+            return -1;
+        /* vendor T41 1.2.6: at run time the call is SetChnBitRate (if the
+         * target/max changed) plus SetChnQpBounds (if the window changed);
+         * initial QP, IPDelta, PBDelta, eRcOptions, MaxPictureSize, PSNR and
+         * a mode change are ignored and not read back (tools/rctest) */
+        {
+            const IMPEncoderAttrRcMode *cur =
+                &p2_channels[channel].attr.rcAttr.attrRcMode;
+            uint32_t t = 0, m = 0;
+            int mn = 0, mx = 0, c_mn = 0, c_mx = 0;
+            uint32_t c_t = 0, c_m = 0;
+            int have_rate = 1;
+
+            if (mode->rcMode == IMP_ENC_RC_MODE_CBR) {
+                t = m = mode->attrCbr.uTargetBitRate;
+                mn = mode->attrCbr.iMinQP; mx = mode->attrCbr.iMaxQP;
+            } else if (mode->rcMode == IMP_ENC_RC_MODE_FIXQP) {
+                return 0;
+            } else {
+                t = mode->attrVbr.uTargetBitRate;
+                m = mode->attrVbr.uMaxBitRate;
+                mn = mode->attrVbr.iMinQP; mx = mode->attrVbr.iMaxQP;
+            }
+            if (cur->rcMode == IMP_ENC_RC_MODE_CBR) {
+                c_t = c_m = cur->attrCbr.uTargetBitRate;
+                c_mn = cur->attrCbr.iMinQP; c_mx = cur->attrCbr.iMaxQP;
+            } else if (cur->rcMode != IMP_ENC_RC_MODE_FIXQP) {
+                c_t = cur->attrVbr.uTargetBitRate;
+                c_m = cur->attrVbr.uMaxBitRate;
+                c_mn = cur->attrVbr.iMinQP; c_mx = cur->attrVbr.iMaxQP;
+            } else {
+                have_rate = 0;
+            }
+            if (have_rate) {
+                if (t != c_t || m != c_m)
+                    (void)IMP_Encoder_SetChnBitRate(channel,
+                        (int)(t * 1000u), (int)(m * 1000u));
+                if (mn != c_mn || mx != c_mx)
+                    (void)IMP_Encoder_SetChnQpBounds(channel, mn, mx);
+            }
+            return 0;
+        }
+    }
+#endif
     if (!p2_valid_channel(channel) || !mode)
         return -1;
     ch = &p2_channels[channel];
@@ -4179,6 +4354,31 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
     uint32_t target;
     uint32_t maximum;
 
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+        /* vendor: no argument check at the call; the pending value is
+         * applied by the encoder only when both are non-zero and the mode
+         * is not FIXQP (a CBR channel takes the target as its maximum
+         * too).  Nothing to do then, and 0 is returned. */
+        if (bitrate <= 0 || (max_bitrate <= 0 &&
+            p2_channels[channel].attr.rcAttr.attrRcMode.rcMode !=
+                IMP_ENC_RC_MODE_CBR) ||
+            p2_channels[channel].attr.rcAttr.attrRcMode.rcMode ==
+                IMP_ENC_RC_MODE_FIXQP) {
+            IMP_LOG_LIMITED(LOG_ERR, "Encoder",
+                            "SetChnBitRate(%d, %d, %d): ignored (as the "
+                            "vendor library)", channel, bitrate, max_bitrate);
+            return 0;
+        }
+        if (p2_channels[channel].attr.rcAttr.attrRcMode.rcMode ==
+            IMP_ENC_RC_MODE_CBR)
+            max_bitrate = bitrate;
+    }
+#endif
     if (!p2_valid_channel(channel) || bitrate <= 0 ||
         !p2_channels[channel].created)
         return -1;
@@ -4242,6 +4442,21 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
 
 int IMP_Encoder_GetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 {
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+        if (!gop)
+            return -1;
+        *gop = p2_channels[channel].attr.gopAttr;
+        /* vendor read-back: the IDR distance, uGopLength * uMaxSameSenceCnt */
+        gop->uGopLength = (uint16_t)t40_vendor_gop_length(
+            gop->uGopLength, gop->uMaxSameSenceCnt);
+        return 0;
+    }
+#endif
     if (!p2_valid_channel(channel) || !gop || !p2_channels[channel].created)
         return -1;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -4255,6 +4470,27 @@ int IMP_Encoder_GetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 
 int IMP_Encoder_SetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 {
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+        IMPEncoderGopAttr eff;
+
+        if (err)
+            return err;
+        if (!gop)
+            return -1;
+        /* vendor: stored without a check, the encoder applies length and
+         * same-scene count (IDR every length * count pictures) */
+        p2_channels[channel].attr.gopAttr = *gop;
+        if (!gop->uGopLength)
+            return 0;
+        eff = *gop;
+        eff.gopLength = (uint16_t)t40_vendor_gop_length(
+            gop->uGopLength, gop->uMaxSameSenceCnt);
+        return AL_Codec_Encode_SetGopParam(p2_channels[channel].codec, &eff) ?
+            -1 : 0;
+    }
+#endif
     if (!p2_valid_channel(channel) || !gop || !p2_channels[channel].created)
         return -1;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
@@ -4275,6 +4511,23 @@ int IMP_Encoder_SetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 
 int IMP_Encoder_SetChnGopLength(int channel, int length)
 {
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+        IMPEncoderGopAttr eff;
+
+        if (err)
+            return err;
+        if (length <= 0)
+            return 0;   /* vendor: stored, never applied */
+        p2_channels[channel].attr.gopAttr.uGopLength = (uint16_t)length;
+        eff = p2_channels[channel].attr.gopAttr;
+        eff.gopLength = (uint16_t)t40_vendor_gop_length(
+            (uint32_t)length, eff.uMaxSameSenceCnt);
+        return AL_Codec_Encode_SetGopParam(p2_channels[channel].codec, &eff) ?
+            -1 : 0;
+    }
+#endif
     if (!p2_valid_channel(channel) || length <= 0 ||
         !p2_channels[channel].created)
         return -1;
@@ -4333,6 +4586,24 @@ static void p2_set_qp_bounds(IMPEncoderAttrRcMode *mode, int minimum,
 
 int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
 {
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+        /* vendor: no range check at the call; the encoder applies the
+         * window only if both are > 0, after the AL clamp */
+        if (minimum <= 0 || maximum <= 0) {
+            IMP_LOG_LIMITED(LOG_ERR, "Encoder",
+                            "SetChnQpBounds(%d, %d, %d): ignored (range "
+                            "1..51, as the vendor library)", channel,
+                            minimum, maximum);
+            return 0;
+        }
+        p2_t41_clamp_bounds(&minimum, &maximum);
+    }
+#endif
     if (!p2_valid_channel(channel) || minimum < 0 || maximum > 51 ||
         minimum > maximum || !p2_channels[channel].created)
         return -1;
@@ -4358,6 +4629,28 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int channel, int minimum_i,
     int minimum;
     int maximum;
 
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+        int ret;
+
+        if (err)
+            return err;
+        if (minimum_i <= 0 || maximum_i <= 0 || minimum_p <= 0 ||
+            maximum_p <= 0)
+            return 0;   /* vendor: applied only when all four are > 0 */
+        p2_t41_clamp_bounds(&minimum_i, &maximum_i);
+        p2_t41_clamp_bounds(&minimum_p, &maximum_p);
+        minimum = minimum_i < minimum_p ? minimum_i : minimum_p;
+        maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
+        ret = IMP_Encoder_SetChnQpBounds(channel, minimum, maximum);
+        /* vendor read-back: the I window */
+        if (ret == 0)
+            p2_set_qp_bounds(&p2_channels[channel].attr.rcAttr.attrRcMode,
+                             minimum_i, maximum_i);
+        return ret;
+    }
+#endif
     if (minimum_i < 0 || maximum_i > 51 || minimum_i > maximum_i ||
         minimum_p < 0 || maximum_p > 51 || minimum_p > maximum_p)
         return -1;
@@ -4376,6 +4669,23 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
     IMPEncoderAttrRcMode *mode;
     uint32_t maximum;
 
+#if defined(PLATFORM_T41)
+    {
+        int err = p2_t41_chn_check(channel);
+
+        if (err)
+            return err;
+        if (!maximum_i || !maximum_p)
+            return 0;   /* vendor: applied only when both are non-zero */
+        /* vendor read-back keeps the I value times 1000 (bits) */
+        mode = &p2_channels[channel].attr.rcAttr.attrRcMode;
+        if (mode->rcMode == IMP_ENC_RC_MODE_CBR)
+            mode->attrCbr.uMaxPictureSize = maximum_i * 1000u;
+        else if (mode->rcMode != IMP_ENC_RC_MODE_FIXQP)
+            mode->attrVbr.uMaxPictureSize = maximum_i * 1000u;
+        return 0;
+    }
+#endif
     if (!p2_valid_channel(channel) || !p2_channels[channel].created ||
         !maximum_i || !maximum_p)
         return -1;
