@@ -3535,7 +3535,8 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
 #if defined(PLATFORM_T40)
     pthread_mutex_lock(&ch->lock);
     openimp_t40_query_fill(stat, ch->registered, ch->raw_stream != NULL,
-                           ch->raw_stream_out, ch->in_poll);
+                           ch->raw_stream_out,
+                           __atomic_load_n(&ch->encoding, __ATOMIC_ACQUIRE));
     pthread_mutex_unlock(&ch->lock);
 #else
 #if defined(PLATFORM_T41)

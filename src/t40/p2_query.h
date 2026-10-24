@@ -16,14 +16,20 @@
 
 #include <string.h>
 
+/* `encoding` = the codec is working on a picture right now (1 from the
+ * hand-over of the source frame to the codec until its stream is back); a
+ * PollingStream that only waits for the next frame is idle (work_done 1,
+ * the same as T41; the vendor's work_done is 0 only while a picture is
+ * encoded).  leftPics follows it: the one picture in the codec. */
 static inline void openimp_t40_query_fill(IMPEncoderCHNStat *stat,
                                           int registered, int stream_ready,
-                                          int stream_out, int in_poll)
+                                          int stream_out, int encoding)
 {
     memset(stat, 0, sizeof(*stat));
     stat->registered = registered != 0;
+    stat->leftPics = encoding ? 1u : 0u;
     stat->leftStreamFrames = (stream_ready && !stream_out) ? 1u : 0u;
-    stat->work_done = in_poll ? 0u : 1u;
+    stat->work_done = encoding ? 0u : 1u;
 }
 
 #endif

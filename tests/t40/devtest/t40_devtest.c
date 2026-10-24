@@ -13,9 +13,12 @@
  *           400 OSD group with SetGroupCallback in the pipeline
  *           800 AI digital gain (microphone only, no playback)
  *           1000 WDR_OPEN LINEAR before AddSensor (run it on its own)
+ *           4000 wip cells ISP (AE scene/caps, SensorFPS, CCM/LSC, flip modes, WDR/DRC, NR ratio, mask, getters)
+ *           8000 encoder telemetry (Query histogram, telemetry, AveBitrate; 10000 adds the sensor flip modes to 4000)
  *           2000 GetRaw, one 8-bit sensor frame (about 8 MB rmem; on its own, last) */
 #include <errno.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -32,6 +35,10 @@
 #include <imp/imp_encoder.h>
 #include <imp/imp_osd.h>
 #include <imp/imp_audio.h>
+#include <openimp/openimp_encoder_telemetry.h>
+int OpenIMP_Encoder_GetTelemetry(int encChn, OpenIMPEncoderTelemetry *t) __attribute__((weak));
+int IMP_Encoder_GetChnAveBitrate(int encChn, IMPEncoderStream *stream, int frames, int *bitrate) __attribute__((weak));
+int IMP_Encoder_GetChnEvalInfo(int encChn, void *info) __attribute__((weak));
 
 static void R(const char *fn, const char *v, const char *fmt, ...)
 {
@@ -52,9 +59,13 @@ static double now_s(void)
     return t.tv_sec + t.tv_nsec / 1e9;
 }
 
+#ifndef CH
 #define CH 1            /* scaled sub channel, 1280x720 */
+#endif
+#ifndef FW
 #define FW 1280
 #define FH 720
+#endif
 #define FPS 20
 
 /* ---------- picture metrics (in memory only) ---------- */
@@ -167,6 +178,122 @@ static int med_gap(const struct es *e)
 static void on_drop(void) { }
 extern int IMP_System_MemPoolRequest(int, size_t, const char *) __attribute__((weak));
 static double fabs_d(double x) { return x < 0 ? -x : x; }
+
+/* ---------- wip-cells helpers (2026-10-24, phases 0x4000 / 0x8000) ---------- */
+#define MX(f) ((unsigned)(FW * (f)))
+#define MY(f) ((unsigned)(FH * (f)))
+#define TW 16
+#define TH 9
+struct thumb { double v[TW * TH]; double mean; int ok; };
+
+static int thumb_one(struct thumb *t)
+{
+    IMPFrameInfo *f = NULL;
+    unsigned x, y, w, h;
+    const uint8_t *Y;
+    double sum[TW * TH]; unsigned cnt[TW * TH]; int i;
+
+    if (IMP_FrameSource_GetFrame(CH, &f) != 0 || !f) return -1;
+    w = f->width; h = f->height; Y = (const uint8_t *)(uintptr_t)f->virAddr;
+    memset(sum, 0, sizeof sum); memset(cnt, 0, sizeof cnt);
+    for (y = 0; y < h; y += 4) for (x = 0; x < w; x += 4) {
+        int k = (y * TH / h) * TW + (x * TW / w);
+        sum[k] += Y[y * w + x]; cnt[k]++;
+    }
+    IMP_FrameSource_ReleaseFrame(CH, f);
+    t->mean = 0;
+    for (i = 0; i < TW * TH; i++) { t->v[i] = cnt[i] ? sum[i] / cnt[i] : 0; t->mean += t->v[i]; }
+    t->mean /= TW * TH; t->ok = 1;
+    return 0;
+}
+
+static struct thumb thumb_grab(int settle_ms)
+{
+    struct thumb t, a; int i, k = 0, j;
+    memset(&t, 0, sizeof t);
+    usleep(settle_ms * 1000);
+    drain_stale();
+    for (i = 0; i < 3; i++) {
+        memset(&a, 0, sizeof a);
+        if (thumb_one(&a)) continue;
+        for (j = 0; j < TW * TH; j++) t.v[j] += a.v[j];
+        k++; usleep(60000);
+    }
+    if (k) { for (j = 0; j < TW * TH; j++) { t.v[j] /= k; t.mean += t.v[j]; } t.mean /= TW * TH; t.ok = 1; }
+    return t;
+}
+
+/* mean absolute difference of the thumbnails with a transform of a (0 none, 1 H, 2 V, 3 HV) */
+static double thumb_diff(const struct thumb *a, const struct thumb *b, int tr)
+{
+    int x, y; double s = 0;
+    for (y = 0; y < TH; y++) for (x = 0; x < TW; x++) {
+        int sx = (tr & 1) ? TW - 1 - x : x, sy = (tr & 2) ? TH - 1 - y : y;
+        s += fabs_d(a->v[sy * TW + sx] - b->v[y * TW + x]);
+    }
+    return s / (TW * TH);
+}
+
+/* temporal noise of a static scene: mean |Y(t) - Y(t+1)| of consecutive frames */
+static double noise_meas(int pairs)
+{
+    double acc = 0; int n = 0, p;
+    static uint8_t prev[FW * FH / 9 + 64];
+    drain_stale();
+    for (p = 0; p < pairs + 1; p++) {
+        IMPFrameInfo *f = NULL; unsigned x, y, w, h, k = 0; const uint8_t *Y; double s = 0; unsigned c = 0;
+        if (IMP_FrameSource_GetFrame(CH, &f) != 0 || !f) continue;
+        w = f->width; h = f->height; Y = (const uint8_t *)(uintptr_t)f->virAddr;
+        for (y = 0; y < h; y += 3) for (x = 0; x < w; x += 3) {
+            if (k >= sizeof prev) break;
+            if (p) { s += abs((int)Y[y * w + x] - (int)prev[k]); c++; }
+            prev[k++] = Y[y * w + x];
+        }
+        IMP_FrameSource_ReleaseFrame(CH, f);
+        if (p && c) { acc += s / c; n++; }
+        usleep(80000);
+    }
+    return n ? acc / n : -1;
+}
+
+static double region_y(unsigned rx, unsigned ry, unsigned rw, unsigned rh)
+{
+    IMPFrameInfo *f = NULL; unsigned x, y, w; const uint8_t *Y; double s = 0; unsigned n = 0;
+    drain_stale();
+    if (IMP_FrameSource_GetFrame(CH, &f) != 0 || !f) return -1;
+    w = f->width; Y = (const uint8_t *)(uintptr_t)f->virAddr;
+    for (y = ry; y < ry + rh && y < f->height; y += 2) for (x = rx; x < rx + rw && x < w; x += 2) { s += Y[y * w + x]; n++; }
+    IMP_FrameSource_ReleaseFrame(CH, f);
+    return n ? s / n : -1;
+}
+
+/* AE log line: ExprInfo + ScenceAttr at the moment */
+static void ae_line(const char *tag)
+{
+    IMPISPAEExprInfo ei; IMPISPAEScenceAttr sa; int r1, r2;
+    memset(&ei, 0, sizeof ei); memset(&sa, 0, sizeof sa);
+    r1 = IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &ei);
+    r2 = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &sa);
+    printf("  AE[%s] rc=%d/%d IT=%u AG=%u DG=%u IspDG=%u totdB=%u EV=%u | luma=%u target=%u ae_mean=%u stable=%d | maxIT=%u/%u maxAG=%u/%u\n",
+           tag, r1, r2, ei.AeIntegrationTime, ei.AeAGain, ei.AeDGain, ei.AeIspDGain, ei.TotalGainDb, ei.ExposureValue,
+           sa.luma, sa.target, sa.ae_mean, sa.stable, ei.AeMaxIntegrationTimeMode, ei.AeMaxIntegrationTime,
+           ei.AeMaxAGainMode, ei.AeMaxAGain);
+}
+
+struct qs { volatile int run; unsigned n, lp[8], sf[8], wd[2], nzb, nzp; };
+static void *q_sampler(void *p)
+{
+    struct qs *q = p;
+    while (q->run) {
+        IMPEncoderChnStat s; memset(&s, 0xff, sizeof s);
+        if (IMP_Encoder_Query(CH, &s) == 0) {
+            q->n++; q->lp[s.leftPics > 7 ? 7 : s.leftPics]++; q->sf[s.leftStreamFrames > 7 ? 7 : s.leftStreamFrames]++;
+            q->wd[s.work_done ? 1 : 0]++; if (s.leftStreamBytes) q->nzb++; if (s.curPacks) q->nzp++;
+        }
+        usleep(10000);
+    }
+    return NULL;
+}
 
 
 /* ---------- phase 0x100 helpers (night 2026-10-12 fixes) ---------- */
@@ -282,7 +409,8 @@ int main(int argc, char **argv)
     unsigned char u8, u8o;
     IMPEncoderStream st;
 
-    alarm(420);
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    alarm(900);
 
     /* ================= phase 1: lifecycle, system basics, framesource ================= */
     memset(&sinfo, 0, sizeof sinfo);
@@ -974,6 +1102,334 @@ int main(int argc, char **argv)
         R("ISP_StartNightMode", (!night_rc && a.ok) ? "PART" : "FAIL",
           "rc=%d before AddSensor; first pictures: chroma=%.1f Y=%.1f, running mode get rc=%d mode=%d; after set DAY chroma=%.1f (night = low chroma)",
           night_rc, a.chroma, a.y, rg, m, b.chroma);
+    }
+
+
+    /* ===== phase 0x4000: T40 wip cells (#5 #6 #9 #13 #14 #16 #19 #43), 2026-10-24 ===== */
+    if (mask & 0x4000) {
+        usleep(2000000);
+        /* ---- #43 getters: rc and values ---- */
+        {
+            IMPISPAEExprInfo ei; IMPISPAEWeightAttr aw; IMPISPWeight w; IMPISPFrameDropAttr fd; IMPISPAeSpeedAttr sp;
+            IMPISPSENSORAttr sa; IMPISPAWBStatisInfo ws; IMPISPAEStatisInfo as; IMPISPWBAttr wb; IMPISPStatisConfig sc;
+            IMPISPGammaAttr ga; IMPISPCSCAttr cs; uint32_t n = 0, d = 0, reg = 0x3107, val = 0;
+            int rc[16], k = 0;
+            memset(&ei, 0, sizeof ei); memset(&aw, 0, sizeof aw); memset(&w, 0, sizeof w); memset(&fd, 0, sizeof fd);
+            memset(&sa, 0, sizeof sa); memset(&ws, 0, sizeof ws); memset(&as, 0, sizeof as); memset(&wb, 0, sizeof wb);
+            memset(&sp, 0, sizeof sp); memset(&sc, 0, sizeof sc); memset(&ga, 0, sizeof ga); memset(&cs, 0, sizeof cs);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &ei);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAeWeight(IMPVI_MAIN, &aw);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAfWeight(IMPVI_MAIN, &w);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetSensorFPS(IMPVI_MAIN, &n, &d);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_GetFrameDrop(IMPVI_MAIN, &fd);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_GetSensorRegister(IMPVI_MAIN, &reg, &val);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetSensorAttr(IMPVI_MAIN, &sa);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAwbStatistics(IMPVI_MAIN, &ws);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAeStatistics(IMPVI_MAIN, &as);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAwbAttr(IMPVI_MAIN, &wb);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetAeSpeed(IMPVI_MAIN, &sp);
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetStatisConfig(IMPVI_MAIN, &sc);
+            /* GetGammaAttr oopsed the kernel on agg43c (2026-10-24 12:25): only with mask 0x20000, on its own */
+            printf("  G%d\n", k), rc[k++] = (mask & 0x20000) ? IMP_ISP_Tuning_GetGammaAttr(IMPVI_MAIN, &ga) : 0;
+            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_MAIN, &cs);
+            printf("  W43 rc: AeExprInfo=%d AeWeight=%d AfWeight=%d SensorFPS=%d(%u/%u) FrameDrop=%d SensorReg=%d(0x%x=0x%x) SensorAttr=%d(hts %u vts %u fps %u %ux%u) AwbStat=%d AeStat=%d AwbAttr=%d AeSpeed=%d(%u/%u) StatisCfg=%d Gamma=%d(type %d) Csc=%d\n",
+                   rc[0], rc[1], rc[2], rc[3], n, d, rc[4], rc[5], reg, val, rc[6], sa.hts, sa.vts, sa.fps, sa.width, sa.height,
+                   rc[7], rc[8], rc[9], rc[10], sp.step_s, sp.step_d, rc[11], rc[12], ga.Curve_type, rc[13]);
+            printf("  W43 AeExprInfo: IT=%u AG=%u DG=%u IspDG=%u totdB=%u EV=%u EVLog2=%u minAG=%u maxIT=%u maxAG=%u maxDG=%u maxIspDG=%u mode(IT/AG/DG/ISP)=%d/%d/%d/%d\n",
+                   ei.AeIntegrationTime, ei.AeAGain, ei.AeDGain, ei.AeIspDGain, ei.TotalGainDb, ei.ExposureValue, ei.EVLog2,
+                   ei.AeMinAGain, ei.AeMaxIntegrationTime, ei.AeMaxAGain, ei.AeMaxDgain, ei.AeMaxIspDGain,
+                   ei.AeIntegrationTimeMode, ei.AeAGainManualMode, ei.AeDGainManualMode, ei.AeIspDGainManualMode);
+            { int bad = 0, i; for (i = 0; i < 14; i++) if (rc[i]) bad++;
+              R("W43_getters", bad ? "PART" : "PASS", "%d of 14 getters non-zero (see line above)", bad); }
+        }
+
+        /* ---- #5 AE scene (target comp, HLC, BLC) ---- */
+        {
+            IMPISPAEScenceAttr old, a, g; struct pm p0, plo, phi; int rs, rg;
+            double yb, yh = 0, yl = 0, yblc = 0, yhlc = 0;
+            memset(&old, 0, sizeof old); IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &old);
+            printf("  W5 default: HLC en%d/%u BLC en%d/%u TargetComp en%d/%u StartEv en%d/%u\n", old.AeHLCEn, old.AeHLCStrength, old.AeBLCEn, old.AeBLCStrength,
+                   old.AeTargetCompEn, old.AeTargetComp, old.AeStartEn, old.AeStartEv);
+            p0 = grab(3000); yb = p0.y; ae_line("base");
+            memset(&a, 0, sizeof a); a.AeTargetCompEn = TISP_AE_SCENCE_GLOBAL_ENABLE; a.AeTargetComp = 60;
+            rs = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &a);
+            memset(&g, 0, sizeof g); rg = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &g);
+            plo = grab(6000); yl = plo.y; ae_line("comp60");
+            printf("  W5 comp 60: set rc=%d get rc=%d readback en%d comp %u Y=%.1f\n", rs, rg, g.AeTargetCompEn, g.AeTargetComp, plo.y);
+            a.AeTargetComp = 200; rs = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &a);
+            memset(&g, 0, sizeof g); rg = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &g);
+            phi = grab(6000); yh = phi.y; ae_line("comp200");
+            printf("  W5 comp 200: set rc=%d get rc=%d readback en%d comp %u Y=%.1f\n", rs, rg, g.AeTargetCompEn, g.AeTargetComp, phi.y);
+            a.AeTargetComp = 128; rs = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &a);
+            p0 = grab(6000); ae_line("comp128");
+            printf("  W5 comp 128 (neutral): Y=%.1f (base %.1f)\n", p0.y, yb);
+            R("W5_AeTargetComp", (yh > yl + 20 && fabs_d(p0.y - yb) < 8) ? "PASS" : (yh > yl + 5 ? "PART" : "FAIL"),
+              "Y comp60=%.1f comp128=%.1f/%.1f comp200=%.1f", yl, p0.y, yb, yh);
+            memset(&a, 0, sizeof a); a.AeTargetCompEn = TISP_AE_SCENCE_GLOBAL_ENABLE; a.AeTargetComp = 128;
+            a.AeBLCEn = TISP_AE_SCENCE_GLOBAL_ENABLE; a.AeBLCStrength = 10;
+            rs = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &a);
+            memset(&g, 0, sizeof g); rg = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &g);
+            p0 = grab(6000); yblc = p0.y; ae_line("blc10");
+            R("W5_AeBLC", (rs == 0 && rg == 0 && g.AeBLCEn == TISP_AE_SCENCE_GLOBAL_ENABLE && g.AeBLCStrength == 10) ? (yblc > yb + 3 ? "PASS" : "PART") : "FAIL",
+              "set rc=%d get rc=%d readback en%d str%u; Y=%.1f vs base %.1f (scene-dependent: raises a dark centre)", rs, rg, g.AeBLCEn, g.AeBLCStrength, yblc, yb);
+            memset(&a, 0, sizeof a); a.AeTargetCompEn = TISP_AE_SCENCE_GLOBAL_ENABLE; a.AeTargetComp = 128;
+            a.AeHLCEn = TISP_AE_SCENCE_GLOBAL_ENABLE; a.AeHLCStrength = 10;
+            rs = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &a);
+            memset(&g, 0, sizeof g); rg = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &g);
+            p0 = grab(6000); yhlc = p0.y; ae_line("hlc10");
+            R("W5_AeHLC", (rs == 0 && rg == 0 && g.AeHLCEn == TISP_AE_SCENCE_GLOBAL_ENABLE && g.AeHLCStrength == 10) ? (yhlc < yb - 3 ? "PASS" : "PART") : "FAIL",
+              "set rc=%d get rc=%d readback en%d str%u; Y=%.1f vs base %.1f (scene-dependent: darkens bright spots)", rs, rg, g.AeHLCEn, g.AeHLCStrength, yhlc, yb);
+            memset(&a, 0, sizeof a); a.AeHLCEn = old.AeHLCEn; a.AeBLCEn = old.AeBLCEn; a.AeTargetCompEn = old.AeTargetCompEn;
+            a.AeTargetComp = old.AeTargetComp; a.AeHLCStrength = old.AeHLCStrength; a.AeBLCStrength = old.AeBLCStrength;
+            IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &a);
+            p0 = grab(5000); ae_line("restored");
+            printf("  W5 restored Y=%.1f\n", p0.y);
+        }
+
+        /* ---- #6 AE caps (IT max, gain max) and sensor FPS ---- */
+        {
+            IMPISPAEExprInfo e0, e1, e2; struct pm p0, p1, p2; int rs, rg; uint32_t n0 = 0, d0 = 0, n1 = 0, d1 = 0;
+            memset(&e0, 0, sizeof e0);
+            IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &e0);
+            p0 = grab(3000); ae_line("caps-base");
+            /* IT cap far below the current exposure */
+            e1 = e0; e1.AeMaxIntegrationTimeMode = IMPISP_TUNING_OPS_TYPE_MANUAL; e1.AeMaxIntegrationTime = e0.AeIntegrationTime / 8 ? e0.AeIntegrationTime / 8 : 1;
+            rs = IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &e1);
+            memset(&e2, 0, sizeof e2); rg = IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &e2);
+            p1 = grab(6000); ae_line("maxIT=base/8");
+            printf("  W6 maxIT cap %u (was IT %u): set rc=%d get rc=%d readback mode%d max %u; Y %.1f -> %.1f\n", e1.AeMaxIntegrationTime, e0.AeIntegrationTime, rs, rg,
+                   e2.AeMaxIntegrationTimeMode, e2.AeMaxIntegrationTime, p0.y, p1.y);
+            { IMPISPAEExprInfo n2; memset(&n2, 0, sizeof n2); IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &n2);
+              R("W6_AeMaxIntegrationTime", (rs == 0 && n2.AeIntegrationTime <= e1.AeMaxIntegrationTime + 2) ? "PASS" : ((rs == 0 && p1.y < p0.y - 5) ? "PART" : "FAIL"),
+                "cap %u: IT now %u (was %u), AG %u->%u, Y %.1f -> %.1f", e1.AeMaxIntegrationTime, n2.AeIntegrationTime, e0.AeIntegrationTime, e0.AeAGain, n2.AeAGain, p0.y, p1.y); }
+            /* gain cap on top: max analog gain at 1x (1024) */
+            e1.AeMaxAGainMode = IMPISP_TUNING_OPS_TYPE_MANUAL; e1.AeMaxAGain = 1024;
+            e1.AeMaxIspDGainMode = IMPISP_TUNING_OPS_TYPE_MANUAL; e1.AeMaxIspDGain = 1024;
+            e1.AeMaxDgainMode = IMPISP_TUNING_OPS_TYPE_MANUAL; e1.AeMaxDgain = 1024;
+            rs = IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &e1);
+            p2 = grab(6000); ae_line("maxIT/8+gain1x");
+            { IMPISPAEExprInfo n2; memset(&n2, 0, sizeof n2); IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &n2);
+              R("W6_AeMaxGain", (rs == 0 && n2.AeAGain <= 1024 + 64 && n2.AeIspDGain <= 1024 + 64 && p2.y < p1.y + 2) ? ((p2.y < p1.y - 3) ? "PASS" : "PART") : "FAIL",
+                "gain caps 1x: set rc=%d AG %u IspDG %u DG %u totdB %u; Y %.1f -> %.1f", rs, n2.AeAGain, n2.AeIspDGain, n2.AeDGain, n2.TotalGainDb, p1.y, p2.y); }
+            /* restore */
+            e0.AeMaxIntegrationTimeMode = IMPISP_TUNING_OPS_TYPE_AUTO; e0.AeMaxAGainMode = IMPISP_TUNING_OPS_TYPE_AUTO;
+            e0.AeMaxIspDGainMode = IMPISP_TUNING_OPS_TYPE_AUTO; e0.AeMaxDgainMode = IMPISP_TUNING_OPS_TYPE_AUTO;
+            e1 = e0; rs = IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &e1);
+            p0 = grab(6000); ae_line("caps-restored");
+            printf("  W6 caps restored rc=%d Y=%.1f\n", rs, p0.y);
+            /* sensor FPS */
+            rg = IMP_ISP_Tuning_GetSensorFPS(IMPVI_MAIN, &n0, &d0);
+            { struct es e5, e6; uint32_t sn = 12, sd = 1; int rs2, rg2;
+              stream_for(2.0, &e5);
+              rs2 = IMP_ISP_Tuning_SetSensorFPS(IMPVI_MAIN, &sn, &sd);
+              usleep(1500000);
+              rg2 = IMP_ISP_Tuning_GetSensorFPS(IMPVI_MAIN, &n1, &d1);
+              stream_for(4.0, &e6);
+              { IMPISPSENSORAttr sa2; memset(&sa2, 0, sizeof sa2); IMP_ISP_Tuning_GetSensorAttr(IMPVI_MAIN, &sa2);
+                printf("  W6 SensorFPS: before %u/%u get rc=%d; set 12/1 rc=%d, get rc=%d %u/%u; SensorAttr fps %u vts %u; stream fps before %.1f, at 12 -> %.1f\n",
+                       n0, d0, rg, rs2, rg2, n1, d1, sa2.fps, sa2.vts, e5.frames / 2.0, e6.frames / 4.0); }
+              R("W6_SensorFPS", (!rs2 && !rg2 && n1 == 12 && e6.frames / 4.0 < 13.5 && e6.frames / 4.0 > 10.5) ? "PASS" : (!rs2 && !rg2 && n1 == 12 ? "PART" : "FAIL"),
+                "get %u/%u -> set 12/1 -> get %u/%u; delivered %.1f fps (was %.1f)", n0, d0, n1, d1, e6.frames / 4.0, e5.frames / 2.0);
+              rs2 = IMP_ISP_Tuning_SetSensorFPS(IMPVI_MAIN, &n0, &d0); usleep(1500000);
+              stream_for(2.0, &e5); printf("  W6 SensorFPS restored rc=%d, delivered %.1f fps\n", rs2, e5.frames / 2.0); }
+        }
+
+        /* ---- #9 CCM + LSC (module bypass) ---- */
+        {
+            IMPISPCCMAttr c0, c1, c2; IMPISPModuleCtl m0, m1; struct pm pa, pb; struct thumb ta, tb; int rg0, rs, rg1, rm0, rm1, rm2;
+            double corner_a, corner_b, centre_a, centre_b;
+            memset(&c0, 0, sizeof c0); rg0 = IMP_ISP_Tuning_GetCCMAttr(IMPVI_MAIN, &c0);
+            printf("  W9 CCM default rc=%d manual=%d sat=%d matrix %.3f %.3f %.3f / %.3f %.3f %.3f / %.3f %.3f %.3f\n", rg0, c0.ManualEn, c0.SatEn,
+                   c0.ColorMatrix[0], c0.ColorMatrix[1], c0.ColorMatrix[2], c0.ColorMatrix[3], c0.ColorMatrix[4], c0.ColorMatrix[5], c0.ColorMatrix[6], c0.ColorMatrix[7], c0.ColorMatrix[8]);
+            pa = grab(2500);
+            c1 = c0; c1.ManualEn = IMPISP_TUNING_OPS_MODE_ENABLE;
+            { static const float id[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 }; memcpy(c1.ColorMatrix, id, sizeof id); }
+            rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c1);
+            memset(&c2, 0, sizeof c2); rg1 = IMP_ISP_Tuning_GetCCMAttr(IMPVI_MAIN, &c2);
+            pb = grab(3000);
+            printf("  W9 CCM manual identity: set rc=%d get rc=%d manual=%d matrix %.3f %.3f %.3f / %.3f %.3f %.3f / %.3f %.3f %.3f; chroma %.1f -> %.1f U/V %.1f/%.1f -> %.1f/%.1f\n", rs, rg1, c2.ManualEn,
+                   c2.ColorMatrix[0], c2.ColorMatrix[1], c2.ColorMatrix[2], c2.ColorMatrix[3], c2.ColorMatrix[4], c2.ColorMatrix[5], c2.ColorMatrix[6], c2.ColorMatrix[7], c2.ColorMatrix[8],
+                   pa.chroma, pb.chroma, pa.u, pa.v, pb.u, pb.v);
+            { double sc1 = pb.chroma;
+              static const float rb[9] = { 1.6f, -0.3f, -0.3f, -0.3f, 1.0f, 0.3f, -0.3f, 0.3f, 1.0f };
+              struct pm pc; memcpy(c1.ColorMatrix, rb, sizeof rb);
+              rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c1); pc = grab(3000);
+              printf("  W9 CCM manual red-boost: set rc=%d U/V %.1f/%.1f chroma %.1f (identity chroma %.1f, default chroma %.1f)\n", rs, pc.u, pc.v, pc.chroma, sc1, pa.chroma);
+              R("W9_CCM", (!rg0 && !rs && !rg1 && c2.ManualEn == 1 && (fabs_d(pc.v - pb.v) + fabs_d(pc.u - pb.u)) > 2.0) ? "PASS" : (!rs ? "PART" : "FAIL"),
+                "Get dev; Set manual rc=%d readback manual=%d m00=%.2f; red-boost vs identity dU=%.1f dV=%.1f", rs, c2.ManualEn, c2.ColorMatrix[0], pc.u - pb.u, pc.v - pb.v); }
+            rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c0);
+            pb = grab(3000);
+            printf("  W9 CCM restored rc=%d U/V %.1f/%.1f (default %.1f/%.1f)\n", rs, pb.u, pb.v, pa.u, pa.v);
+            /* LSC through the module-bypass key */
+            memset(&m0, 0, sizeof m0); rm0 = IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m0);
+            ta = thumb_grab(1500);
+            m1 = m0; m1.bitBypassLSC = 1;
+            rm1 = IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1);
+            tb = thumb_grab(2500);
+            memset(&m1, 0, sizeof m1); rm2 = IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m1);
+            IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
+            corner_a = (ta.v[0] + ta.v[TW - 1] + ta.v[(TH - 1) * TW] + ta.v[TH * TW - 1]) / 4;
+            corner_b = (tb.v[0] + tb.v[TW - 1] + tb.v[(TH - 1) * TW] + tb.v[TH * TW - 1]) / 4;
+            centre_a = ta.v[4 * TW + 7] ; centre_b = tb.v[4 * TW + 7];
+            R("W9_LSC_bypass", (!rm0 && !rm1 && !rm2 && m1.bitBypassLSC == 1) ? ((fabs_d((corner_a / centre_a) - (corner_b / centre_b)) > 0.02) ? "PASS" : "PART") : "FAIL",
+              "ModuleControl get key=0x%x, set bypass LSC rc=%d readback key=0x%x; corner/centre luma %.3f (LSC on) -> %.3f (bypassed); restored", m0.key, rm1, m1.key,
+              corner_a / centre_a, corner_b / centre_b);
+        }
+
+        /* ---- #13 flip / mirror, all nine modes ---- */
+        {
+            static const char *nm[9] = { "NORMAL", "H", "V", "HV", "SENSOR_H", "SENSOR_V", "SENSOR_HV", "IHSV", "SHIV" };
+            static const int want[9] = { 0, 1, 2, 3, 1, 2, 3, 2, 1 };  /* visible transform: ISP+sensor combined */
+            struct thumb base, t; int m; char line[400] = ""; int good = 0, tested = 0;
+            IMPISPHVFLIP fl;
+            fl = IMPISP_FLIP_NORMAL_MODE; IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &fl);
+            base = thumb_grab(2500);
+            for (m = 0; m < 9; m++) {
+                IMPISPHVFLIP g = (IMPISPHVFLIP)99; int rs, rg, best = 0, tr; double dm[4], bd = 1e9;
+                if (m >= 4 && !(mask & 0x10000)) continue;       /* sensor modes only on request */
+                fl = (IMPISPHVFLIP)m;
+                rs = IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &fl);
+                usleep(2500000);
+                rg = IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g);
+                t = thumb_grab(1000);
+                for (tr = 0; tr < 4; tr++) { dm[tr] = thumb_diff(&base, &t, tr); if (dm[tr] < bd) { bd = dm[tr]; best = tr; } }
+                tested++; if (rs == 0 && rg == 0 && g == (IMPISPHVFLIP)m && best == want[m]) good++;
+                snprintf(line + strlen(line), sizeof line - strlen(line), "%s:set%d/get%d(%d) best=%d(want %d) d=%.1f/%.1f/%.1f/%.1f; ", nm[m], rs, rg, g, best, want[m], dm[0], dm[1], dm[2], dm[3]);
+                printf("  W13 %s\n", line + (strlen(line) > 100 ? strlen(line) - 100 : 0));
+            }
+            fl = IMPISP_FLIP_NORMAL_MODE; IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &fl); usleep(2500000);
+            t = thumb_grab(1500);
+            R("W13_HVFLIP", good == tested ? "PASS" : (good ? "PART" : "FAIL"), "%d of %d modes mirror the picture as expected; restored NORMAL diff %.1f; %s", good, tested, thumb_diff(&base, &t, 0), line);
+        }
+
+        /* ---- #14 WDR / ADR / DRC ---- */
+        {
+            IMPISPTuningOpsMode we = (IMPISPTuningOpsMode)9; IMPISPWdrOutputMode wm; IMPISPModuleRatioAttr mr, mg; IMPISPModuleCtl m0, m1;
+            struct pm p0, p1, p2, p3; int rw0, rw1, rw2, ro0, ro1, rm, i;
+            struct thumb ta, tb;
+            rw0 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &we);
+            p0 = grab(2500);
+            { IMPISPTuningOpsMode e1 = IMPISP_TUNING_OPS_MODE_ENABLE; rw1 = IMP_ISP_WDR_ENABLE(IMPVI_MAIN, &e1); }
+            p1 = grab(3000); we = (IMPISPTuningOpsMode)9; rw2 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &we);
+            printf("  W14 WDR_ENABLE(1) rc=%d GET rc=%d mode=%d; Y %.1f -> %.1f sd %.1f -> %.1f\n", rw1, rw2, we, p0.y, p1.y, p0.sd, p1.sd);
+            { IMPISPTuningOpsMode e0 = IMPISP_TUNING_OPS_MODE_DISABLE; IMP_ISP_WDR_ENABLE(IMPVI_MAIN, &e0); }
+            p2 = grab(2500);
+            R("W14_WDR_ENABLE", (!rw0 && !rw1 && !rw2 && we == IMPISP_TUNING_OPS_MODE_ENABLE && fabs_d(p1.y - p0.y) < 6) ? "PART" : "FAIL",
+              "rc %d/%d/%d readback %d; linear sensor: flag only, picture Y %.1f/%.1f/%.1f", rw0, rw1, rw2, we, p0.y, p1.y, p2.y);
+            for (i = 0; i < 3; i++) {
+                IMPISPWdrOutputMode set = (IMPISPWdrOutputMode)i; wm = (IMPISPWdrOutputMode)9;
+                ro0 = IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_MAIN, &set); ro1 = IMP_ISP_Tuning_GetWdrOutputMode(IMPVI_MAIN, &wm);
+                printf("  W14 WdrOutputMode set %d rc=%d get rc=%d -> %d\n", i, ro0, ro1, wm);
+            }
+            wm = IMPISP_WDR_OUTPUT_MODE_FUS_FRAME; IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_MAIN, &wm);
+            /* DRC / ADR strength via Module_Ratio index 2 */
+            memset(&mr, 0, sizeof mr); rm = IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &mr);
+            printf("  W14 Module_Ratio default rc=%d: SINTER en%d/%u TEMPER en%d/%u DRC en%d/%u DPC en%d/%u DEFOG en%d/%u\n", rm,
+                   mr.ratio_attr[0].en, mr.ratio_attr[0].ratio, mr.ratio_attr[1].en, mr.ratio_attr[1].ratio, mr.ratio_attr[2].en, mr.ratio_attr[2].ratio,
+                   mr.ratio_attr[3].en, mr.ratio_attr[3].ratio, mr.ratio_attr[4].en, mr.ratio_attr[4].ratio);
+            { static const int rv[3] = { 0, 128, 255 }; double yy[3], sdv[3]; int rs[3], rb[3], ok = 1;
+              IMPISPModuleRatioAttr sv = mr;
+              for (i = 0; i < 3; i++) {
+                  IMPISPModuleRatioAttr s = mr; s.ratio_attr[IMP_ISP_MODULE_DRC].en = IMPISP_TUNING_OPS_MODE_ENABLE; s.ratio_attr[IMP_ISP_MODULE_DRC].ratio = rv[i];
+                  rs[i] = IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &s);
+                  memset(&mg, 0, sizeof mg); IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &mg); rb[i] = mg.ratio_attr[IMP_ISP_MODULE_DRC].ratio;
+                  p3 = grab(4000); yy[i] = p3.y; sdv[i] = p3.sd;
+                  if (rs[i] || rb[i] != rv[i]) ok = 0;
+              }
+              IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &sv);
+              R("W14_DRC_ratio", ok ? ((fabs_d(yy[2] - yy[0]) > 2.0 || fabs_d(sdv[2] - sdv[0]) > 1.0) ? "PASS" : "PART") : "FAIL",
+                "ratio 0/128/255 set rc %d/%d/%d readback %d/%d/%d; Y %.1f/%.1f/%.1f sd %.1f/%.1f/%.1f", rs[0], rs[1], rs[2], rb[0], rb[1], rb[2], yy[0], yy[1], yy[2], sdv[0], sdv[1], sdv[2]); }
+            /* ADR module bypass */
+            memset(&m0, 0, sizeof m0); IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m0);
+            ta = thumb_grab(1500); m1 = m0; m1.bitBypassADR = 1; ro0 = IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1);
+            tb = thumb_grab(3000); IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
+            R("W14_ADR_bypass", !ro0 ? (thumb_diff(&ta, &tb, 0) > 0.8 ? "PASS" : "PART") : "FAIL", "bypass ADR rc=%d, mean luma %.1f -> %.1f, thumbnail diff %.2f", ro0, ta.mean, tb.mean, thumb_diff(&ta, &tb, 0));
+            (void)p2;
+        }
+
+        /* ---- #16 NR strength (Sinter 2D / Temper 3D) ---- */
+        {
+            IMPISPModuleRatioAttr mr, mg, sv; int idx, i; static const int rv[3] = { 0, 128, 255 };
+            memset(&sv, 0, sizeof sv); IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &sv);
+            for (idx = 0; idx < 2; idx++) {
+                double nz[3], gr[3]; int rs[3], rb[3], ok = 1;
+                for (i = 0; i < 3; i++) {
+                    struct pm pp;
+                    mr = sv; mr.ratio_attr[idx].en = IMPISP_TUNING_OPS_MODE_ENABLE; mr.ratio_attr[idx].ratio = rv[i];
+                    rs[i] = IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &mr);
+                    memset(&mg, 0, sizeof mg); IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &mg); rb[i] = mg.ratio_attr[idx].ratio;
+                    usleep(3000000);
+                    nz[i] = noise_meas(6); pp = grab(100); gr[i] = pp.grad;
+                    if (rs[i] || rb[i] != rv[i]) ok = 0;
+                }
+                IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &sv);
+                R(idx ? "W16_TemperRatio" : "W16_SinterRatio", ok ? ((nz[0] > nz[2] + 0.05) ? "PASS" : "PART") : "FAIL",
+                  "ratio 0/128/255 set rc %d/%d/%d readback %d/%d/%d; temporal noise %.3f/%.3f/%.3f; grad %.2f/%.2f/%.2f", rs[0], rs[1], rs[2], rb[0], rb[1], rb[2], nz[0], nz[1], nz[2], gr[0], gr[1], gr[2]);
+            }
+        }
+
+        /* ---- #19 ISP privacy mask ---- */
+        {
+            IMPISPMASKAttr ma, mg; int rs, rg; double y0, y1, y2, o0, o1; unsigned i;
+            memset(&ma, 0, sizeof ma);
+            y0 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278)); o0 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
+            ma.mask_chx[CH][0].mask_en = 1; ma.mask_chx[CH][0].mask_pos_left = MX(0.3125); ma.mask_chx[CH][0].mask_pos_top = MY(0.278);
+            ma.mask_chx[CH][0].mask_width = MX(0.234); ma.mask_chx[CH][0].mask_height = MY(0.278); ma.mask_chx[CH][0].mask_type = IMPISP_MASK_TYPE_RGB;
+            ma.mask_chx[CH][0].mask_value.mask_argb.r_value = 0; ma.mask_chx[CH][0].mask_value.mask_argb.g_value = 0; ma.mask_chx[CH][0].mask_value.mask_argb.b_value = 0;
+            rs = IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma);
+            usleep(1500000);
+            memset(&mg, 0, sizeof mg); rg = IMP_ISP_Tuning_GetMask(IMPVI_MAIN, &mg);
+            y1 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278)); o1 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
+            printf("  W19 Set rc=%d Get rc=%d readback en%d pos %u,%u size %ux%u type %d; region Y %.1f -> %.1f, outside %.1f -> %.1f\n", rs, rg, mg.mask_chx[CH][0].mask_en,
+                   mg.mask_chx[CH][0].mask_pos_left, mg.mask_chx[CH][0].mask_pos_top, mg.mask_chx[CH][0].mask_width, mg.mask_chx[CH][0].mask_height, mg.mask_chx[CH][0].mask_type, y0, y1, o0, o1);
+            /* second block: red cover */
+            ma.mask_chx[CH][1] = ma.mask_chx[CH][0]; ma.mask_chx[CH][1].mask_pos_left = MX(0.703); ma.mask_chx[CH][1].mask_pos_top = MY(0.625); ma.mask_chx[CH][1].mask_width = MX(0.156); ma.mask_chx[CH][1].mask_height = MY(0.208);
+            ma.mask_chx[CH][1].mask_value.mask_argb.r_value = 255;
+            rs |= IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma); usleep(1500000);
+            { struct pm pm2 = grab(500); (void)pm2; }
+            y2 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
+            printf("  W19 second block (red) region Y %.1f -> %.1f\n", o1, y2);
+            for (i = 0; i < 12; i++) ((IMPISP_MASK_BLOCK_PAR *)&ma)[i].mask_en = 0;
+            IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma); usleep(1500000);
+            { double y3 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278));
+              R("W19_Mask", (!rs && !rg && mg.mask_chx[CH][0].mask_en && y1 < 30 && fabs_d(o1 - o0) < 12 && y3 > y0 * 0.6) ? "PASS" : "FAIL",
+                "cover in the sub stream (ch1): region Y %.1f -> %.1f (covered), outside %.1f -> %.1f, after disable %.1f; set/get rc %d/%d", y0, y1, o0, o1, y3, rs, rg); }
+        }
+    }
+
+    /* ===== phase 0x8000: encoder telemetry (#44) ===== */
+    if (mask & 0x8000) {
+        struct qs q; pthread_t th; struct es e2; IMPEncoderChnStat s; int r1; OpenIMPEncoderTelemetry tt; int rt = -99;
+        memset(&q, 0, sizeof q); q.run = 1;
+        pthread_create(&th, NULL, q_sampler, &q);
+        stream_for(5.0, &e2);
+        q.run = 0; pthread_join(th, NULL);
+        printf("  W44 %u Query samples in 5 s, %u frames: leftPics %u/%u/%u work_done 0:%u 1:%u leftStreamFrames 0:%u 1:%u leftBytes!=0 in %u curPacks!=0 in %u\n",
+               q.n, e2.frames, q.lp[0], q.lp[1], q.lp[2], q.wd[0], q.wd[1], q.sf[0], q.sf[1], q.nzb, q.nzp);
+        if (OpenIMP_Encoder_GetTelemetry) {
+            memset(&tt, 0, sizeof tt); rt = OpenIMP_Encoder_GetTelemetry(CH, &tt);
+            printf("  W44 telemetry rc=%d frames=%llu bytes=%llu idr=%llu enc_us last/avg/max=%u/%u/%u fps=%u.%02u kbps=%u (consumer %u frames %u bytes)\n", rt,
+                   (unsigned long long)tt.frames, (unsigned long long)tt.bytes, (unsigned long long)tt.idr_frames, tt.encode_us_last, tt.encode_us_avg, tt.encode_us_max,
+                   tt.fps_x100 / 100, tt.fps_x100 % 100, tt.avg_kbps, e2.frames, e2.bytes);
+        }
+        { /* polled, not fetched; held; evalinfo; avebitrate */
+            IMPEncoderStream st2; memset(&st2, 0, sizeof st2);
+            if (IMP_Encoder_PollingStream(CH, 1000) == 0) {
+                memset(&s, 0xff, sizeof s); r1 = IMP_Encoder_Query(CH, &s);
+                printf("  W44 polled-not-fetched: rc=%d pics=%u frames=%u bytes=%u packs=%u done=%u\n", r1, s.leftPics, s.leftStreamFrames, s.leftStreamBytes, s.curPacks, s.work_done);
+                if (IMP_Encoder_GetStream(CH, &st2, 1) == 0) {
+                    int br = -1, ra = -1, k2; char ev[512];
+                    memset(&s, 0xff, sizeof s); IMP_Encoder_Query(CH, &s);
+                    printf("  W44 held: pics=%u frames=%u bytes=%u packs=%u done=%u\n", s.leftPics, s.leftStreamFrames, s.leftStreamBytes, s.curPacks, s.work_done);
+                    ra = -77; if (IMP_Encoder_GetChnAveBitrate) for (k2 = 0; k2 < 8; k2++) ra = IMP_Encoder_GetChnAveBitrate(CH, &st2, 5, &br);
+                    memset(ev, 0, sizeof ev);
+                    printf("  W44 AveBitrate rc=%d %d kbps (one stream x8 calls, window 5); EvalInfo rc=%d\n", ra, br, IMP_Encoder_GetChnEvalInfo ? IMP_Encoder_GetChnEvalInfo(CH, ev) : -77);
+                    IMP_Encoder_ReleaseStream(CH, &st2);
+                }
+            }
+        }
+        R("W44_Query", (q.n > 100 && q.wd[0] > 0 && q.wd[1] > 0) ? "PASS" : "PART", "work_done 0 in %u of %u samples (encoder busy share), leftPics>0 in %u", q.wd[0], q.n, q.n - q.lp[0]);
+        R("W44_Telemetry", (!rt && tt.frames > 50) ? "PASS" : "FAIL", "OpenIMP_Encoder_GetTelemetry rc=%d frames %llu vs consumer %u", rt, (unsigned long long)tt.frames, e2.frames);
     }
 
     if (mask & 0x800) {
