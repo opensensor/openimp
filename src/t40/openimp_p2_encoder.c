@@ -24,6 +24,7 @@
  * lost there.  Code that must differ uses PLATFORM_T21 explicitly. */
 
 #include "openimp_profile.h"
+#include <openimp/openimp_encoder_telemetry.h>
 #include "imp_log_int.h"
 #include "trace_control.h"
 #include "p2_rc_readback.h"
@@ -346,6 +347,14 @@ typedef struct {
     int ave_valid;
     double ave_kbps;
     int in_poll;                    /* PollingStream calls in progress */
+    /* Live telemetry (IMP_Encoder_Query, OpenIMP_Encoder_GetTelemetry):
+     * `encoding` is 1 from the moment a source frame is handed to the codec
+     * until its stream is back (atomic, read without ch->lock). */
+    int encoding;
+    uint64_t enc_start_us;
+    uint64_t tel_frames, tel_bytes, tel_idr, tel_enc_us_sum;
+    uint32_t tel_enc_us_last, tel_enc_us_max, tel_last_len, tel_first_len;
+    uint64_t tel_first_us, tel_last_us;
     int closing;                    /* teardown waits: refuse new polls */
     pthread_cond_t poll_idle;       /* signalled when in_poll drops to 0 */
     pthread_mutex_t poll_serial;    /* one PollingStream encodes at a time */
@@ -2276,6 +2285,10 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 #endif
 #endif
     ch->created = 1;
+    ch->tel_frames = ch->tel_bytes = ch->tel_idr = ch->tel_enc_us_sum = 0;
+    ch->tel_enc_us_last = ch->tel_enc_us_max = ch->tel_last_len = 0;
+    ch->tel_first_len = 0;
+    ch->tel_first_us = ch->tel_last_us = 0;
     ch->ave_bytes = 0;
     ch->ave_start_us = 0;
     ch->ave_frames = 0;
@@ -2988,6 +3001,8 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         (void)AL_Codec_Encode_SetJpegSrcPitch(ch->codec, ch->jpeg_src_pitch);
         (void)AL_Codec_Encode_SetJpegSkip(ch->codec, jpeg_may_skip);
     }
+    ch->enc_start_us = p2_monotonic_us();
+    __atomic_store_n(&ch->encoding, 1, __ATOMIC_RELEASE);
     process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);
 #if defined(PLATFORM_T23)
     pace_encoded_us = p2_monotonic_us();
@@ -3066,6 +3081,17 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     ch->raw_stream = stream;
     ch->raw_stream_out = 0;
     ch->codec_user = user;
+    {
+        uint64_t t = p2_monotonic_us();
+        uint64_t d = t > ch->enc_start_us ? t - ch->enc_start_us : 0;
+
+        if (d > 0xffffffffu)
+            d = 0xffffffffu;
+        ch->tel_enc_us_last = (uint32_t)d;
+        if ((uint32_t)d > ch->tel_enc_us_max)
+            ch->tel_enc_us_max = (uint32_t)d;
+        ch->tel_enc_us_sum += d;
+    }
     pthread_mutex_unlock(&ch->lock);
 #if defined(PLATFORM_T23)
     if (pace_have_frame)
@@ -3079,6 +3105,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     result = 0;
 
 done:
+    __atomic_store_n(&ch->encoding, 0, __ATOMIC_RELEASE);
     if (reader_counted)
         __atomic_sub_fetch(&ch->frame_readers, 1, __ATOMIC_RELEASE);
     if (stream)
@@ -3276,6 +3303,20 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
     stream->isVI = false;
 #endif
     ch->raw_stream_out = 1;
+    {
+        uint64_t t = p2_monotonic_us();
+
+        if (!ch->tel_first_us) {
+            ch->tel_first_us = t;
+            ch->tel_first_len = raw->length;
+        }
+        ch->tel_last_us = t;
+        ch->tel_frames++;
+        ch->tel_bytes += raw->length;
+        ch->tel_last_len = raw->length;
+        if (is_idr)
+            ch->tel_idr++;
+    }
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
@@ -3423,6 +3464,30 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
                            ch->raw_stream_out, ch->in_poll);
     pthread_mutex_unlock(&ch->lock);
 #else
+#if defined(PLATFORM_T41)
+    /* No input queue (encode on demand in PollingStream/GetStream, at most
+     * one finished stream): leftPics = the picture the codec is encoding
+     * right now (1 from the hand-over of the source frame to the codec until
+     * its stream is back, 0 while PollingStream only waits for the next
+     * frame), leftStreamFrames/leftStreamBytes/curPacks = the finished
+     * stream that waits for GetStream (its real byte length), work_done 0
+     * while a picture is encoded (vendor: 0 = running, 1 = idle). */
+    {
+        int encoding = __atomic_load_n(&ch->encoding, __ATOMIC_ACQUIRE);
+
+        pthread_mutex_lock(&ch->lock);
+        memset(stat, 0, sizeof(*stat));
+        stat->registered = ch->registered != 0;
+        stat->leftPics = encoding ? 1u : 0u;
+        if (ch->raw_stream && !ch->raw_stream_out) {
+            stat->leftStreamFrames = 1u;
+            stat->leftStreamBytes = ((const P2HWStream *)ch->raw_stream)->length;
+            stat->curPacks = 1u;
+        }
+        stat->work_done = encoding ? 0u : 1u;
+        pthread_mutex_unlock(&ch->lock);
+    }
+#else
     /* No input queue (encode on demand in PollingStream/GetStream, at most
      * one finished stream): leftPics = the picture being encoded right now,
      * leftStreamFrames/leftStreamBytes/curPacks = the finished stream that
@@ -3440,6 +3505,40 @@ int IMP_Encoder_Query(int channel, IMPEncoderCHNStat *stat)
     stat->work_done = ch->in_poll > 0 ? 0u : 1u;
     pthread_mutex_unlock(&ch->lock);
 #endif
+#endif
+    return 0;
+}
+
+/* OpenIMP extension (beyond vendor): cumulative per-channel encoder
+ * telemetry since CreateChn, counted when a stream is handed out by
+ * GetStream.  Not in any vendor SDK; weak-linkable by streamers. */
+int OpenIMP_Encoder_GetTelemetry(int channel, OpenIMPEncoderTelemetry *t)
+{
+    P2EncoderChannel *ch;
+    uint64_t span_us;
+
+    if (!p2_valid_channel(channel) || !t || !p2_channels[channel].created)
+        return -1;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    memset(t, 0, sizeof(*t));
+    t->frames = ch->tel_frames;
+    t->bytes = ch->tel_bytes;
+    t->idr_frames = ch->tel_idr;
+    t->last_frame_bytes = ch->tel_last_len;
+    t->encode_us_last = ch->tel_enc_us_last;
+    t->encode_us_max = ch->tel_enc_us_max;
+    t->encode_us_avg = ch->tel_frames
+        ? (uint32_t)(ch->tel_enc_us_sum / ch->tel_frames) : 0u;
+    span_us = ch->tel_last_us > ch->tel_first_us
+        ? ch->tel_last_us - ch->tel_first_us : 0u;
+    if (span_us && ch->tel_frames > 1) {
+        /* the first frame opens the window: n-1 frames in span */
+        t->fps_x100 = (uint32_t)((ch->tel_frames - 1) * 100000000ull / span_us);
+        t->avg_kbps = (uint32_t)((ch->tel_bytes - ch->tel_first_len) * 8000ull / span_us);
+    }
+    t->encoding = (uint32_t)__atomic_load_n(&ch->encoding, __ATOMIC_ACQUIRE);
+    pthread_mutex_unlock(&ch->lock);
     return 0;
 }
 

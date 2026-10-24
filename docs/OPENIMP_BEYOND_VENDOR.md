@@ -61,6 +61,10 @@ Further items (night 2026-10-03):
 - **T10 Sinter/Temper strength acts** (the vendor treats it as a no-op): temporal noise 7.11 / 2.91 / 1.51 at temper 0 / 128 / 255, survives day/night (`claude/t10-t20-nr-wdr`).
 - **T41 (cam-F), device-verified:** module reload on the rev2 image, 10/10 rmmod/insmod cycles, refcnt 0, 0 oops, kill -9 of the streamer recovers 3/3 (root cause was a decompiled tuning-node helper overwriting .bss, `claude/t41-matrix-fixes`); brightness 255 gives Y 211, contrast 0 flat grey, saturation 0/255 chroma 0.1/7.1; bitrate 400/1200/3000 gives 518/1195/2777 kbit/s over 30 s each (`claude/t41-cbr-overshoot`). Open: the driver writes the sensor flip synchronously, but timps does not call SetHVFLIP live on T41; u-boot ignores the stored env (fw_env.config size mismatch), so changing rmem needs an env-partition image (user decision pending).
 
+### 1.0 Encoder telemetry (T41, 2026-10-24)
+
+`OpenIMP_Encoder_GetTelemetry(chn, &t)` (`include/openimp/openimp_encoder_telemetry.h`, weak-link it): frames, bytes, IDR count, last frame size, encode time last/avg/max (microseconds, source frame to stream back), delivered fps x100 and average kbit/s since CreateChn, and whether a picture is in the codec right now. The vendor library has only `IMP_Encoder_Query` (6 words). Device-tested on T41 (.34): matches the consumer's own count exactly, fps 15.02 at 15, 2073 kbit/s at CBR 2000.
+
 ### 1.1 Encoder ROI (region QP) and the valid-H.264 rules (agg-34)
 
 | Feature | SoC | API / param / env | Default | How a streamer uses it | Detect / disable | Status |
