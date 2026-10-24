@@ -2269,10 +2269,12 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
 #if defined(PLATFORM_T41)
     /* Vendor T41 1.2.6 CreateChn (0x38bc0): a count that was not set is 2,
      * or 1 for a channel using the shared bitstream buffer
-     * (IMP_Encoder_SetAvpuBsShare); JPEG keeps the P2 default. */
+     * (IMP_Encoder_SetAvpuBsShare).  OpenIMP keeps 2 there as well (beyond
+     * vendor, user decision 10-24): the slots alias the shared region, so
+     * the second one costs only heap and avoids a stall while the app still
+     * holds a stream. */
     if (!ch->stream_count_set && p2_attr_codec_type(attr) != IMP_ENC_TYPE_JPEG)
-        ch->max_stream_count = AL_Codec_Encode_BsShareSize() ?
-            1 : P2_DEFAULT_STREAM_COUNT;
+        ch->max_stream_count = P2_DEFAULT_STREAM_COUNT;
 #endif
     if (AL_Codec_Encode_SetStreamBufferCount(ch->codec,
                                              ch->max_stream_count) != 0) {
@@ -3913,7 +3915,7 @@ static void p2_drop_unread_stream(P2EncoderChannel *ch)
  * 1.2.6 0x36c78 (disassembled, run against the open driver on a T41 board):
  * on, before CreateChn: one shared AVPU bitstream buffer of avpuBsSize bytes
  * (0: 0x23b700) replaces the private stream buffers of every H.264/H.265
- * channel created while it is on; their stream count defaults to 1 and the
+ * channel created while it is on; their stream count defaults to 2 (the vendor: 1) and the
  * pictures are handed out from heap copies (phyAddr 0).  off, after
  * DestroyChn: frees it.  Returns 0 in every case except an allocation
  * failure (0x80040100); CreateChn of a channel whose stream buffer does not

@@ -354,8 +354,8 @@ int main(void)
 
 #if defined(PLATFORM_T41)
     /* IMP_Encoder_SetAvpuBsShare (vendor T41 1.2.6 0x36c78 / CreateChn
-     * 0x38bc0): a stream count that was not set is 2, or 1 while the shared
-     * bitstream buffer is on; JPEG is not affected; a set count wins; a
+     * 0x38bc0): a stream count that was not set is 2, or (vendor) 1 while the shared
+     * bitstream buffer is on, kept at 2 here; JPEG is not affected; a set count wins; a
      * buffer that does not fit fails CreateChn with 0x80048008. */
     {
         int c = -1;
@@ -369,8 +369,8 @@ int main(void)
         CHECK(IMP_Encoder_SetAvpuBsShare(true, 0) == 0 &&
               AL_Codec_Encode_BsShareSize() == 0x23b700u, "share on");
         CHECK(IMP_Encoder_CreateChn(4, &video) == 0 &&
-              stub_stream_count == 1 &&
-              IMP_Encoder_GetMaxStreamCnt(4, &c) == 0 && c == 1,
+              stub_stream_count == 2 &&
+              IMP_Encoder_GetMaxStreamCnt(4, &c) == 0 && c == 2,
               "shared default stream count %d / %d", stub_stream_count, c);
         CHECK(IMP_Encoder_DestroyChn(4) == 0, "destroy 4 (shared)");
         CHECK(IMP_Encoder_SetMaxStreamCnt(4, 3) == 0 &&
