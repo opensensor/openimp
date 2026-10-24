@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Branch `claude/telemetry-abi` (2026-10-24, merged into `next`)
+
+- **`OpenIMPEncoderTelemetry` is versioned:** two leading fields `size` (caller sets `sizeof(t)`, library writes back the bytes filled) and `version` (`OPENIMP_ENCODER_TELEMETRY_VERSION`, 1). New fields are only appended, so a streamer built against an older header keeps working; a call with `size` < 8 returns -1. Breaking change against the first (unversioned) layout of earlier today, which no release shipped.
+
 ## Branch `claude/t4x-bufshare` (2026-10-24, merged into `next`)
 
 - **T40/T41 default stream count 2 (vendor); T41 `IMP_Encoder_SetAvpuBsShare`:** reference-frame sharing does not exist on T40/T41 (vendor libimp 1.2.6 / 1.3.1 have none); the vendor features are `SetbufshareChn` (already matched) and, T41 only, `SetAvpuBsShare`. OpenIMP used 4 stream buffers per channel on T40/T41, the vendor 2: stream rmem for 1080p+360p 5.36 -> 2.68 MB (rmem in use 28.84 -> 26.16 MB, vendor 25.56). `SetAvpuBsShare` follows the vendor (one shared rmem bitstream buffer, default 0x23b700, heap copies with phyAddr 0, CreateChn 0x80048008 if a buffer does not fit, 0x80040100 if the allocation fails); the default stream count under sharing is 2, the vendor's 1 (beyond vendor, user decision). Device (Cinnado T41NQ .34): decode clean, synthetic pattern share vs default SSIM 1.0. T40 by code only.
