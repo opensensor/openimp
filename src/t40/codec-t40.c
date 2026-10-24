@@ -4100,9 +4100,8 @@ static uint32_t avpu_t41_advance_luma_offset(uint32_t current,
 
 #if defined(PLATFORM_T41)
 /* T41 ROI: on by default (OPENIMP_T41_ROI=0 refuses it).  Device-tested
- * under CBR; under FixQP the AVPU ignores the table (cause open, docs/ROI.md),
- * so there the windows are only cached and the table is not written, unless
- * OPENIMP_T41_ROI=1 forces it. */
+ * under CBR and FixQP (under FixQP the EP2 QP range is opened while a window
+ * is active, see avpu_t41_roi_apply). */
 static int avpu_t41_roi_experimental(void)
 {
     static int on = -1;
@@ -4115,13 +4114,6 @@ static int avpu_t41_roi_experimental(void)
     return on;
 }
 
-static int avpu_t41_roi_forced(void)
-{
-    const char *e = getenv("OPENIMP_T41_ROI");
-
-    return e && e[0] == '1';
-}
-
 static void avpu_t41_roi_apply(ALAvpuContext *ctx)
 {
     uint32_t cols, rows, i, y, x, mb;
@@ -4130,15 +4122,6 @@ static void avpu_t41_roi_apply(ALAvpuContext *ctx)
 
     if (!ctx->roi_pending || ctx->codec_hevc || !ctx->interm_buf.map)
         return;
-    if (ctx->rc_mode == HW_RC_MODE_FIXQP && !avpu_t41_roi_forced()) {
-        static int warned;
-
-        if (!warned) {
-            warned = 1;
-            syslog(LOG_WARNING, "openimp: ROI has no effect under FixQP on T41");
-        }
-        return;
-    }
     cols = (ctx->enc_w + 15u) >> 4;
     rows = (ctx->enc_h + 15u) >> 4;
     mb = cols * rows;
@@ -4175,6 +4158,20 @@ static void avpu_t41_roi_apply(ALAvpuContext *ctx)
         avpu_roi_warn_clamped("T41", res.clamped, &res, 0u);
     }
     ctx->roi_table_on = any;
+    /* FixQP: the vendor pins the legal QP range in the EP2 header (word 4,
+     * max<<24 | min<<16 | 0x302) to QP..QP; the AVPU clamps every
+     * macroblock QP to it, so a window had no effect there (found
+     * 2026-10-24: the vendor itself shows none under FixQP).  While a
+     * window or map is active the range is opened to 0..51 (picture QP
+     * plus delta is already limited by the table rules); without one the
+     * header is the vendor's again. */
+    if (ctx->rc_mode == HW_RC_MODE_FIXQP) {
+        uint32_t bounds = any ? 0x33000302u
+                              : (((ctx->max_qp & 0xffu) << 24) |
+                                 ((ctx->min_qp & 0xffu) << 16) | 0x302u);
+
+        memcpy(ep2 + 0x10u, &bounds, sizeof(bounds));
+    }
     pthread_mutex_unlock(&avpu_roi_lock);
     if (getenv("OPENIMP_T41_DUMP_CMD"))
         fprintf(stderr, "openimp T41 roi table %s %ux%u ep2_size=0x%x e0=%08x e%u=%08x\n",

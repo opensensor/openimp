@@ -239,6 +239,11 @@ static void restart_out(int ch, int stop)
     }
 }
 
+#ifdef PLATFORM_T41
+typedef struct { uint8_t *map; int mapSize; int mode; int8_t Quality; int32_t reserved; } MapAttr;
+int IMP_Encoder_SetChnMapRoi(int encChn, MapAttr *a) __attribute__((weak));
+#endif
+
 static void apply_extra(const char *ex)
 {
 #ifdef PLATFORM_T41
@@ -258,6 +263,27 @@ static void apply_extra(const char *ex)
             do_zoom(ch, 0, 0, 0, 0, 0);
         else if (tok[0] == 's' && sscanf(tok + 1, "%d=%d,%d", &ch, &a[0], &a[1]) == 3)
             do_slv(ch, a[0], a[1]);
+        else if (tok[0] == 'm' && (sscanf(tok + 1, "=%d,%d,%d,%d,%d", &a[0], &a[1], &a[2], &a[3], &a[4]) == 5 ||
+                                   !strcmp(tok, "m=off"))) {
+            /* SetChnMapRoi (T41): m=x,y,w,h,delta in pixels of the ch0 output (ROITEST_OUT), map mode relative */
+            MapAttr ma;
+            static uint8_t *map;
+            int ow = 2880, oh = 1620, cols, rows, bx, by, ret;
+
+            if (getenv("ROITEST_OUT")) sscanf(getenv("ROITEST_OUT"), "%dx%d", &ow, &oh);
+            cols = (ow + 15) / 16; rows = (oh + 15) / 16;
+            memset(&ma, 0, sizeof(ma));
+            if (strcmp(tok, "m=off")) {
+                free(map);
+                map = calloc(cols * rows, 1);
+                for (by = a[1] / 16; by < (a[1] + a[3] + 15) / 16 && by < rows; by++)
+                    for (bx = a[0] / 16; bx < (a[0] + a[2] + 15) / 16 && bx < cols; bx++)
+                        map[by * cols + bx] = (uint8_t)(((a[4] & 0x3f) << 2) | 2);
+                ma.map = map; ma.mapSize = cols * rows; ma.mode = 0; ma.Quality = 0;
+            }
+            ret = IMP_Encoder_SetChnMapRoi ? IMP_Encoder_SetChnMapRoi(0, &ma) : -99;
+            printf("[R] SetChnMapRoi(%s) ret=%d\n", tok, ret);
+        }
         else
             printf("[E] bad extra '%s'\n", tok);
     }
