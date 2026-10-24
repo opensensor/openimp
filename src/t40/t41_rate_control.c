@@ -1113,6 +1113,8 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     controller->smoothed_p_bits = (uint32_t)target_bits;
     controller->i_min_qp = min_qp;
     controller->i_max_qp = max_qp;
+    controller->i_model_scale = 11225u;
+    controller->rc_options = 1u;        /* IMP_ENC_RC_SCN_CHG_RES */
     controller->initialized = 1;
     return 0;
 }
@@ -1128,10 +1130,26 @@ int openimp_t41_rate_controller_reconfigure(
 {
     uint32_t qp = controller && controller->initialized
         ? controller->current_qp : default_qp;
+    OpenIMPT41RateController keep;
+    int was_initialized = controller && controller->initialized;
+    int ret;
 
-    return openimp_t41_rate_controller_init(controller, bitrate, fps_num,
-                                            fps_den, gop_length, min_qp,
-                                            max_qp, qp);
+    if (was_initialized)
+        keep = *controller;
+    ret = openimp_t41_rate_controller_init(controller, bitrate, fps_num,
+                                           fps_den, gop_length, min_qp,
+                                           max_qp, qp);
+    if (ret == 0 && was_initialized) {
+        /* the OEM setParam keeps the per-type models and options */
+        controller->i_model_bits = keep.i_model_bits;
+        controller->i_model_qp = keep.i_model_qp;
+        controller->i_model_scale = keep.i_model_scale;
+        controller->i_picture_count = keep.i_picture_count;
+        controller->p_qp_sum = keep.p_qp_sum;
+        controller->p_qp_count = keep.p_qp_count;
+        controller->rc_options = keep.rc_options;
+    }
+    return ret;
 }
 
 int openimp_t41_rate_controller_complete(
@@ -1220,16 +1238,120 @@ int openimp_t41_rate_controller_set_i_picture(
     return 0;
 }
 
+void openimp_t41_rate_controller_set_options(
+    OpenIMPT41RateController *controller, uint32_t rc_options)
+{
+    if (controller)
+        controller->rc_options = rc_options;
+}
+
+void openimp_t41_rate_controller_note_picture(
+    OpenIMPT41RateController *controller, int is_idr,
+    uint32_t completed_bits, uint32_t used_qp, uint32_t intra_percent)
+{
+    if (!controller || !controller->initialized || !completed_bits ||
+        used_qp > 51u)
+        return;
+    if (is_idr) {
+        /* o0OI: the per-type model takes every third picture */
+        if (++controller->i_picture_count >= 3u) {
+            controller->i_model_bits = completed_bits;
+            controller->i_model_qp = used_qp;
+            controller->i_picture_count = 0u;
+        }
+        controller->p_qp_sum = 0u;
+        controller->p_qp_count = 0u;
+        return;
+    }
+    /* a P picture coded mostly intra (scene change) refreshes the I model */
+    if (intra_percent >= 81u) {
+        controller->i_model_bits = completed_bits;
+        controller->i_model_qp = used_qp;
+    }
+    controller->p_qp_sum += used_qp;
+    ++controller->p_qp_count;
+}
+
+static int16_t openimp_t41_i_model_qp_for(
+    const OpenIMPT41RateController *controller, uint32_t target_bits)
+{
+    int16_t model_qp = (int16_t)controller->i_model_qp;
+    int16_t selected = model_qp;
+
+    if (model_qp < (int16_t)controller->i_min_qp)
+        model_qp = (int16_t)controller->i_min_qp;
+    if (model_qp > (int16_t)controller->i_max_qp)
+        model_qp = (int16_t)controller->i_max_qp;
+    if (openimp_t41_rate_control_search_qp(
+            controller->i_model_bits, model_qp, target_bits,
+            controller->i_model_scale, (int16_t)controller->i_min_qp,
+            (int16_t)controller->i_max_qp, &selected) != 0)
+        return model_qp;
+    return selected;
+}
+
 uint32_t openimp_t41_rate_controller_picture_qp(
     const OpenIMPT41RateController *controller, int is_idr)
 {
     int32_t qp;
+    int32_t budget;
+    int64_t window_bits;
 
     if (!controller || !controller->initialized)
         return 0u;
     if (!is_idr)
         return controller->current_qp;
-    qp = (int32_t)controller->current_qp - (int32_t)controller->ip_delta;
+    qp = (int32_t)controller->current_qp;
+    /* eRcOptions: (options & 5) != 1 (SCN_CHG_RES clear or STATIC_SCENE
+     * set) takes the I QP from the I model (OEM iIIo, +408): the larger of
+     * the mean P QP since the last IDR (+ the P-size ratio) and the QP the
+     * I model needs for 3/4 of min(CPB, GOP budget), plus the delta. */
+    if ((controller->rc_options & 5u) != 1u && controller->i_model_bits &&
+        controller->gop_length >= 2u) {
+        uint32_t count = controller->p_qp_count ? controller->p_qp_count : 1u;
+        int32_t mean = (int32_t)((controller->p_qp_sum + count / 2u) / count);
+        uint64_t gop_bits = (uint64_t)controller->gop_length *
+                            controller->target_bits;
+        uint64_t cap = controller->window.words[0];
+        int32_t model;
+
+        if (!controller->p_qp_count)
+            mean = (int32_t)controller->current_qp;
+        if (controller->target_bits &&
+            controller->target_bits < controller->smoothed_p_bits) {
+            uint32_t ratio = controller->smoothed_p_bits /
+                             controller->target_bits;
+
+            mean += ratio > 51u ? 51 : (int32_t)ratio;
+        }
+        if (gop_bits < cap)
+            cap = gop_bits;
+        model = openimp_t41_i_model_qp_for(
+                    controller, (uint32_t)(cap * 75u / 100u)) +
+                (int32_t)controller->ip_delta;
+        qp = mean < model ? model : mean;
+    }
+    qp -= (int32_t)controller->ip_delta;
+    /* OEM buffer guard (iIIo): when the I model predicts more than 3/4 of
+     * the bitrate-history room (lI1i), raise the I QP until it fits. */
+    window_bits = openimp_t41_rate_control_window_target(&controller->window);
+    budget = (int32_t)((window_bits * 3) / 4);
+    if (controller->i_model_bits && budget > 0 &&
+        qp < (int32_t)controller->i_max_qp) {
+        uint32_t predicted = 0u;
+        int32_t model_qp = (int32_t)controller->i_model_qp;
+        int32_t steps = (int32_t)controller->i_max_qp - model_qp;
+        int32_t cand = qp < 0 ? 0 : qp;
+
+        if (steps < 0)
+            steps = -steps;
+        if (openimp_t41_rate_control_predict_bits(
+                controller->i_model_bits, (uint16_t)model_qp,
+                (uint16_t)cand, controller->i_model_scale, steps,
+                &predicted) == 0 &&
+            (uint32_t)budget < predicted)
+            qp = openimp_t41_i_model_qp_for(controller, (uint32_t)budget);
+    }
     if (qp < (int32_t)controller->i_min_qp)
         qp = (int32_t)controller->i_min_qp;
     if (qp > (int32_t)controller->i_max_qp)

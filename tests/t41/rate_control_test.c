@@ -1109,9 +1109,46 @@ static void test_ip_delta_rule(void)
     assert(openimp_t41_rate_controller_picture_qp(NULL, 1) == 0u);
 }
 
+/* OEM I model (every third IDR, or a >= 81 % intra P picture), the
+ * eRcOptions model path and the I buffer guard. */
+static void test_i_model_options_guard(void)
+{
+    OpenIMPT41RateController c;
+    uint32_t q1;
+    uint32_t q0;
+
+    assert(openimp_t41_rate_controller_init(&c, 600000u, 15u, 1u, 60u,
+                                            18u, 45u, 30u) == 0);
+    assert(openimp_t41_rate_controller_set_i_picture(&c, 4u, 18u, 45u) == 0);
+    openimp_t41_rate_controller_note_picture(&c, 1, 400000u, 26u, 100u);
+    openimp_t41_rate_controller_note_picture(&c, 1, 400000u, 26u, 100u);
+    assert(c.i_model_bits == 0u);       /* not yet the third IDR */
+    openimp_t41_rate_controller_note_picture(&c, 1, 400000u, 26u, 100u);
+    assert(c.i_model_bits == 400000u && c.i_model_qp == 26u);
+    openimp_t41_rate_controller_note_picture(&c, 0, 30000u, 30u, 10u);
+    openimp_t41_rate_controller_note_picture(&c, 0, 30000u, 32u, 10u);
+    assert(c.p_qp_sum == 62u && c.p_qp_count == 2u);
+    openimp_t41_rate_controller_note_picture(&c, 0, 300000u, 28u, 90u);
+    assert(c.i_model_bits == 300000u && c.i_model_qp == 28u);
+
+    /* SCN_CHG_RES (default): I = P - delta unless the guard raises it */
+    q1 = openimp_t41_rate_controller_picture_qp(&c, 1);
+    assert(q1 >= 26u && q1 <= 45u);
+    /* options 0: model path, never below mean P QP - delta */
+    openimp_t41_rate_controller_set_options(&c, 0u);
+    q0 = openimp_t41_rate_controller_picture_qp(&c, 1);
+    assert(q1 == 26u && q0 >= 26u && q0 <= 45u);
+
+    /* guard: an empty history window leaves no room -> I QP raised */
+    openimp_t41_rate_controller_set_options(&c, 1u);
+    c.window.words[6] = c.window.words[8] = 0u;
+    assert(openimp_t41_rate_controller_picture_qp(&c, 1) >= q1);
+}
+
 int main(void)
 {
     test_ip_delta_rule();
+    test_i_model_options_guard();
     test_oem_main_idr_oracle();
     test_oem_main_p_oracle();
     test_oem_subchannel_oracle();

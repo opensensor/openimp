@@ -4172,6 +4172,8 @@ static int avpu_t41_prepare_picture(ALAvpuContext *ctx, int is_idr)
         if (openimp_t41_rate_controller_set_i_picture(
                 controller, ip_delta, i_min_qp, i_max_qp) != 0)
             return -1;
+        openimp_t41_rate_controller_set_options(controller,
+                                                ctx->t41_rc_options);
         selected_qp = openimp_t41_rate_controller_picture_qp(controller,
                                                              is_idr);
     } else {
@@ -6633,7 +6635,14 @@ static void avpu_end_encoding_callback(void *user_data)
                 ctx->t41_rate_controller.initialized) {
                 uint32_t used_qp =
                     ctx->t41_rate_control_qp_by_buf[buf_idx];
-                int controller_ret =
+                int controller_ret;
+
+                openimp_t41_rate_controller_note_picture(
+                    &ctx->t41_rate_controller, ctx->stream_is_idr[buf_idx],
+                    payload_size * 8u, used_qp,
+                    have_rate_control_feedback
+                        ? rate_control_feedback.field_1c_percent : 0u);
+                controller_ret =
                     openimp_t41_rate_controller_complete(
                         &ctx->t41_rate_controller, payload_size * 8u,
                         ctx->stream_is_idr[buf_idx],
@@ -8423,6 +8432,7 @@ struct AL_CodecEncode {
     uint32_t t41_qp_i_min;
     uint32_t t41_qp_i_max;
     uint32_t t41_max_picture_bits[3];
+    uint32_t t41_rc_options;
 #endif
     IMPEncoderFrmRate fps_cache;
     IMPEncoderGopAttr gop_cache;
@@ -9109,6 +9119,7 @@ static void avpu_sync_runtime_encode_state(AL_CodecEncode *enc)
     enc->avpu.t41_qp_i_max = enc->t41_qp_i_max;
     memcpy(enc->avpu.t41_max_picture_bits, enc->t41_max_picture_bits,
            sizeof(enc->avpu.t41_max_picture_bits));
+    enc->avpu.t41_rc_options = enc->t41_rc_options;
 #endif
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
     /* Lazy AVPU initialization clears the entire hardware shadow.  Restore
@@ -14104,6 +14115,19 @@ int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI, int maxI,
 /* uMaxPictureSize in bits per picture type (0 = bit rate based target):
  * the OEM HW rate control limits each picture to ~95 % of it.  CreateChn
  * sets the I value (uMaxPictureSize * 1000), SetChnMaxPictureSize I and P. */
+/* CBR eRcOptions (CreateChn only, as the vendor). */
+int AL_Codec_Encode_SetRcOptionsT41(void *codec, uint32_t options)
+{
+    AL_CodecEncode *enc;
+
+    if (codec == NULL)
+        return -1;
+    enc = (AL_CodecEncode *)codec;
+    enc->t41_rc_options = options;
+    enc->avpu.t41_rc_options = options;
+    return 0;
+}
+
 int AL_Codec_Encode_SetMaxPictureSizeT41(void *codec, uint32_t i_bits,
                                          uint32_t p_bits, int set_p)
 {

@@ -1287,6 +1287,7 @@ extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
 #if defined(PLATFORM_T41)
 extern int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI,
                                                int maxI, int minP, int maxP);
+extern int AL_Codec_Encode_SetRcOptionsT41(void *codec, uint32_t options);
 extern int AL_Codec_Encode_SetMaxPictureSizeT41(void *codec, uint32_t i_bits,
                                                 uint32_t p_bits, int set_p);
 #endif
@@ -2230,10 +2231,24 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     /* vendor channel_encoder_init_avpu: pMaxPictureSize[I] =
      * uMaxPictureSize * 1000 (the P/B entries stay unset).  CBR only so
      * far (device-tested); the other modes keep the bit-rate target. */
+    if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
+        AL_Codec_Encode_SetRcOptionsT41(
+            ch->codec, (uint32_t)attr->rcAttr.attrRcMode.attrCbr.eRcOptions);
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR &&
         attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize <= 0xffffffffu / 1000u)
         AL_Codec_Encode_SetMaxPictureSizeT41(
             ch->codec, attr->rcAttr.attrRcMode.attrCbr.uMaxPictureSize * 1000u,
+            0u, 0);
+    /* VBR / capped modes: the same pMaxPictureSize[I] (attributes share
+     * the VBR layout up to uMaxPictureSize) */
+    else if ((attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_VBR ||
+              attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CAPPED_VBR ||
+              attr->rcAttr.attrRcMode.rcMode ==
+                  IMP_ENC_RC_MODE_CAPPED_QUALITY) &&
+             attr->rcAttr.attrRcMode.attrVbr.uMaxPictureSize <=
+                 0xffffffffu / 1000u)
+        AL_Codec_Encode_SetMaxPictureSizeT41(
+            ch->codec, attr->rcAttr.attrRcMode.attrVbr.uMaxPictureSize * 1000u,
             0u, 0);
 #endif
     if (attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
@@ -2312,6 +2327,22 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
          * and eRcOptions; CBR keeps its own controller. */
         if (codec_rc.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
             has_rc = 0;
+#endif
+#if defined(PLATFORM_T41)
+        /* vendor ComputeRCParam: iInitialQP -1 takes the bits-per-pixel
+         * table in every rate-control mode (VBR/capped run the AL core) */
+        if (has_rc && codec_rc.attrRcMode.rcMode != IMP_ENC_RC_MODE_CBR &&
+            codec_rc.attrRcMode.attrVbr.iInitialQP < 0)
+            codec_rc.attrRcMode.attrVbr.iInitialQP = (int16_t)
+                p2_t40_auto_initial_qp(
+                    attr, p2_attr_codec_type(attr),
+                    attr->rcAttr.attrRcMode.attrVbr.uTargetBitRate * 1000u,
+                    attr->rcAttr.outFrmRate.frmRateNum,
+                    attr->rcAttr.outFrmRate.frmRateDen,
+                    codec_rc.attrRcMode.attrVbr.iMinQP < 1 ? 1 :
+                        codec_rc.attrRcMode.attrVbr.iMinQP,
+                    codec_rc.attrRcMode.attrVbr.iMaxQP > 51 ? 51 :
+                        codec_rc.attrRcMode.attrVbr.iMaxQP);
 #endif
         if (has_rc)
             p2_normalise_rc_qps(&codec_rc);

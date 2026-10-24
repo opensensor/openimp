@@ -122,6 +122,18 @@ typedef struct OpenIMPT41RateController {
     uint32_t ip_delta;
     uint32_t i_min_qp;
     uint32_t i_max_qp;
+    /* OEM I-picture model (o0OI): bits and QP of every third IDR, or of a
+     * P picture with >= 81 % intra blocks (scene change); scale as the
+     * OEM start value.  Used by the buffer guard and, with eRcOptions
+     * SCN_CHG_RES clear or STATIC_SCENE set, by the model-based I QP. */
+    uint32_t i_model_bits;
+    uint32_t i_model_qp;
+    uint32_t i_model_scale;
+    uint32_t i_picture_count;
+    /* P QPs since the last IDR (OEM +332/+336) */
+    uint32_t p_qp_sum;
+    uint32_t p_qp_count;
+    uint32_t rc_options;
     int initialized;
 } OpenIMPT41RateController;
 
@@ -278,5 +290,16 @@ int openimp_t41_rate_controller_set_i_picture(
  * delta clamped into the I window (OEM iIIo for picture type I). */
 uint32_t openimp_t41_rate_controller_picture_qp(
     const OpenIMPT41RateController *controller, int is_idr);
+
+/* eRcOptions of the channel (IMP_ENC_RC_* bits, OEM AL eOptions). */
+void openimp_t41_rate_controller_set_options(
+    OpenIMPT41RateController *controller, uint32_t rc_options);
+
+/* Record the QP a completed picture was coded with and its intra share
+ * (feedback field_1c_percent) for the OEM I model; call before
+ * openimp_t41_rate_controller_complete(). */
+void openimp_t41_rate_controller_note_picture(
+    OpenIMPT41RateController *controller, int is_idr,
+    uint32_t completed_bits, uint32_t used_qp, uint32_t intra_percent);
 
 #endif
