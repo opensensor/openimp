@@ -5,7 +5,7 @@
 | T10/T20 | `IMP_Encoder_SetChnROI` (8 regions, pixel corners) | works, see `T1X_ROI_CHROMA.md` |
 | T21 | the same | works by default since this branch (beyond vendor), device-tested |
 | T23 | the same; native Helix encoder (default backend) programs it like T21, the OEM worker gets it through the bridge | works by default, device-tested (below) |
-| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr` (10 windows, delta QP) | implemented, **on by default** since 2026-10-18 (`OPENIMP_T40_ROI=0` / `OPENIMP_T41_ROI=0` refuse it); device-tested: T40 works under FixQP and CBR, T41 works under CBR/VBR only - under FixQP the call is accepted (cache), the table is not written and syslog says "ROI has no effect under FixQP on T41"; `OPENIMP_T41_ROI=1` forces the table even under FixQP |
+| T40/T41 | `IMP_Encoder_Set/GetChnRoiAttr`, `SetChnMapRoi` (10 windows, delta QP) | implemented, **on by default** since 2026-10-18 (`OPENIMP_T40_ROI=0` / `OPENIMP_T41_ROI=0` refuse it); device-tested: T40 works under FixQP and CBR; T41 works under CBR/VBR and, since 2026-10-24, under FixQP too (EP2 QP range opened while a window is active, see the T41 section) |
 | T31 | none in the vendor library; OpenIMP: `IMP_Encoder_Set/GetChnRoiAttr` (T41 API) | works by default (beyond vendor), device-tested; QP clamped to valid H.264 (below) |
 
 ## T40 (cross-built, not device-tested)
@@ -60,16 +60,33 @@ the "relative" flag to SliceParam+0x62 (offsets from the SliceParam base
 pic+0x248, matched against the neighbouring fields), and
 `SliceParamToCmdRegsEnc1` (0xe9d68) packs them into **cmd[152] bit 0 and
 bit 3**. OpenIMP's T41 builder writes cmd[152] = 0xf6 (both clear). With
-a window set, OpenIMP ORs 0x9 into cmd[152]. Since 2026-10-18 this is the default for CBR/VBR; under FixQP the table is not written (effect-less) and one syslog line is logged; `OPENIMP_T41_ROI=0` turns the feature off, `=1` forces it under FixQP too.
+a window set, OpenIMP ORs 0x9 into cmd[152]. Since 2026-10-18 this is the default; `OPENIMP_T41_ROI=0` turns the feature off.
 Device test 2026-10-18 (Cinnado .34 and Vanhua .32, roitest, 1280x720
 15 fps, window 384x240 at 448,240): **under CBR the table works** - the
 whole frame at -20 doubles the bit rate against the 800 kbit/s target, a
 +20 window drops the SSIM of the window from 0.97 to 0.73 while the rest
 stays at 0.97, a -20 window moves bits into the window (the rest drops to
 0.91-0.93). cmd[152] is then 0xff, as in the vendor capture. **Under FixQP
-the AVPU ignores the table** (bit rate and pictures unchanged), also with
+the AVPU ignored the table** (bit rate and pictures unchanged), also with
 the cmd[179] QP range (min bits 31..24, max bits 15..8) opened from QP..QP
-to 0..51 or 15..45; the cause is open. The header-word hang above is
+to 0..51 or 15..45.
+
+**FixQP cause (2026-10-24):** the QP range that matters is the one in the
+**EP2 header** (word at +0x10 = `max<<24 | min<<16 | 0x302`), which the
+vendor pins to QP..QP under FixQP (capture of libimp 1.2.6: `1e1e0302` at
+FixQP 30, HWRC words cmd[176..181] all zero, cmd[152] = 0xff with or without
+a window). The AVPU clamps every macroblock QP to that range, so the table
+cannot act there; **the vendor library itself shows no ROI effect under FixQP
+on T41** (window -20 and whole frame -20 at FixQP 30: bit rate unchanged).
+OpenIMP now opens the header range to 0..51 (`0x33000302`) while a window or
+a map is active and writes the pinned range back when the last one is removed
+(`avpu_t41_roi_apply`); the HWRC words are irrelevant for this (tested with
+and without). Device test .32, 1280x720 15 fps FixQP 30, window 384x240 at
+448,240: P frames 222 B -> 2364 B at -20 (431 -> 977 kbit/s), +20: window SSIM
+0.79 against 0.93 elsewhere, whole frame -20: 19 Mbit/s (QP 10);
+`SetChnMapRoi` the same (map -20: 432 -> 1023 kbit/s, +20 window SSIM 0.75
+against 0.98 elsewhere); after removing the window or the map the stream is
+back at the base (IDR 84578 B against 84573 B). The header-word hang above is
 unrelated (do not write the EP2 header).
 
 T40 (Eufy, open driver, same test, now default): FixQP 32 window

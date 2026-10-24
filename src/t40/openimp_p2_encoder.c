@@ -1521,7 +1521,7 @@ __attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRc = 1;
 
 /* Runtime markers for streamers (gate features on the symbol, not on the SoC):
  * OpenIMP_Cap_EncRoi   bit 0 = SetChnRoiAttr really changes the encoded QP,
- *                      bit 1 = only under CBR/VBR (T41: no effect under FixQP).
+ *                      bit 1 = only under CBR/VBR (was T41 before the FixQP fix; no SoC sets it now).
  * OpenIMP_Cap_AutoZoom 1 = IMP_ISP_Tuning_SetAutoZoom works (T41: at start and
  *                      live on ch1 up to 768x432, larger via channel restart;
  *                      T40 (open-tx-isp claude/t40-autozoom and later): at
@@ -1530,7 +1530,7 @@ __attribute__((visibility("default"))) const int OpenIMP_Cap_CappedRc = 1;
 __attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 1;
 __attribute__((visibility("default"))) const int OpenIMP_Cap_AutoZoom = 1;
 #elif defined(PLATFORM_T41)
-__attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 3;
+__attribute__((visibility("default"))) const int OpenIMP_Cap_EncRoi = 1;
 __attribute__((visibility("default"))) const int OpenIMP_Cap_AutoZoom = 1;
 #endif
 
