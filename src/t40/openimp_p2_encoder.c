@@ -3923,10 +3923,24 @@ int IMP_Encoder_SetDefaultParam(IMPEncoderChnAttr *attr, IMPEncoderProfile profi
         }
     }
     return 0;
+#elif defined(PLATFORM_T40)
+    /* T40 1.3.1 libimp read back on the Eufy .184 (2026-10-24): GOP mode
+     * DEFAULT (2), encOptions 0x40828, encTools 0x9c for every codec; the
+     * initial QP is the caller's value unchecked (-1 stays -1); a JPEG
+     * channel is forced to FIXQP whatever rc mode was asked. */
+    attr->gopAttr.uGopCtrlMode = IMP_ENC_GOP_CTRL_MODE_DEFAULT;
+    attr->encAttr.encOptions = 0x40828u;
+    attr->encAttr.encTools = 0x9cu;
+    if (codec_type == IMP_ENC_TYPE_JPEG)
+        attr->rcAttr.attrRcMode.rcMode = IMP_ENC_RC_MODE_FIXQP;
 #endif
     if (codec_type == IMP_ENC_TYPE_JPEG || rc_mode == IMP_ENC_RC_MODE_FIXQP) {
+#if defined(PLATFORM_T40)
+        attr->rcAttr.attrRcMode.attrFixQp.iInitialQP = (int16_t)quality;
+#else
         attr->rcAttr.attrRcMode.attrFixQp.iInitialQP =
             (int16_t)((quality >= 1 && quality <= 99) ? quality : 25);
+#endif
 #if defined(PLATFORM_T31) || defined(PLATFORM_T40)
     /* T40 1.3.1 returns the same CBR fields (read back on the Eufy T40XP:
      * iInitialQP -1, 15..48, iIPDelta -1, eRcOptions 1, 2 * bitrate).

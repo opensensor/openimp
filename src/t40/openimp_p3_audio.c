@@ -185,7 +185,11 @@ static struct {
     unsigned int cap_head;
     unsigned char *cap_data;
     int64_t cap_time[P3_CAPTURE_FRAMES];
-} p3_audio = { .fd = -1, .ao_mute_lock = PTHREAD_MUTEX_INITIALIZER };
+} p3_audio = { .fd = -1, .ao_mute_lock = PTHREAD_MUTEX_INITIALIZER,
+#if !defined(PLATFORM_T41)
+               .ai_volume = 60    /* vendor 1.3.1 reads 60 before any SetVol */
+#endif
+};
 
 static pthread_mutex_t p3_cap_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t p3_cap_cond = PTHREAD_COND_INITIALIZER;
@@ -666,6 +670,7 @@ static int p3_volume_from_raw(int value, int raw_unity)
     return value;
 }
 
+#if defined(PLATFORM_T41)
 int IMP_AI_SetVol(int device, int channel, int value)
 {
     int result;
@@ -708,6 +713,67 @@ int IMP_AI_GetGain(int device, int channel, int *value)
         p3_audio.ai_gain = *value;
     return result;
 }
+
+#else
+/* T40 1.3.1 vendor semantics (read back with the vendor libimp on the Eufy
+ * .184, 2026-10-24): device < 2 and channel 0 else -1; the value is clamped
+ * (volume -30..120, gain 0..31) and stored; Get answers the stored value
+ * (0 before the first Set) without asking the codec.  The kernel
+ * AMIC_AI_GET_* ioctls do not read the request and returned stale register
+ * values (always 60 / 0).  As the vendor, a failing codec ioctl is not
+ * reported back by SetGain. */
+static int p3_ai_args(int device, int channel)
+{
+    return device >= 0 && device < 2 && channel == 0;
+}
+
+int IMP_AI_SetVol(int device, int channel, int value)
+{
+    int result;
+
+    if (!p3_ai_args(device, channel))
+        return -1;
+    if (value < -30)
+        value = -30;
+    else if (value > 120)
+        value = 120;
+    result = p3_set_volume(AMIC_AI_SET_VOLUME, channel,
+                           p3_volume_to_raw(value, 195));
+    p3_audio.ai_volume = value;
+    return result;
+}
+
+int IMP_AI_GetVol(int device, int channel, int *value)
+{
+    if (!value || !p3_ai_args(device, channel))
+        return -1;
+    *value = p3_audio.ai_volume;
+    return 0;
+}
+
+int IMP_AI_SetGain(int device, int channel, int value)
+{
+    if (!p3_ai_args(device, channel))
+        return -1;
+    if (value < 0)
+        value = 0;
+    else if (value > 31)
+        value = 31;
+    if (p3_set_volume(AMIC_AI_SET_GAIN, channel, value) != 0)
+        IMP_LOG_LIMITED(LOG_ERR, "AI", "IMP_AI_SetGain: set gain %d failed", value);
+    p3_audio.ai_gain = value;
+    return 0;
+}
+
+int IMP_AI_GetGain(int device, int channel, int *value)
+{
+    if (!value || !p3_ai_args(device, channel))
+        return -1;
+    *value = p3_audio.ai_gain;
+    return 0;
+}
+
+#endif
 
 /* The vendor T41 libimp keeps the mute as software state (the volume of its
  * processing chain goes to zero, the codec is not touched; the audio driver
