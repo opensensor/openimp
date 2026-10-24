@@ -177,6 +177,7 @@ static int med_gap(const struct es *e)
 
 static void on_drop(void) { }
 extern int IMP_System_MemPoolRequest(int, size_t, const char *) __attribute__((weak));
+#define MK() printf("  M%d\n", __LINE__)
 static double fabs_d(double x) { return x < 0 ? -x : x; }
 
 /* ---------- wip-cells helpers (2026-10-24, phases 0x4000 / 0x8000) ---------- */
@@ -1109,7 +1110,7 @@ int main(int argc, char **argv)
     if (mask & 0x4000) {
         usleep(2000000);
         /* ---- #43 getters: rc and values ---- */
-        {
+        if (!(mask & 0x100000)) {
             IMPISPAEExprInfo ei; IMPISPAEWeightAttr aw; IMPISPWeight w; IMPISPFrameDropAttr fd; IMPISPAeSpeedAttr sp;
             IMPISPSENSORAttr sa; IMPISPAWBStatisInfo ws; IMPISPAEStatisInfo as; IMPISPWBAttr wb; IMPISPStatisConfig sc;
             IMPISPGammaAttr ga; IMPISPCSCAttr cs; uint32_t n = 0, d = 0, reg = 0x3107, val = 0;
@@ -1131,7 +1132,7 @@ int main(int argc, char **argv)
             printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetStatisConfig(IMPVI_MAIN, &sc);
             /* GetGammaAttr oopsed the kernel on agg43c (2026-10-24 12:25): only with mask 0x20000, on its own */
             printf("  G%d\n", k), rc[k++] = (mask & 0x20000) ? IMP_ISP_Tuning_GetGammaAttr(IMPVI_MAIN, &ga) : 0;
-            printf("  G%d\n", k), rc[k++] = IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_MAIN, &cs);
+            printf("  G%d\n", k), rc[k++] = (mask & 0x40000) ? IMP_ISP_Tuning_GetISPCSCAttr(IMPVI_MAIN, &cs) : 0;  /* oopsed on the lifted driver 2026-10-24 */
             printf("  W43 rc: AeExprInfo=%d AeWeight=%d AfWeight=%d SensorFPS=%d(%u/%u) FrameDrop=%d SensorReg=%d(0x%x=0x%x) SensorAttr=%d(hts %u vts %u fps %u %ux%u) AwbStat=%d AeStat=%d AwbAttr=%d AeSpeed=%d(%u/%u) StatisCfg=%d Gamma=%d(type %d) Csc=%d\n",
                    rc[0], rc[1], rc[2], rc[3], n, d, rc[4], rc[5], reg, val, rc[6], sa.hts, sa.vts, sa.fps, sa.width, sa.height,
                    rc[7], rc[8], rc[9], rc[10], sp.step_s, sp.step_d, rc[11], rc[12], ga.Curve_type, rc[13]);
@@ -1144,7 +1145,7 @@ int main(int argc, char **argv)
         }
 
         /* ---- #5 AE scene (target comp, HLC, BLC) ---- */
-        {
+        if (!(mask & 0x100000)) {
             IMPISPAEScenceAttr old, a, g; struct pm p0, plo, phi; int rs, rg;
             double yb, yh = 0, yl = 0, yblc = 0, yhlc = 0;
             memset(&old, 0, sizeof old); IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &old);
@@ -1187,7 +1188,7 @@ int main(int argc, char **argv)
         }
 
         /* ---- #6 AE caps (IT max, gain max) and sensor FPS ---- */
-        {
+        if (!(mask & 0x100000)) {
             IMPISPAEExprInfo e0, e1, e2; struct pm p0, p1, p2; int rs, rg; uint32_t n0 = 0, d0 = 0, n1 = 0, d1 = 0;
             memset(&e0, 0, sizeof e0);
             IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &e0);
@@ -1238,13 +1239,15 @@ int main(int argc, char **argv)
         {
             IMPISPCCMAttr c0, c1, c2; IMPISPModuleCtl m0, m1; struct pm pa, pb; struct thumb ta, tb; int rg0, rs, rg1, rm0, rm1, rm2;
             double corner_a, corner_b, centre_a, centre_b;
+            rg0 = rs = rg1 = -99; memset(&c0, 0, sizeof c0); memset(&c2, 0, sizeof c2);
+            if (mask & 0x80000) {  /* the lifted driver oopses on GetCCMAttr (2026-10-24): CCM only on request */
             memset(&c0, 0, sizeof c0); rg0 = IMP_ISP_Tuning_GetCCMAttr(IMPVI_MAIN, &c0);
             printf("  W9 CCM default rc=%d manual=%d sat=%d matrix %.3f %.3f %.3f / %.3f %.3f %.3f / %.3f %.3f %.3f\n", rg0, c0.ManualEn, c0.SatEn,
                    c0.ColorMatrix[0], c0.ColorMatrix[1], c0.ColorMatrix[2], c0.ColorMatrix[3], c0.ColorMatrix[4], c0.ColorMatrix[5], c0.ColorMatrix[6], c0.ColorMatrix[7], c0.ColorMatrix[8]);
             pa = grab(2500);
             c1 = c0; c1.ManualEn = IMPISP_TUNING_OPS_MODE_ENABLE;
             { static const float id[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 }; memcpy(c1.ColorMatrix, id, sizeof id); }
-            rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c1);
+            MK(); rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c1);
             memset(&c2, 0, sizeof c2); rg1 = IMP_ISP_Tuning_GetCCMAttr(IMPVI_MAIN, &c2);
             pb = grab(3000);
             printf("  W9 CCM manual identity: set rc=%d get rc=%d manual=%d matrix %.3f %.3f %.3f / %.3f %.3f %.3f / %.3f %.3f %.3f; chroma %.1f -> %.1f U/V %.1f/%.1f -> %.1f/%.1f\n", rs, rg1, c2.ManualEn,
@@ -1253,21 +1256,22 @@ int main(int argc, char **argv)
             { double sc1 = pb.chroma;
               static const float rb[9] = { 1.6f, -0.3f, -0.3f, -0.3f, 1.0f, 0.3f, -0.3f, 0.3f, 1.0f };
               struct pm pc; memcpy(c1.ColorMatrix, rb, sizeof rb);
-              rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c1); pc = grab(3000);
+              MK(); rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c1); pc = grab(3000);
               printf("  W9 CCM manual red-boost: set rc=%d U/V %.1f/%.1f chroma %.1f (identity chroma %.1f, default chroma %.1f)\n", rs, pc.u, pc.v, pc.chroma, sc1, pa.chroma);
               R("W9_CCM", (!rg0 && !rs && !rg1 && c2.ManualEn == 1 && (fabs_d(pc.v - pb.v) + fabs_d(pc.u - pb.u)) > 2.0) ? "PASS" : (!rs ? "PART" : "FAIL"),
                 "Get dev; Set manual rc=%d readback manual=%d m00=%.2f; red-boost vs identity dU=%.1f dV=%.1f", rs, c2.ManualEn, c2.ColorMatrix[0], pc.u - pb.u, pc.v - pb.v); }
-            rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c0);
+            MK(); rs = IMP_ISP_Tuning_SetCCMAttr(IMPVI_MAIN, &c0);
             pb = grab(3000);
             printf("  W9 CCM restored rc=%d U/V %.1f/%.1f (default %.1f/%.1f)\n", rs, pb.u, pb.v, pa.u, pa.v);
+            }
             /* LSC through the module-bypass key */
-            memset(&m0, 0, sizeof m0); rm0 = IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m0);
+            memset(&m0, 0, sizeof m0); MK(); rm0 = IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m0);
             ta = thumb_grab(1500);
             m1 = m0; m1.bitBypassLSC = 1;
-            rm1 = IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1);
+            MK(); rm1 = (mask & 0x200000) ? IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1) : -77;  /* oopses on the stock ko: tisp_lce_clear_stat_ram */
             tb = thumb_grab(2500);
             memset(&m1, 0, sizeof m1); rm2 = IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m1);
-            IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
+            MK(); if (mask & 0x200000) IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
             corner_a = (ta.v[0] + ta.v[TW - 1] + ta.v[(TH - 1) * TW] + ta.v[TH * TW - 1]) / 4;
             corner_b = (tb.v[0] + tb.v[TW - 1] + tb.v[(TH - 1) * TW] + tb.v[TH * TW - 1]) / 4;
             centre_a = ta.v[4 * TW + 7] ; centre_b = tb.v[4 * TW + 7];
@@ -1288,9 +1292,9 @@ int main(int argc, char **argv)
                 IMPISPHVFLIP g = (IMPISPHVFLIP)99; int rs, rg, best = 0, tr; double dm[4], bd = 1e9;
                 if (m >= 4 && !(mask & 0x10000)) continue;       /* sensor modes only on request */
                 fl = (IMPISPHVFLIP)m;
-                rs = IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &fl);
+                MK(); rs = IMP_ISP_Tuning_SetHVFLIP(IMPVI_MAIN, &fl);
                 usleep(2500000);
-                rg = IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g);
+                MK(); rg = IMP_ISP_Tuning_GetHVFlip(IMPVI_MAIN, &g);
                 t = thumb_grab(1000);
                 for (tr = 0; tr < 4; tr++) { dm[tr] = thumb_diff(&base, &t, tr); if (dm[tr] < bd) { bd = dm[tr]; best = tr; } }
                 tested++; if (rs == 0 && rg == 0 && g == (IMPISPHVFLIP)m && best == want[m]) good++;
@@ -1307,7 +1311,7 @@ int main(int argc, char **argv)
             IMPISPTuningOpsMode we = (IMPISPTuningOpsMode)9; IMPISPWdrOutputMode wm; IMPISPModuleRatioAttr mr, mg; IMPISPModuleCtl m0, m1;
             struct pm p0, p1, p2, p3; int rw0, rw1, rw2, ro0, ro1, rm, i;
             struct thumb ta, tb;
-            rw0 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &we);
+            MK(); rw0 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &we);
             p0 = grab(2500);
             { IMPISPTuningOpsMode e1 = IMPISP_TUNING_OPS_MODE_ENABLE; rw1 = IMP_ISP_WDR_ENABLE(IMPVI_MAIN, &e1); }
             p1 = grab(3000); we = (IMPISPTuningOpsMode)9; rw2 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &we);
@@ -1318,10 +1322,10 @@ int main(int argc, char **argv)
               "rc %d/%d/%d readback %d; linear sensor: flag only, picture Y %.1f/%.1f/%.1f", rw0, rw1, rw2, we, p0.y, p1.y, p2.y);
             for (i = 0; i < 3; i++) {
                 IMPISPWdrOutputMode set = (IMPISPWdrOutputMode)i; wm = (IMPISPWdrOutputMode)9;
-                ro0 = IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_MAIN, &set); ro1 = IMP_ISP_Tuning_GetWdrOutputMode(IMPVI_MAIN, &wm);
+                MK(); ro0 = (mask & 0x400000) ? IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_MAIN, &set) : -77; ro1 = (mask & 0x400000) ? IMP_ISP_Tuning_GetWdrOutputMode(IMPVI_MAIN, &wm) : -77;  /* stock ko: Set oopses (tisp_wdr_param_array_get) */
                 printf("  W14 WdrOutputMode set %d rc=%d get rc=%d -> %d\n", i, ro0, ro1, wm);
             }
-            wm = IMPISP_WDR_OUTPUT_MODE_FUS_FRAME; IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_MAIN, &wm);
+            wm = IMPISP_WDR_OUTPUT_MODE_FUS_FRAME; if (mask & 0x400000) IMP_ISP_Tuning_SetWdrOutputMode(IMPVI_MAIN, &wm);
             /* DRC / ADR strength via Module_Ratio index 2 */
             memset(&mr, 0, sizeof mr); rm = IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &mr);
             printf("  W14 Module_Ratio default rc=%d: SINTER en%d/%u TEMPER en%d/%u DRC en%d/%u DPC en%d/%u DEFOG en%d/%u\n", rm,
@@ -1331,18 +1335,18 @@ int main(int argc, char **argv)
               IMPISPModuleRatioAttr sv = mr;
               for (i = 0; i < 3; i++) {
                   IMPISPModuleRatioAttr s = mr; s.ratio_attr[IMP_ISP_MODULE_DRC].en = IMPISP_TUNING_OPS_MODE_ENABLE; s.ratio_attr[IMP_ISP_MODULE_DRC].ratio = rv[i];
-                  rs[i] = IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &s);
+                  MK(); rs[i] = IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &s);
                   memset(&mg, 0, sizeof mg); IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &mg); rb[i] = mg.ratio_attr[IMP_ISP_MODULE_DRC].ratio;
                   p3 = grab(4000); yy[i] = p3.y; sdv[i] = p3.sd;
                   if (rs[i] || rb[i] != rv[i]) ok = 0;
               }
-              IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &sv);
+              MK(); IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &sv);
               R("W14_DRC_ratio", ok ? ((fabs_d(yy[2] - yy[0]) > 2.0 || fabs_d(sdv[2] - sdv[0]) > 1.0) ? "PASS" : "PART") : "FAIL",
                 "ratio 0/128/255 set rc %d/%d/%d readback %d/%d/%d; Y %.1f/%.1f/%.1f sd %.1f/%.1f/%.1f", rs[0], rs[1], rs[2], rb[0], rb[1], rb[2], yy[0], yy[1], yy[2], sdv[0], sdv[1], sdv[2]); }
             /* ADR module bypass */
             memset(&m0, 0, sizeof m0); IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m0);
-            ta = thumb_grab(1500); m1 = m0; m1.bitBypassADR = 1; ro0 = IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1);
-            tb = thumb_grab(3000); IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
+            ta = thumb_grab(1500); m1 = m0; m1.bitBypassADR = 1; ro0 = (mask & 0x200000) ? IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1) : -77;
+            tb = thumb_grab(3000); if (mask & 0x200000) IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
             R("W14_ADR_bypass", !ro0 ? (thumb_diff(&ta, &tb, 0) > 0.8 ? "PASS" : "PART") : "FAIL", "bypass ADR rc=%d, mean luma %.1f -> %.1f, thumbnail diff %.2f", ro0, ta.mean, tb.mean, thumb_diff(&ta, &tb, 0));
             (void)p2;
         }
@@ -1356,13 +1360,13 @@ int main(int argc, char **argv)
                 for (i = 0; i < 3; i++) {
                     struct pm pp;
                     mr = sv; mr.ratio_attr[idx].en = IMPISP_TUNING_OPS_MODE_ENABLE; mr.ratio_attr[idx].ratio = rv[i];
-                    rs[i] = IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &mr);
+                    MK(); rs[i] = IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &mr);
                     memset(&mg, 0, sizeof mg); IMP_ISP_Tuning_GetModule_Ratio(IMPVI_MAIN, &mg); rb[i] = mg.ratio_attr[idx].ratio;
                     usleep(3000000);
                     nz[i] = noise_meas(6); pp = grab(100); gr[i] = pp.grad;
                     if (rs[i] || rb[i] != rv[i]) ok = 0;
                 }
-                IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &sv);
+                MK(); IMP_ISP_Tuning_SetModule_Ratio(IMPVI_MAIN, &sv);
                 R(idx ? "W16_TemperRatio" : "W16_SinterRatio", ok ? ((nz[0] > nz[2] + 0.05) ? "PASS" : "PART") : "FAIL",
                   "ratio 0/128/255 set rc %d/%d/%d readback %d/%d/%d; temporal noise %.3f/%.3f/%.3f; grad %.2f/%.2f/%.2f", rs[0], rs[1], rs[2], rb[0], rb[1], rb[2], nz[0], nz[1], nz[2], gr[0], gr[1], gr[2]);
             }
@@ -1376,7 +1380,7 @@ int main(int argc, char **argv)
             ma.mask_chx[CH][0].mask_en = 1; ma.mask_chx[CH][0].mask_pos_left = MX(0.3125); ma.mask_chx[CH][0].mask_pos_top = MY(0.278);
             ma.mask_chx[CH][0].mask_width = MX(0.234); ma.mask_chx[CH][0].mask_height = MY(0.278); ma.mask_chx[CH][0].mask_type = IMPISP_MASK_TYPE_RGB;
             ma.mask_chx[CH][0].mask_value.mask_argb.r_value = 0; ma.mask_chx[CH][0].mask_value.mask_argb.g_value = 0; ma.mask_chx[CH][0].mask_value.mask_argb.b_value = 0;
-            rs = IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma);
+            MK(); rs = IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma);
             usleep(1500000);
             memset(&mg, 0, sizeof mg); rg = IMP_ISP_Tuning_GetMask(IMPVI_MAIN, &mg);
             y1 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278)); o1 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
@@ -1390,7 +1394,7 @@ int main(int argc, char **argv)
             y2 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
             printf("  W19 second block (red) region Y %.1f -> %.1f\n", o1, y2);
             for (i = 0; i < 12; i++) ((IMPISP_MASK_BLOCK_PAR *)&ma)[i].mask_en = 0;
-            IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma); usleep(1500000);
+            MK(); IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma); usleep(1500000);
             { double y3 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278));
               R("W19_Mask", (!rs && !rg && mg.mask_chx[CH][0].mask_en && y1 < 30 && fabs_d(o1 - o0) < 12 && y3 > y0 * 0.6) ? "PASS" : "FAIL",
                 "cover in the sub stream (ch1): region Y %.1f -> %.1f (covered), outside %.1f -> %.1f, after disable %.1f; set/get rc %d/%d", y0, y1, o0, o1, y3, rs, rg); }
@@ -1427,6 +1431,19 @@ int main(int argc, char **argv)
                     IMP_Encoder_ReleaseStream(CH, &st2);
                 }
             }
+        }
+        if (IMP_Encoder_GetChnAveBitrate) {   /* AveBitrate over real consecutive streams, window 20 */
+            double t0 = now_s(); unsigned nfr = 0, nby = 0; int br = -1, ra = -1;
+            while (now_s() - t0 < 3.0) {
+                IMPEncoderStream sx;
+                if (IMP_Encoder_PollingStream(CH, 500) != 0) continue;
+                if (IMP_Encoder_GetStream(CH, &sx, 1) != 0) break;
+                { unsigned k3; for (k3 = 0; k3 < sx.packCount; k3++) nby += sx.pack[k3].length; }
+                nfr++; ra = IMP_Encoder_GetChnAveBitrate(CH, &sx, 20, &br);
+                IMP_Encoder_ReleaseStream(CH, &sx);
+            }
+            printf("  W44 AveBitrate real stream: rc=%d reports %d kbps; consumer measured %.0f kbps over %u frames\n", ra, br, nby * 8.0 / 1000.0 / (now_s() - t0), nfr);
+            R("W44_AveBitrate", (ra == 0 && br > 0 && fabs_d(br - nby * 8.0 / 1000.0 / 3.0) < 0.2 * br) ? "PASS" : "PART", "reports %d kbps vs measured %.0f kbps", br, nby * 8.0 / 1000.0 / 3.0);
         }
         R("W44_Query", (q.n > 100 && q.wd[0] > 0 && q.wd[1] > 0) ? "PASS" : "PART", "work_done 0 in %u of %u samples (encoder busy share), leftPics>0 in %u", q.wd[0], q.n, q.n - q.lp[0]);
         R("W44_Telemetry", (!rt && tt.frames > 50) ? "PASS" : "FAIL", "OpenIMP_Encoder_GetTelemetry rc=%d frames %llu vs consumer %u", rt, (unsigned long long)tt.frames, e2.frames);
