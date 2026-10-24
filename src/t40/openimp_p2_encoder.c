@@ -1227,6 +1227,10 @@ extern int AL_Codec_Encode_SetRcQualityCap(void *codec, int rc_mode,
 #endif
 extern int AL_Codec_Encode_SetQpBounds(void *codec, int min_qp, int max_qp);
 extern int AL_Codec_Encode_SetQpIPDelta(void *codec, int delta);
+#if defined(PLATFORM_T41)
+extern int AL_Codec_Encode_SetQpBoundsPerFrame(void *codec, int minI,
+                                               int maxI, int minP, int maxP);
+#endif
 extern int AL_Codec_Encode_SetQp(void *codec, void *qp);
 extern int AL_Codec_Encode_SetEntropyMode(void *codec, int mode);
 extern int AL_Codec_Encode_SetGopParam(void *codec, void *gop);
@@ -1609,7 +1613,7 @@ static const char *p2_rc_mode_name(unsigned int mode)
     }
 }
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
 static int p2_t40_auto_initial_qp(const IMPEncoderCHNAttr *attr,
                                   uint32_t codec_type, uint32_t bitrate,
                                   uint32_t fps_num, uint32_t fps_den,
@@ -1713,6 +1717,15 @@ static void p2_codec_params(unsigned char *params, const IMPEncoderCHNAttr *attr
             /* the initial QP is derived (or given) inside the range */
 #if defined(PLATFORM_T40)
             if (qp < 0)
+                qp = p2_t40_auto_initial_qp(attr, codec_type, bitrate,
+                                            fps_num, fps_den,
+                                            min_qp, max_qp);
+#elif defined(PLATFORM_T41)
+            /* T41 1.2.6 AL_Common_Encoder_ComputeRCParam (0xdb880) /
+             * GetInitialQP (0xdb798): the same bits-per-pixel table as the
+             * T40.  CBR only: its controller starts from this I QP. */
+            if (qp < 0 &&
+                attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_CBR)
                 qp = p2_t40_auto_initial_qp(attr, codec_type, bitrate,
                                             fps_num, fps_den,
                                             min_qp, max_qp);
@@ -4500,9 +4513,15 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int channel, int minimum_i,
             return 0;   /* vendor: applied only when all four are > 0 */
         p2_t41_clamp_bounds(&minimum_i, &maximum_i);
         p2_t41_clamp_bounds(&minimum_p, &maximum_p);
-        minimum = minimum_i < minimum_p ? minimum_i : minimum_p;
-        maximum = maximum_i > maximum_p ? maximum_i : maximum_p;
-        ret = IMP_Encoder_SetChnQpBounds(channel, minimum, maximum);
+        (void)minimum;
+        (void)maximum;
+        if (!p2_channels[channel].created)
+            return -1;
+        /* vendor: a window per picture type (P controller in the P
+         * window, the I picture clamped into the I window) */
+        ret = AL_Codec_Encode_SetQpBoundsPerFrame(
+            p2_channels[channel].codec, minimum_i, maximum_i, minimum_p,
+            maximum_p);
         /* vendor read-back: the I window */
         if (ret == 0)
             p2_set_qp_bounds(&p2_channels[channel].attr.rcAttr.attrRcMode,

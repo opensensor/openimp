@@ -116,6 +116,12 @@ typedef struct OpenIMPT41RateController {
     uint32_t max_qp;
     uint32_t current_qp;
     int64_t virtual_buffer_bits;
+    /* OEM I-picture rule (setParam oIIo +0x104, getPictureQP iIIo): the
+     * I picture is coded at the running P QP minus ip_delta, clamped into
+     * the I window [i_min_qp, i_max_qp]. */
+    uint32_t ip_delta;
+    uint32_t i_min_qp;
+    uint32_t i_max_qp;
     int initialized;
 } OpenIMPT41RateController;
 
@@ -249,5 +255,28 @@ int openimp_t41_rate_controller_complete(
 
 uint32_t openimp_t41_rate_controller_qp(
     const OpenIMPT41RateController *controller);
+
+/* OEM effective iIPDelta (oIIo): 0 for an intra-only GOP (length < 2),
+ * 4 for a negative ("default") value, else the value (at most 51). */
+uint32_t openimp_t41_rate_control_ip_delta(int32_t configured,
+                                           uint32_t gop_length);
+
+/* OEM start QP of the P controller (oIIo +0x74/+0x78): the initial I QP
+ * plus the effective IP delta, clamped into the P window. */
+uint32_t openimp_t41_rate_control_initial_p_qp(uint32_t initial_i_qp,
+                                               uint32_t ip_delta,
+                                               uint32_t min_qp,
+                                               uint32_t max_qp);
+
+/* Store the I-picture rule of an initialized controller; the I window is
+ * clamped to 0..51 and swapped if inverted. */
+int openimp_t41_rate_controller_set_i_picture(
+    OpenIMPT41RateController *controller, uint32_t ip_delta,
+    uint32_t i_min_qp, uint32_t i_max_qp);
+
+/* QP of the next picture: the P QP, or for an IDR the P QP minus the IP
+ * delta clamped into the I window (OEM iIIo for picture type I). */
+uint32_t openimp_t41_rate_controller_picture_qp(
+    const OpenIMPT41RateController *controller, int is_idr);
 
 #endif
