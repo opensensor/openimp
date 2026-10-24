@@ -360,6 +360,14 @@ typedef struct {
     pthread_cond_t poll_idle;       /* signalled when in_poll drops to 0 */
     pthread_mutex_t poll_serial;    /* one PollingStream encodes at a time */
     pthread_mutex_t lock;
+#if defined(PLATFORM_T41)
+    /* vendor: RC setters only store a pending value that the encoder
+     * applies before the next picture; the read-back changes then.  While
+     * rb_hold is set the getters return the values of before the call. */
+    int rb_hold;
+    IMPEncoderRcAttr rb_rc;
+    IMPEncoderGopAttr rb_gop;
+#endif
 } P2EncoderChannel;
 
 #if defined(PLATFORM_T31)
@@ -1376,6 +1384,19 @@ static void p2_t41_clamp_bounds(int *minimum, int *maximum)
     if (*maximum > 51) *maximum = 51;
     if (*minimum < 0) *minimum = 0;
     if (*minimum > *maximum) *minimum = *maximum;
+}
+
+/* Keep the read-back of before the first RC setter call until the next
+ * picture went through the encoder (vendor: pending value). */
+static void p2_t41_rb_hold(int channel)
+{
+    P2EncoderChannel *ch = &p2_channels[channel];
+
+    if (!ch->rb_hold) {
+        ch->rb_rc = ch->attr.rcAttr;
+        ch->rb_gop = ch->attr.gopAttr;
+        ch->rb_hold = 1;
+    }
 }
 #endif
 
@@ -3159,6 +3180,10 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     ch->enc_start_us = p2_monotonic_us();
     __atomic_store_n(&ch->encoding, 1, __ATOMIC_RELEASE);
     process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);
+#if defined(PLATFORM_T41)
+    /* the pending RC values are in effect from this picture on */
+    ch->rb_hold = 0;
+#endif
 #if defined(PLATFORM_T23)
     pace_encoded_us = p2_monotonic_us();
 #endif
@@ -3805,6 +3830,12 @@ int IMP_Encoder_GetChnAttr(int channel, IMPEncoderChnAttr *attr)
         return -1;
     *attr = p2_channels[channel].attr;
 #if defined(PLATFORM_T41)
+    if (p2_channels[channel].rb_hold) {
+        attr->rcAttr = p2_channels[channel].rb_rc;
+        attr->gopAttr = p2_channels[channel].rb_gop;
+    }
+#endif
+#if defined(PLATFORM_T41)
     /* vendor: the GOP read-back is the IDR distance (length * same-scene) */
     attr->gopAttr.uGopLength = (uint16_t)t40_vendor_gop_length(
         attr->gopAttr.uGopLength, attr->gopAttr.uMaxSameSenceCnt);
@@ -4243,6 +4274,7 @@ int IMP_Encoder_SetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
     }
 #endif
     if (!p2_valid_channel(channel) || !rate || !rate->frmRateNum ||
@@ -4293,6 +4325,10 @@ int IMP_Encoder_GetChnFrmRate(int channel, IMPEncoderFrmRate *rate,
     if (!p2_valid_channel(channel) || !rate || !p2_channels[channel].created)
         return -1;
     *rate = p2_channels[channel].attr.rcAttr.outFrmRate;
+#if defined(PLATFORM_T41)
+    if (p2_channels[channel].rb_hold)
+        *rate = p2_channels[channel].rb_rc.outFrmRate;
+#endif
     return 0;
 }
 
@@ -4314,6 +4350,10 @@ int IMP_Encoder_GetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
     if (!p2_valid_channel(channel) || !mode || !p2_channels[channel].created)
         return -1;
     *mode = p2_channels[channel].attr.rcAttr.attrRcMode;
+#if defined(PLATFORM_T41)
+    if (p2_channels[channel].rb_hold)
+        *mode = p2_channels[channel].rb_rc.attrRcMode;
+#endif
 #if defined(PLATFORM_T21) || defined(PLATFORM_T23)
     /* the OEM reads back the clamped live values (p2_rc_readback.h) */
     p2_t21_rc_effective(mode, p2_channels[channel].rc_runtime);
@@ -4336,6 +4376,7 @@ int IMP_Encoder_SetChnAttrRcMode(int channel, IMPEncoderAttrRcMode *mode)
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         if (!mode)
             return -1;
         /* vendor T41 1.2.6: at run time the call is SetChnBitRate (if the
@@ -4481,6 +4522,7 @@ int IMP_Encoder_SetChnBitRate(int channel, int bitrate, int max_bitrate)
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         /* vendor: no argument check at the call; the pending value is
          * applied by the encoder only when both are non-zero and the mode
          * is not FIXQP (a CBR channel takes the target as its maximum
@@ -4572,6 +4614,8 @@ int IMP_Encoder_GetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
         if (!gop)
             return -1;
         *gop = p2_channels[channel].attr.gopAttr;
+        if (p2_channels[channel].rb_hold)
+            *gop = p2_channels[channel].rb_gop;
         /* vendor read-back: the IDR distance, uGopLength * uMaxSameSenceCnt */
         gop->uGopLength = (uint16_t)t40_vendor_gop_length(
             gop->uGopLength, gop->uMaxSameSenceCnt);
@@ -4598,6 +4642,7 @@ int IMP_Encoder_SetChnGopAttr(int channel, IMPEncoderGopAttr *gop)
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         if (!gop)
             return -1;
         /* vendor: stored without a check, the encoder applies length and
@@ -4639,6 +4684,7 @@ int IMP_Encoder_SetChnGopLength(int channel, int length)
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         if (length <= 0)
             return 0;   /* vendor: stored, never applied */
         p2_channels[channel].attr.gopAttr.uGopLength = (uint16_t)length;
@@ -4713,6 +4759,7 @@ int IMP_Encoder_SetChnQpBounds(int channel, int minimum, int maximum)
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         /* vendor: no range check at the call; the encoder applies the
          * window only if both are > 0, after the AL clamp */
         if (minimum <= 0 || maximum <= 0) {
@@ -4757,6 +4804,7 @@ int IMP_Encoder_SetChnQpBoundsPerFrame(int channel, int minimum_i,
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         if (minimum_i <= 0 || maximum_i <= 0 || minimum_p <= 0 ||
             maximum_p <= 0)
             return 0;   /* vendor: applied only when all four are > 0 */
@@ -4802,6 +4850,7 @@ int IMP_Encoder_SetChnMaxPictureSize(int channel, uint32_t maximum_i,
 
         if (err)
             return err;
+        p2_t41_rb_hold(channel);
         if (!maximum_i || !maximum_p)
             return 0;   /* vendor: applied only when both are non-zero */
         /* vendor: the HW rate control limits I and P pictures to ~95 %

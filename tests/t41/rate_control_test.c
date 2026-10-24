@@ -1139,6 +1139,17 @@ static void test_i_model_options_guard(void)
     q0 = openimp_t41_rate_controller_picture_qp(&c, 1);
     assert(q1 == 26u && q0 >= 26u && q0 <= 45u);
 
+    /* learnt I scale: a new sample at another QP moves the scale within
+     * the OEM bounds */
+    {
+        uint32_t before = c.i_model_scale;
+
+        openimp_t41_rate_controller_note_picture(&c, 0, 200000u, 31u, 95u);
+        assert(c.i_model_bits == 200000u && c.i_model_qp == 31u);
+        assert(c.i_model_scale >= 11180u && c.i_model_scale <= 20000u);
+        (void)before;
+    }
+
     /* guard: an empty history window leaves no room -> I QP raised */
     openimp_t41_rate_controller_set_options(&c, 1u);
     c.window.words[6] = c.window.words[8] = 0u;

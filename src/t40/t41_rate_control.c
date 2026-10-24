@@ -1114,6 +1114,7 @@ int openimp_t41_rate_controller_init(OpenIMPT41RateController *controller,
     controller->i_min_qp = min_qp;
     controller->i_max_qp = max_qp;
     controller->i_model_scale = 11225u;
+    controller->initial_p_qp = current_qp;
     controller->rc_options = 1u;        /* IMP_ENC_RC_SCN_CHG_RES */
     controller->initialized = 1;
     return 0;
@@ -1148,6 +1149,7 @@ int openimp_t41_rate_controller_reconfigure(
         controller->p_qp_sum = keep.p_qp_sum;
         controller->p_qp_count = keep.p_qp_count;
         controller->rc_options = keep.rc_options;
+        controller->initial_p_qp = keep.initial_p_qp;
     }
     return ret;
 }
@@ -1181,6 +1183,24 @@ int openimp_t41_rate_controller_complete(
     controller->last_selection = selection;
     controller->current_qp =
         (uint32_t)controller->selector.models.current_qp;
+    /* IMP_ENC_RC_OPT_SC_PREVENTION (OEM OIIo +431 / IiIo): a P picture
+     * that looks like a scene change (field_20 >= 96 %, or >= 86 % with
+     * field_14 < 70 %) raises the next QP by 3 steps; with SCN_CHG_RES
+     * (+384) not while the QP is already at or above the start QP. */
+    if (!is_idr && feedback && (controller->rc_options & 0x10u) &&
+        (effective_feedback.field_20_percent >= 96u ||
+         (effective_feedback.field_20_percent >= 86u &&
+          effective_feedback.field_14_bit_percent < 70u)) &&
+        !((controller->rc_options & 1u) &&
+          controller->current_qp >= controller->initial_p_qp)) {
+        uint32_t qp = controller->current_qp + 3u;
+
+        if (qp > controller->max_qp)
+            qp = controller->max_qp;
+        controller->current_qp = qp;
+        controller->selector.models.current_qp = (int16_t)qp;
+        ++controller->scene_change_raises;
+    }
     controller->smoothed_p_bits =
         controller->selector.models.models[1].bits;
     controller->virtual_buffer_bits =
@@ -1245,6 +1265,23 @@ void openimp_t41_rate_controller_set_options(
         controller->rc_options = rc_options;
 }
 
+/* New I-model sample: learn the per-QP scale from the previous sample when
+ * the QP differs (OEM o0OI, bounded 11180..20000), then replace it. */
+static void openimp_t41_i_model_sample(OpenIMPT41RateController *controller,
+                                       uint32_t bits, uint32_t qp)
+{
+    uint32_t scale = controller->i_model_scale;
+
+    if (controller->i_model_bits && controller->i_model_qp != qp &&
+        openimp_t41_rate_control_update_model_scale(
+            controller->i_model_bits, (int16_t)controller->i_model_qp,
+            bits, (int16_t)qp, controller->i_model_scale, 11180u, 20000u,
+            &scale) == 0)
+        controller->i_model_scale = scale;
+    controller->i_model_bits = bits;
+    controller->i_model_qp = qp;
+}
+
 void openimp_t41_rate_controller_note_picture(
     OpenIMPT41RateController *controller, int is_idr,
     uint32_t completed_bits, uint32_t used_qp, uint32_t intra_percent)
@@ -1255,8 +1292,7 @@ void openimp_t41_rate_controller_note_picture(
     if (is_idr) {
         /* o0OI: the per-type model takes every third picture */
         if (++controller->i_picture_count >= 3u) {
-            controller->i_model_bits = completed_bits;
-            controller->i_model_qp = used_qp;
+            openimp_t41_i_model_sample(controller, completed_bits, used_qp);
             controller->i_picture_count = 0u;
         }
         controller->p_qp_sum = 0u;
@@ -1264,10 +1300,8 @@ void openimp_t41_rate_controller_note_picture(
         return;
     }
     /* a P picture coded mostly intra (scene change) refreshes the I model */
-    if (intra_percent >= 81u) {
-        controller->i_model_bits = completed_bits;
-        controller->i_model_qp = used_qp;
-    }
+    if (intra_percent >= 81u)
+        openimp_t41_i_model_sample(controller, completed_bits, used_qp);
     controller->p_qp_sum += used_qp;
     ++controller->p_qp_count;
 }
