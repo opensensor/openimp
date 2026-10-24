@@ -1379,7 +1379,7 @@ int main(int argc, char **argv)
             y0 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278)); o0 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
             ma.mask_chx[CH][0].mask_en = 1; ma.mask_chx[CH][0].mask_pos_left = MX(0.3125); ma.mask_chx[CH][0].mask_pos_top = MY(0.278);
             ma.mask_chx[CH][0].mask_width = MX(0.234); ma.mask_chx[CH][0].mask_height = MY(0.278); ma.mask_chx[CH][0].mask_type = IMPISP_MASK_TYPE_RGB;
-            ma.mask_chx[CH][0].mask_value.mask_argb.r_value = 0; ma.mask_chx[CH][0].mask_value.mask_argb.g_value = 0; ma.mask_chx[CH][0].mask_value.mask_argb.b_value = 0;
+            ma.mask_chx[CH][0].mask_value.mask_argb.r_value = 255; ma.mask_chx[CH][0].mask_value.mask_argb.g_value = 255; ma.mask_chx[CH][0].mask_value.mask_argb.b_value = 255;  /* white cover: also measurable in a dark room */
             MK(); rs = IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma);
             usleep(1500000);
             memset(&mg, 0, sizeof mg); rg = IMP_ISP_Tuning_GetMask(IMPVI_MAIN, &mg);
@@ -1388,7 +1388,7 @@ int main(int argc, char **argv)
                    mg.mask_chx[CH][0].mask_pos_left, mg.mask_chx[CH][0].mask_pos_top, mg.mask_chx[CH][0].mask_width, mg.mask_chx[CH][0].mask_height, mg.mask_chx[CH][0].mask_type, y0, y1, o0, o1);
             /* second block: red cover */
             ma.mask_chx[CH][1] = ma.mask_chx[CH][0]; ma.mask_chx[CH][1].mask_pos_left = MX(0.703); ma.mask_chx[CH][1].mask_pos_top = MY(0.625); ma.mask_chx[CH][1].mask_width = MX(0.156); ma.mask_chx[CH][1].mask_height = MY(0.208);
-            ma.mask_chx[CH][1].mask_value.mask_argb.r_value = 255;
+            ma.mask_chx[CH][1].mask_value.mask_argb.g_value = 0; ma.mask_chx[CH][1].mask_value.mask_argb.b_value = 0; ma.mask_chx[CH][1].mask_value.mask_argb.r_value = 255;
             rs |= IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma); usleep(1500000);
             { struct pm pm2 = grab(500); (void)pm2; }
             y2 = region_y(MX(0.703), MY(0.625), MX(0.156), MY(0.208));
@@ -1396,7 +1396,7 @@ int main(int argc, char **argv)
             for (i = 0; i < 12; i++) ((IMPISP_MASK_BLOCK_PAR *)&ma)[i].mask_en = 0;
             MK(); IMP_ISP_Tuning_SetMask(IMPVI_MAIN, &ma); usleep(1500000);
             { double y3 = region_y(MX(0.3125), MY(0.278), MX(0.234), MY(0.278));
-              R("W19_Mask", (!rs && !rg && mg.mask_chx[CH][0].mask_en && y1 < 30 && fabs_d(o1 - o0) < 12 && y3 > y0 * 0.6) ? "PASS" : "FAIL",
+              R("W19_Mask", (!rs && !rg && mg.mask_chx[CH][0].mask_en && fabs_d(y1 - 235) < 40 && fabs_d(o1 - o0) < 12 && fabs_d(y3 - y0) < 25) ? "PASS" : "FAIL",
                 "cover in the sub stream (ch1): region Y %.1f -> %.1f (covered), outside %.1f -> %.1f, after disable %.1f; set/get rc %d/%d", y0, y1, o0, o1, y3, rs, rg); }
         }
     }
