@@ -2336,7 +2336,7 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
             codec_rc.attrRcMode.attrVbr.iInitialQP = (int16_t)
                 p2_t40_auto_initial_qp(
                     attr, p2_attr_codec_type(attr),
-                    codec_rc.attrRcMode.attrVbr.uTargetBitRate * 1000u,
+                    attr->rcAttr.attrRcMode.attrVbr.uTargetBitRate * 1000u,
                     attr->rcAttr.outFrmRate.frmRateNum,
                     attr->rcAttr.outFrmRate.frmRateDen,
                     codec_rc.attrRcMode.attrVbr.iMinQP < 1 ? 1 :
