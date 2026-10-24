@@ -22,9 +22,9 @@ int main(void)
     /* stream handed out by GetStream (until ReleaseStream) */
     openimp_t40_query_fill(&st, 1, 1, 1, 0);
     assert(st.leftStreamFrames == 0);
-    /* encoding in progress */
+    /* encoding in progress (a poll that only waits stays idle) */
     openimp_t40_query_fill(&st, 1, 0, 0, 1);
-    assert(st.work_done == 0);
+    assert(st.work_done == 0 && st.leftPics == 1);
     /* not registered */
     openimp_t40_query_fill(&st, 0, 0, 0, 0);
     assert(!st.registered);

@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## Branch `claude/t40-wip-cells` (2026-10-24, local)
+
+- **T40 `IMP_Encoder_Query`:** `work_done`/`leftPics` follow the codec activity (the `encoding` flag, like T41) instead of "a PollingStream is waiting": on the Eufy 17.5 % of the samples read busy at 20 fps (8.7 ms per frame), before 100 %. `OpenIMP_Encoder_GetTelemetry` and `GetChnAveBitrate` device-checked (139 frames = consumer count, 20.02 fps, 1920 vs 2033 kbit/s).
+- `tests/t40/devtest` phases 0x4000 (AE scene/caps, SensorFPS, LSC bypass, flip modes, WDR/DRC/NR ratios, mask, 14 getters) and 0x8000 (encoder telemetry); mask bits 0x20000..0x400000 guard the calls that oopsed the stock tx-isp-t40 (see open-tx-isp `claude/t40-wip-cells`).
+
 ## Branch `claude/t40-unknowns` (2026-10-24, merged into `next`)
 
 - **T40 IMP_AI volume/gain like vendor libimp 1.3.1 (Eufy T40XP, microphone only, no playback):** `GetVol`/`GetGain` returned stale codec values (always 60 / 0 after a Set, the kernel `AMIC_AI_GET_*` ioctls do not read the request); `SetGain` did not clamp. Now as the vendor library, read back on the same camera with the vendor 1.3.1 `libimp.so` running the same test binary: device < 2 and channel 0 else -1, volume clamped to -30..120, gain to 0..31, the value is stored and `Get` answers the stored value (volume 60 and gain 0 before the first `Set`); a failing codec ioctl is only logged by `SetGain`. 50 frames of 640 samples in 0.79 s (40 ms pace), `SetVolMute`/gain/volume still change the captured level. T41 keeps the old code.
