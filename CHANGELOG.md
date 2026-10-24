@@ -8,7 +8,13 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
-## Branch `claude/t40-wip-cells` (2026-10-24, local)
+## 2026-10-24 evening summary (OpenIMP next f55f620f, open-tx-isp next e5030fd4)
+
+- Merged since the entries below were written: `claude/t40-wip-cells` (T40 encoder query/telemetry, devtest phases), `claude/t41-rcparams` rounds 3 and 4 (read-back after the next picture, learnt I-model scale, SC_PREVENTION gated on skipped pictures like the vendor), `claude/t41-load-reboot` (test tools stop writing files when RAM runs low), `claude/telemetry-abi`, `claude/t4x-bufshare`, `claude/t40-unknowns`.
+- Driver side (open-tx-isp): T40 reload/unload, dead-client framechan release, tuning-control oops fixes, CCM/CSC/Gamma, AE EV fan-out, AE caps and `AeTargetComp`, DRC/Sinter/Temper ratios, DMSC night follow, T40 and T41 module size, T31 front crop 2.0x, ISP IRQ quiesce on T31/T23/T21 (QEMU finding): see [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md) and the open-tx-isp CHANGELOG.
+- Matrix: `docs/FEATURE_MATRIX.md` evening pass (T40 3 ✅+ / 29 ✅ / 4 ⚠️ / 4 ? / 5 —, T41 #27 ✅, T31 #20 ✅); `docs/OPENIMP_BEYOND_VENDOR.md` has the new robustness rows and the T41 scene-change note. A fleet soak of this state runs until 2026-10-25 10:00; the long-term stability cells (#41) stay ⚠️ until it is evaluated.
+
+## Branch `claude/t40-wip-cells` (2026-10-24, merged into `next`)
 
 - **T40 `IMP_Encoder_Query`:** `work_done`/`leftPics` follow the codec activity (the `encoding` flag, like T41) instead of "a PollingStream is waiting": on the Eufy 17.5 % of the samples read busy at 20 fps (8.7 ms per frame), before 100 %. `OpenIMP_Encoder_GetTelemetry` and `GetChnAveBitrate` device-checked (139 frames = consumer count, 20.02 fps, 1920 vs 2033 kbit/s).
 - `tests/t40/devtest` phases 0x4000 (AE scene/caps, SensorFPS, LSC bypass, flip modes, WDR/DRC/NR ratios, mask, 14 getters) and 0x8000 (encoder telemetry); mask bits 0x20000..0x400000 guard the calls that oopsed the stock tx-isp-t40 (see open-tx-isp `claude/t40-wip-cells`).
