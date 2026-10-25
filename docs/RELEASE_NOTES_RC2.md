@@ -15,7 +15,7 @@ Second release candidate of the open camera stack: **OpenIMP** (replacement for 
 
 ## Tested on
 
-The exact RC2 code runs on all **19 cameras** of the test fleet as image `agg46` (since 2026-10-25 ~11:30, with the matching streamer build): T10, T20, T21, T23, T31 (X and L), T40, T41 (two sensors). Before that, the state of 2026-10-24 ran an overnight soak (2026-10-24 22:45 to 2026-10-25 10:00; T41 gc5603 and sc5336, T40 sc830ai, and the rest of the fleet on the previous image): 0 oopses, 0 encoder-dead events, snapshots always 200, no streamer restarts, memory flat. Log: `audit/logs1024/soak-agg4z.log` (kept by the test campaign). Vendor comparisons are A/B runs on the same camera where a vendor stack exists (T40 Eufy, T41 Vanhua/Cinnado, T31, T21).
+The exact RC2 code runs on all **19 cameras** of the test fleet (since 2026-10-25 ~11:30, with the matching streamer build): T10, T20, T21, T23, T31 (X and L), T40, T41 (two sensors). Before that, the state of 2026-10-24 ran an overnight soak (2026-10-24 22:45 to 2026-10-25 10:00; T41 gc5603 and sc5336, T40 sc830ai, and the rest of the fleet on the previous image): 0 oopses, 0 encoder-dead events, snapshots always 200, no streamer restarts, memory flat. Vendor comparisons are A/B runs on the same camera where a vendor stack exists (T40 Eufy, T41 Vanhua/Cinnado, T31, T21).
 
 ## T41
 
