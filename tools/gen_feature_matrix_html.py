@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate docs/feature-matrix.html from docs/FEATURE_MATRIX.md.
 
-    python3 tools/gen_feature_matrix_html.py [in.md [out.html]]
+    python3 tools/gen_feature_matrix_html.py [--baseline old.md] [in.md [out.html]]
 
 Python 3 standard library only (no markdown module): the small subset of
 Markdown used by FEATURE_MATRIX.md is parsed here (headings, paragraphs,
@@ -18,16 +18,30 @@ Special handling:
     the cell codes (dev, host, aud, ...), data-gap rows and a "only rows with
     gaps" filter.
   * "Progress per SoC" gets a bar column computed from the counts.
+  * "New in RC2": every matrix cell symbol is compared with the matrix at the
+    baseline tag (default v2026.10.11-rc1, read with `git show TAG:docs/FEATURE_MATRIX.md`;
+    override with --baseline FILE or the env var BASELINE_MD).  Cells whose
+    symbol is better than at the baseline (rank ? < X < planned < in progress <
+    defect < supported < beyond vendor; "—" -> anything counts as new) get an
+    "RC2" badge and a highlight, cells that changed otherwise a muted "chg"
+    badge.  A toggle "only changes since RC1" hides unchanged rows and a count
+    per SoC is shown above the table.  Without a baseline nothing is marked.
 """
 import html
 import os
 import re
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SRC = os.path.join(ROOT, "docs", "FEATURE_MATRIX.md")
 DST = os.path.join(ROOT, "docs", "feature-matrix.html")
+BASE_TAG = "v2026.10.11-rc1"
+BASE_LABEL = "RC1"
+MATRIX_COUNTS = {}
+BASE = {}          # feature title -> {soc: symbol} at the baseline
+RANK = {"?": 0, "❌": 1, "📋": 2, "🔧": 3, "⚠": 4, "✅": 5, "✅+": 6}
 
 CSS = r"""
 :root{--bg:#f6f7f9;--fg:#1c2128;--muted:#5b6573;--card:#fff;--line:#d9dee5;--head:#eef1f5;--accent:#2457c5;
@@ -67,6 +81,13 @@ th small{font-weight:400;color:var(--muted)}
 table.mi{table-layout:auto;width:100%}table.mi th:nth-child(2){width:auto}table.mi td:first-child{width:auto;min-width:16rem;font-weight:400}table.mi td.nt{font-size:.74rem;color:var(--muted)}table.mi td.c{text-align:center;white-space:nowrap}.lg{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:.74rem;color:var(--muted);margin:.35rem 0 .5rem}.lg b{color:var(--fg);padding:0 6px;border-radius:5px;border:1px solid var(--line);font-weight:600}.lg b.sy{background:var(--card)}.pb{display:flex;height:14px;min-width:240px;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--na)}.pb i{display:block;height:100%}.b-dev{background:#2e9e5b}.b-host{background:#4f7fd9}.b-q{background:#a9b1bd}.b-noop{background:#9b82d0}.b-gap{background:#d9534f}details.full{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:.4rem 0 1rem;background:var(--card)}details.full>summary{font-weight:600}details.full label{font-size:.8rem;color:var(--muted);margin-left:1rem}
 td.cellc{overflow-wrap:anywhere}pre{overflow-x:auto;background:var(--head);padding:8px;border-radius:6px;font-size:.8rem}
 .card ol,details ol{padding-left:1.4rem}details li{margin:.2rem 0}
+.rc2{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;background:var(--accent);color:var(--bg);font-size:.66rem;font-weight:700;vertical-align:middle}
+.rc2.chg{background:var(--muted)}
+td.new{box-shadow:inset 3px 0 0 var(--accent)}
+.rc2bar{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:8px 12px;margin:0 0 10px;font-size:.85rem}
+.rc2bar table{width:auto;table-layout:auto;margin:.4rem 0}.rc2bar th,.rc2bar td{position:static;width:auto;font-weight:400;text-align:center;padding:3px 10px}
+.rc2bar td:first-child,.rc2bar th:first-child{text-align:left;font-weight:600}
+body.rc2only tr[data-rc2="0"],body.rc2only tr.grp.empty{display:none}
 """
 
 # status symbol -> (css class, title)
@@ -447,12 +468,56 @@ def parse_details(blocks):
     return res, groups
 
 
+def load_baseline(path=None):
+    """Matrix symbols of the baseline tag -> BASE {title: {soc: symbol}} (empty if unavailable)."""
+    BASE.clear()
+    try:
+        if path:
+            md = open(path, encoding="utf-8").read()
+        else:
+            md = subprocess.run(["git", "-C", ROOT, "show", "%s:docs/FEATURE_MATRIX.md" % BASE_TAG],
+                                check=True, capture_output=True, text=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        sys.stderr.write("warning: no baseline matrix (%s); nothing is marked as new\n" % e)
+        return
+    socs = None
+    for ln in md.split("\n"):
+        if not ln.startswith("|"):
+            continue
+        r = split_row(ln)
+        if r[:2] == ["#", "Feature"]:
+            socs = r[2:]
+        elif socs and re.fullmatch(r"\d+", r[0] or "x"):
+            m = re.match(r"^\[(.*)\]\(#.*\)$", r[1])
+            BASE[m.group(1) if m else r[1]] = {
+                soc: norm_sym(v.strip()) for soc, v in zip(socs, r[2:])}
+
+
+def classify(old, new):
+    """None (same / no baseline), 'new' (better than the baseline) or 'chg'."""
+    if old is None or old == new:
+        return None
+    if old == "—":
+        return "new"
+    if new == "—":
+        return "chg"
+    return "new" if RANK.get(new, 0) > RANK.get(old, 0) else "chg"
+
+
+RC2_JS = ("<script>function rc2f(on){document.body.classList.toggle('rc2only',on);"
+          "var g=null,any=false;document.querySelectorAll('tr.grp,tr[data-rc2]').forEach(function(r){"
+          "if(r.classList.contains('grp')){if(g)g.classList.toggle('empty',!any);g=r;any=false}"
+          "else if(r.getAttribute('data-rc2')==='1')any=true});if(g)g.classList.toggle('empty',!any)}"
+          "</script>")
+
+
 def render_matrix(rows, details, groups_info):
     head = rows[0]
     socs = head[2:]
     th = "<th>Feature</th><th>Vendor stack</th>" + "".join("<th>%s</th>" % esc(s) for s in socs)
     trs = []
     mism = []
+    cnt = {soc: [0, 0] for soc in socs}      # [improved, otherwise changed]
     for r in rows[1:]:
         if not r[0].strip() and r[1].startswith("**"):
             trs.append('<tr class="grp"><td colspan="%d">%s</td></tr>'
@@ -466,8 +531,11 @@ def render_matrix(rows, details, groups_info):
             anchor = "r-%d" % n   # no detail block: link to the row itself
         tds = ['<td><a href="#%s">%s</a></td>' % (esc(anchor), inline(title)),
                '<td class="vend">%s</td>' % inline(d["vendor"])]
+        base = BASE.get(title, {})
+        changed = 0
         for soc, sym in zip(socs, r[2:]):
             sym = norm_sym(sym.strip())
+            kind = classify(base.get(soc), sym)
             cls, ttl = SYM.get(sym, ("s-unk", "unknown"))
             txt = d["cells"].get(soc, "")
             mm = SYM_RE.match(txt)
@@ -480,12 +548,38 @@ def render_matrix(rows, details, groups_info):
             for lab, t in d["extra_cells"].get(soc, []):
                 t = SYM_RE.sub("", t, count=1)
                 body += '<br><span class="txt"><b>%s:</b> %s</span>' % (inline(lab), inline(t))
-            tds.append('<td class="cellc %s" data-sym="%s">%s</td>' % (cls, esc(sym), body))
-        trs.append('<tr id="r-%d">%s</tr>' % (n, "".join(tds)))
+            extra = ""
+            if kind:
+                changed += 1
+                cnt[soc][0 if kind == "new" else 1] += 1
+                lab = "RC2" if kind == "new" else "chg"
+                extra = " new" if kind == "new" else ""
+                body = ('<span class="rc2%s" title="%s at %s, now %s">%s</span>' % (
+                    "" if kind == "new" else " chg", esc(base[soc]), BASE_LABEL, esc(sym), lab)) + body
+            tds.append('<td class="cellc %s%s" data-sym="%s"%s>%s</td>' % (
+                cls, extra, esc(sym), ' data-rc2="%s"' % kind if kind else "", body))
+        trs.append('<tr id="r-%d" data-rc2="%d">%s</tr>' % (n, 1 if changed else 0, "".join(tds)))
     for m in mism:
         sys.stderr.write("warning: row %d %s: table symbol %s, detail symbol %s\n" % m)
-    return table_wrap("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>"
-                      % (th, "".join(trs)))
+    bar = ""
+    if BASE:
+        hd = "".join("<th>%s</th>" % esc(x) for x in socs)
+        c1 = "".join("<td><b>%d</b></td>" % cnt[x][0] for x in socs)
+        c2 = "".join("<td>%d</td>" % cnt[x][1] for x in socs)
+        nrows = sum(1 for t in trs if 'data-rc2="1"' in t.split(">", 1)[0])
+        bar = ('<div class="rc2bar"><label><input type="checkbox" onchange="rc2f(this.checked)"> '
+               'only changes since %s</label> <span class="small">(%d of %d features have at least one '
+               'changed cell; baseline: matrix at tag <code>%s</code>)</span>'
+               '<table><thead><tr><th>cells</th>%s</tr></thead><tbody>'
+               '<tr><td>new or improved since %s <span class="rc2">RC2</span></td>%s</tr>'
+               '<tr><td>otherwise changed <span class="rc2 chg">chg</span></td>%s</tr>'
+               '</tbody></table></div>%s'
+               % (BASE_LABEL, nrows, len(trs) - sum(1 for t in trs if 'class="grp"' in t), BASE_TAG,
+                  hd, BASE_LABEL, c1, c2, RC2_JS))
+        MATRIX_COUNTS.clear()
+        MATRIX_COUNTS.update(cnt)
+    return bar + table_wrap("<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>"
+                            % (th, "".join(trs)))
 
 
 # ---------------------------------------------------------------- main render
@@ -621,8 +715,15 @@ def render_block(typ, d):
 
 
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else SRC
-    dst = sys.argv[2] if len(sys.argv) > 2 else DST
+    args = [a for a in sys.argv[1:]]
+    base_file = os.environ.get("BASELINE_MD")
+    if "--baseline" in args:
+        k = args.index("--baseline")
+        base_file = args[k + 1]
+        del args[k:k + 2]
+    src = args[0] if args else SRC
+    dst = args[1] if len(args) > 1 else DST
+    load_baseline(base_file)
     md = open(src, encoding="utf-8").read()
     md = re.sub(r"<!--.*?-->", "", md, flags=re.S)
     body = render(md)
@@ -634,6 +735,9 @@ def main():
             "do not edit by hand.</p></main></body></html>\n" % (esc(title), CSS, body))
     open(dst, "w", encoding="utf-8").write(page)
     print("wrote %s (%d bytes)" % (dst, len(page.encode())))
+    if MATRIX_COUNTS:
+        print("changes since %s (new/improved, otherwise changed): %s" % (BASE_TAG, ", ".join(
+            "%s %d/%d" % (k, v[0], v[1]) for k, v in MATRIX_COUNTS.items())))
 
 
 if __name__ == "__main__":

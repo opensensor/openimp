@@ -32,7 +32,7 @@ T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and r
 
 ## Status
 
-Open stack = open-tx-isp + OpenIMP. **State: RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** Release SoCs: T10, T20, T21, T23, T31; T30, T40 and T41 are experimental. The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 application restarts). Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
+Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC2 `v2026.10.25-rc2` (OpenIMP `next` 7c30aa99 + docs, open-tx-isp `next` 1bf4549d + docs; runs on all 19 test cameras): release note [docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md), rendered matrix [docs/feature-matrix.html](docs/feature-matrix.html) ("only changes since RC1" filter).** Previous: **RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** Release SoCs: T10, T20, T21, T23, T31; T30, T40 and T41 are experimental. The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 application restarts). Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
 
 | SoC | Status |
 |---|---|
@@ -60,7 +60,7 @@ Vendor IMP/SU functions per SoC at RC1 (from the progress table of [FEATURE_MATR
 | T40 | 398 | 25.4 % (177 not audited/run yet) | 120 | experimental |
 | T41 | 445 | 59.3 % | 179 | experimental |
 
-Work after RC1 (agg-36) raises T30/T40/T41 further. Release notes: [docs/RELEASE-v2026.10.11-rc1.md](docs/RELEASE-v2026.10.11-rc1.md).
+Work after RC1 (agg-36) raises T30/T40/T41 further. Release notes: [docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md) (RC2), [docs/RELEASE-v2026.10.11-rc1.md](docs/RELEASE-v2026.10.11-rc1.md) (RC1).
 
 Details per feature and SoC: [FEATURE_MATRIX](docs/FEATURE_MATRIX.md).
 History: [CHANGELOG.md](CHANGELOG.md) and the full

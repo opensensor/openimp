@@ -8,6 +8,13 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## RC2 (v2026.10.25-rc2, 2026-10-25; OpenIMP next 7c30aa99 + docs, open-tx-isp next 1bf4549d + docs)
+
+- 278 OpenIMP and 636 open-tx-isp commits since RC1 (`v2026.10.11-rc1`). The exact code runs on all 19 test cameras as image agg46; the overnight soak of 2026-10-24/25 on the T40/T41 cameras was clean.
+- T41 complete against the matrix (defog, DRC, DPC, NR, CCM/gamma/CSC, live crop, reload, versioned telemetry, vendor-equal RC parameter APIs); T40 on the open driver (reload, AE/AWB/day-night/NR/CSC against the vendor, encoder); T31 MXU2 AWB statistics by default with load-time self-test; changed defaults and interfaces are listed as upgrade notes.
+- Matrix: T40 #3, #41, #42 now supported; #32/#33 "not RC2-relevant, sound tests pending"; T31 #41 stays a defect. Known limitations: T40 manual CCM effect small, sharpness 4-5 % below the vendor, motion pans not re-tested.
+- Read: [docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md) (per SoC, beyond vendor, known limitations, upgrade notes) and the rendered matrix [docs/feature-matrix.html](docs/feature-matrix.html) (cells new since RC1 are badged).
+
 ## 2026-10-24 evening summary (OpenIMP next f55f620f, open-tx-isp next e5030fd4)
 
 - Merged since the entries below were written: `claude/t40-wip-cells` (T40 encoder query/telemetry, devtest phases), `claude/t41-rcparams` rounds 3 and 4 (read-back after the next picture, learnt I-model scale, SC_PREVENTION gated on skipped pictures like the vendor), `claude/t41-load-reboot` (test tools stop writing files when RAM runs low), `claude/telemetry-abi`, `claude/t4x-bufshare`, `claude/t40-unknowns`.
