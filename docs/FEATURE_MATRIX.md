@@ -926,12 +926,12 @@ Per area and SoC: functions that work (device-tested or vendor no-op) / function
 - **ISP tuning:** T10 67/67 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 66/67 ✅ · 1 🔧 · 0 gaps · 0 ? · T21 66/66 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 86/97 ✅ · 8 🔧 · 3 gaps · 0 ? · T30 0/67 ✅ · 13 🔧 · 2 gaps · 52 ? · T31 85/87 ✅ · 2 🔧 · 0 gaps · 0 ? · T32 0/113 (no OpenIMP build yet) · T33 0/116 (no OpenIMP build yet) · T40 63/71 ✅ · 8 🔧 · 0 gaps · 0 ? · T41 61/78 ✅ · 1 🔧 · 16 gaps · 0 ?
 - **AE / AWB / AF:** T10 27/27 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 27/27 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 29/29 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 48/51 ✅ · 2 🔧 · 1 gaps · 0 ? · T30 0/26 ✅ · 4 🔧 · 0 gaps · 22 ? · T31 47/49 ✅ · 2 🔧 · 0 gaps · 0 ? · T32 0/41 (no OpenIMP build yet) · T33 0/41 (no OpenIMP build yet) · T40 25/29 ✅ · 2 🔧 · 2 gaps · 0 ? · T41 28/39 ✅ · 0 🔧 · 11 gaps · 0 ?
 - **Encoder:** T10 38/70 ✅ · 0 🔧 · 31 gaps · 1 ? · T20 40/70 ✅ · 0 🔧 · 29 gaps · 1 ? · T21 51/67 ✅ · 0 🔧 · 16 gaps · 0 ? · T23 72/90 ✅ · 1 🔧 · 13 gaps · 4 ? · T30 0/67 ✅ · 3 🔧 · 19 gaps · 45 ? · T31 43/45 ✅ · 0 🔧 · 2 gaps · 0 ? · T32 0/116 (no OpenIMP build yet) · T33 0/128 (no OpenIMP build yet) · T40 46/59 ✅ · 3 🔧 · 10 gaps · 0 ? · T41 48/74 ✅ · 9 🔧 · 17 gaps · 0 ?
-- **FrameSource:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 22/22 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/19 ✅ · 0 🔧 · 0 gaps · 19 ? · T31 24/30 ✅ · 1 🔧 · 5 gaps · 0 ? · T32 0/47 (no OpenIMP build yet) · T33 0/49 (no OpenIMP build yet) · T40 22/33 ✅ · 6 🔧 · 5 gaps · 0 ? · T41 24/36 ✅ · 7 🔧 · 5 gaps · 0 ?
+- **FrameSource:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 22/22 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/19 ✅ · 0 🔧 · 0 gaps · 19 ? · T31 24/30 ✅ · 1 🔧 · 5 gaps · 0 ? · T32 0/47 (no OpenIMP build yet) · T33 0/49 (no OpenIMP build yet) · T40 22/28 ✅ · 6 🔧 · 0 gaps · 0 ? · T41 24/36 ✅ · 7 🔧 · 5 gaps · 0 ?
 - **OSD:** T10 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T20 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T21 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T23 36/42 ✅ · 4 🔧 · 0 gaps · 2 ? · T30 0/17 ✅ · 1 🔧 · 0 gaps · 16 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 36/43 ✅ · 6 🔧 · 0 gaps · 1 ? · T41 37/42 ✅ · 2 🔧 · 3 gaps · 0 ?
 - **IVS:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/18 ✅ · 0 🔧 · 0 gaps · 18 ? · T31 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/18 (no OpenIMP build yet) · T33 0/18 (no OpenIMP build yet) · T40 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 18/18 ✅ · 0 🔧 · 0 gaps · 0 ?
 - **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/90 ✅ · 22 🔧 · 0 gaps · 68 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
 - **System:** T10 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T20 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T21 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T23 32/60 ✅ · 25 🔧 · 0 gaps · 3 ? · T30 0/50 ✅ · 1 🔧 · 0 gaps · 49 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 1 🔧 · 1 gaps · 27 ? · T41 19/55 ✅ · 30 🔧 · 6 gaps · 0 ?
-- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/402 ✅ · 26 🔧 · 18 gaps · 28 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
+- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/397 ✅ · 26 🔧 · 13 gaps · 28 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
 
 ### Priorities for streamers
 
@@ -945,7 +945,7 @@ Gaps (error, missing, stub, cache-only) in functions that at least one streamer 
 - **T31:** 0 streamer-used gaps; 2 further gaps no streamer calls
 - **T32:** no OpenIMP build yet; 178 vendor functions are called by a streamer. Most used: `AI_Disable` (p† r† t†), `AI_DisableAgc` (p† r† t†), `AI_DisableChn` (p† r† t†), `AI_DisableHpf` (p† r† t†), `AI_DisableNs` (p† r† t†), `AI_Enable` (p† r† t†), `AI_EnableAgc` (p† r† t†), `AI_EnableChn` (p† r† t†), `AI_EnableHpf` (p† r† t†), `AI_EnableNs` (p† r† t†), `AI_Get/SetChnParam` (p† r† t†), `AI_Get/SetGain` (p† r† t†)
 - **T33:** no OpenIMP build yet; 178 vendor functions are called by a streamer. Most used: `AI_Disable` (p† r† t†), `AI_DisableAgc` (p† r† t†), `AI_DisableChn` (p† r† t†), `AI_DisableHpf` (p† r† t†), `AI_DisableNs` (p† r† t†), `AI_Enable` (p† r† t†), `AI_EnableAgc` (p† r† t†), `AI_EnableChn` (p† r† t†), `AI_EnableHpf` (p† r† t†), `AI_EnableNs` (p† r† t†), `AI_Get/SetChnParam` (p† r† t†), `AI_Get/SetGain` (p† r† t†)
-- **T40:** 0 streamer-used gaps; 6 further gaps no streamer calls
+- **T40:** 0 streamer-used gaps; 5 further gaps no streamer calls
 - **T41:** 0 streamer-used gaps; 37 further gaps no streamer calls
 
 ### Long-term backlog
@@ -1025,11 +1025,10 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 </details>
 
-<details><summary><b>T40</b>: 32 functions</summary>
+<details><summary><b>T40</b>: 31 functions</summary>
 
 - **AE / AWB / AF:** implement (2): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`
 - **Encoder (and decoder):** implement (2): `Decoder_*`, `Encoder_Get/SetFisheyeEnableStatus`
-- **FrameSource:** implement (1): `EmuFrameSource_*`
 - **OSD:** implement (1): `OSD_Init_ISP`
 - **System / sysutils / log:** implement (26): `SU_ADC_DisableChn`, `SU_ADC_EnableChn`, `SU_ADC_Exit`, `SU_ADC_GetChnValue`, `SU_ADC_Init`, `SU_Base_DisableAlarm`, `SU_Base_EnableAlarm`, `SU_Base_Get/SetAlarm`, `SU_Base_Get/SetTime`, `SU_Base_PollingAlarm`, `SU_Base_Reboot`, `SU_Base_Suspend`, `SU_CIPHER_ConfigHandle`, `SU_CIPHER_CreateHandle`, `SU_CIPHER_Decrypt`, `SU_CIPHER_DES_Exit`, `SU_CIPHER_DES_Init`, `SU_CIPHER_DES_Test`, `SU_CIPHER_DestroyHandle`, `SU_CIPHER_Encrypt`, `SU_CIPHER_Exit`, `SU_CIPHER_Init`, `SU_Key_DisableEvent`, `SU_Key_EnableEvent`, `SU_Key_ReadEvent`, `SU_LED_Command`
 
@@ -1712,7 +1711,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T32 | T33 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `EmuFrameSource_*` | · | · | · | · | · | · | · | · | ❌ | ❌ | – |
+| `EmuFrameSource_*` | · | · | · | · | · | · | · | · | · | ❌ | – |
 | `FB_*` | · | · | · | · | · | ❌ | · | · | · | · | – |
 | `FrameSource_ChnStatQuery` | · | · | · | · | · | ✅ | · | · | · | · | – |
 | `FrameSource_ClearPoolId` | · | · | · | · | · | ✅ | 📋 | 📋 | · | · | – |
@@ -1761,8 +1760,9 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `FrameSource_SnapRaw_Start` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `FrameSource_UpdateChnLut` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 
-<details><summary>Notes and references (31)</summary>
+<details><summary>Notes and references (32)</summary>
 
+- `EmuFrameSource_*`: T40: declared in imp_emu_framesource.h, exported by no vendor library; OpenIMP does not export them either, so nothing is missing. T40: vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_EmuFrameSource_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_emu_framesource.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #67).
 - `FB_*`: T31: not exported by the SDK 1.1.6 libimp (neither 4.7.2 nor 5.4.0 builds); only the 1.1.5-zrt display builds carry IMP_FB_*. The cameras have no display or framebuffer to test against (apitest/untestable.yaml: hardware). Decision: not implemented, nothing in the target libimp to match.
 - `FrameSource_ChnStatQuery`: audit: userspace implementation T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `FrameSource_ClearPoolId`: T31 libimp 1.1.6 (disassembly): frees the FrameSource pool-id table, no argument, returns 0; OpenIMP resets every channel's pool id to -1 the same way. apitest PASS on the device (pool 2 set on ch3, ClearPoolId, every channel -1, old bindings restored, frames flow); a pool is a name only in OpenIMP, so there is no memory effect to check. T31: apitest agg61 2026-10-31 .26.

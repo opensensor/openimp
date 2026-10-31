@@ -4,6 +4,10 @@
 # category: sound | reboot | power | hardware | wedges-isp | no-signature | own-topology | not-in-soc-api | backlog
 #   backlog = testable in principle, no case yet (counted and printed by the checker; to be turned into cases or re-classified)
 entries:
+  - match: ["IMP_EmuFrameSource_*"]
+    socs: [T40]
+    category: not-in-soc-api
+    reason: "declared in the T40 1.3.1 SDK header imp_emu_framesource.h but exported by no T40 vendor library (uclibc/glibc libimp.so and libimp.a checked with nm and strings), so there is no vendor behaviour to match"
   - match: ["IMP_AI_IMPDBG_*", "IMP_AO_IMPDBG_*", "IMP_AI_DisableDrc", "IMP_AI_EnableDrc", "IMP_AO_DisableDrc", "IMP_AO_EnableDrc", "IMP_AI_GetRawSwitch", "IMP_AI_SetAECLeadAI", "IMP_DMIC_SetAECLeadDMIC"]
     category: sound
     reason: "audio debug / DRC / AEC lead switches of the audio path (speaker or AEC reference needed)"
