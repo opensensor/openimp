@@ -144,6 +144,7 @@ compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
 compile t23_audio_ext src/t23/openimp_t23_audio_ext.c -Werror
 compile t23_encoder src/t23/openimp_t23_encoder.c -Werror
 compile t23_decoder src/t23/openimp_t23_decoder.c -Werror
+compile t23_jpegdec src/t23/openimp_t23_jpegdec.c -Werror
 compile t23_misc src/t23/openimp_t23_misc.c -Werror
 # Native Helix H.264: the T30/T21 encoder with the T21-family command list.
 compile t23_helix_native src/t30/t30_helix_encoder.c -Werror
@@ -206,6 +207,7 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/t23_audio_ext.o" \
     "$output_dir/t23_encoder.o" \
     "$output_dir/t23_decoder.o" \
+    "$output_dir/t23_jpegdec.o" \
     "$output_dir/t23_misc.o" \
     "$output_dir/t23_helix_native.o" \
     "$output_dir/t23_h264_descriptor.o" \

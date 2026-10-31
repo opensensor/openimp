@@ -1031,7 +1031,7 @@ static void live_old(int chn, int codec)
 # if HAS_IMP_Encoder_SetChnInitQP
     NEED(IMP_Encoder_SetChnInitQP) { r = IMP_Encoder_SetChnInitQP(chn, 30); RET0(IMP_Encoder_SetChnInitQP, r, "qp 30 (no getter)"); }
 # endif
-# if HAS_IMP_Encoder_SetMultiSectionMode
+# if HAS_IMP_Encoder_SetMultiSectionMode && !defined(PLATFORM_T23)
     rep(FN(IMP_Encoder_SetMultiSectionMode), 0, V_SKIP, "global slice mode of all channels");
 # endif
 #else

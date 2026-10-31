@@ -17,7 +17,7 @@ entries:
   - match: ["IMP_FB_*"]
     category: hardware
     reason: "framebuffer / display device, cameras have no display"
-  - match: ["IMP_ISP_Tuning_*_Sec", "IMP_ISP_*_Sec", "IMP_OSD_*_ISP_Sec", "IMP_ISPOSD_Alloc", "IMP_OSD_Alloc", "IMP_ISP_StreamCheck", "IMP_ISP_SetStreamOut"]
+  - match: ["IMP_ISP_Tuning_*_Sec", "IMP_ISP_*_Sec", "IMP_OSD_*_ISP_Sec", "IMP_ISP_StreamCheck", "IMP_ISP_SetStreamOut"]
     socs: [T23]
     category: own-topology
     reason: "T23 second-sensor (secondary camera) variants of the ISP API; the test cameras have one sensor"

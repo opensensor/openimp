@@ -790,12 +790,21 @@ int IMP_Encoder_SetPoolSize(int size)
     return 0;
 }
 
-/* OEM: split the encoder rmem into `cnt` sections of `size` KiB (mode 1/2)
- * before the encoder starts; mode 0 is refused, larger modes fall back to
- * 1.  Kept only, for the same reason as SetPoolSize. */
+/* OEM 1.3.0 (disassembly 0x57e80): refused with -1 once the encoder module is
+ * initialised (EncoderInit ran: first group / channel); otherwise the section
+ * size (KiB, below 300 only a warning) is stored as bytes, mode 1/2 as given,
+ * larger modes as 1; mode 0, size <= 0 or cnt <= 0 return -1 (mode 0 also
+ * resets the stored mode).  Kept only, for the same reason as SetPoolSize:
+ * the Helix session cannot be split into sections. */
 int IMP_Encoder_SetMultiSectionMode(int mode, int size, int cnt)
 {
-    if (mode == 0 || size <= 0 || cnt <= 0)
+    if (openimp_t23_p2_initialized())
+        return -1;
+    if (mode == 0) {
+        multi_section_mode = 0;
+        return -1;
+    }
+    if (size <= 0 || cnt <= 0)
         return -1;
     multi_section_mode = mode < 3 ? mode : 1;
     multi_section_size = size << 10;

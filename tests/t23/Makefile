@@ -20,6 +20,7 @@ HELIX_DESCRIPTOR := $(BUILD)/t23-helix-descriptor-test
 HELIX_STREAM := $(BUILD)/t23-helix-stream-test
 RMEM_LAYOUT := $(BUILD)/t23-rmem-layout-test
 OSD_PACK := $(BUILD)/t23-osd-pack-test
+JPEGDEC_CLI := $(BUILD)/t23-jpegdec-cli
 AUDIO_ABI := $(BUILD)/t23-audio-abi-test
 P2_ROI := $(BUILD)/t23-p2-roi-test
 HEVC_POLICY := $(BUILD)/t23-hevc-policy-test
@@ -45,8 +46,10 @@ HELIX_INCLUDES := -DPLATFORM_T23 '-D_Static_assert(c,m)=' -Wno-unused-result \
 check: $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(ZERO_COPY_TEST_BIN) \
 	$(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) $(IVS_DIGEST_T23) \
 	$(IVS_FRAMEWORK) $(IVS_MOVE_V2) $(JPEG_QL) $(HELIX_DESCRIPTOR) $(HELIX_STREAM) \
-	$(RMEM_LAYOUT) $(OSD_PACK) $(AUDIO_ABI) $(P2_ROI)
+	$(RMEM_LAYOUT) $(OSD_PACK) $(AUDIO_ABI) $(P2_ROI) $(JPEGDEC_CLI)
 	$(P2_ROI)
+	@if python3 -c 'import PIL' 2>/dev/null; then python3 jpegdec_check.py $(JPEGDEC_CLI); \
+	else echo 'jpegdec_check: Pillow not installed, skipped'; fi
 	$(HELIX_DESCRIPTOR)
 	$(RMEM_LAYOUT)
 	$(OSD_PACK)
@@ -176,6 +179,11 @@ $(OSD_PACK): osd_pack_test.c $(PROJECT_DIR)/src/t23/openimp_t23_osd_pack.h \
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) '-D_Static_assert(c,m)=' -I$(PROJECT_DIR)/src -o $@ osd_pack_test.c
 
+# IMP_Decoder software JPEG decoder (no OEM worker), compared with libjpeg / ffmpeg by jpegdec_check.py
+$(JPEGDEC_CLI): jpegdec_cli.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src -o $@ jpegdec_cli.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.c -lm
+
 $(AUDIO_ABI): audio_abi_test.c $(PROJECT_DIR)/include/imp/imp_audio.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -DPLATFORM_T23 -I$(PROJECT_DIR)/include -o $@ audio_abi_test.c
@@ -201,7 +209,7 @@ hevc-policy: hevc_policy_test.c $(PROJECT_DIR)/src/t40/p2_hevc_policy.h
 	done
 
 clean:
-	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(RMEM_LAYOUT) $(OSD_PACK) $(AUDIO_ABI) $(BUILD)/t23-helix.h264 \
+	rm -f $(HELIX_DESCRIPTOR) $(HELIX_STREAM) $(RMEM_LAYOUT) $(OSD_PACK) $(AUDIO_ABI) $(JPEGDEC_CLI) $(BUILD)/t23-helix.h264 \
 		$(BUILD)/t23-helix.ref $(BUILD)/t23-helix.nv12
 	rm -f $(ISP_TUNING_TEST_BIN) $(ACODEC_TEST_BIN) $(DEVICE_TEST_BIN) \
 		$(ZERO_COPY_TEST_BIN) $(FAKE_HELIXD_BIN) $(IVS_DIGEST_T31) \

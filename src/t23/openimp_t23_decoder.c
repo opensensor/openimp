@@ -2,14 +2,20 @@
  *
  * The OEM libimp 1.3.0 decodes JPEG only (ijpegd on the Helix VPU), on
  * channel 0, into NV12, NV21 or YUV420P; H.264 and every other payload are
- * refused at CreateChn.  OpenIMP has no JPEG decoder of its own, so - like
- * the H.264 encoder - the OEM decoder runs in openimp-t23-helixd: a JPEG is
- * copied into the worker's shared window, decoded there, and the decoded
- * picture stays in the worker's VBM (rmem) until ReleaseFrame.  The caller
- * reads it through OpenIMP's own rmem mapping of the same physical buffer
- * (no copy); if that mapping is not available the picture is copied.
+ * refused at CreateChn.  Two backends:
  *
- * The worker exists only between CreateChn and DestroyChn. */
+ * - with the OEM worker (OPENIMP_T23_HELIX_BRIDGE=1): the OEM decoder runs in
+ *   openimp-t23-helixd: a JPEG is copied into the worker's shared window,
+ *   decoded there, and the decoded picture stays in the worker's VBM (rmem)
+ *   until ReleaseFrame.  The caller reads it through OpenIMP's own rmem
+ *   mapping of the same physical buffer (no copy); if that mapping is not
+ *   available the picture is copied.  The worker exists only between
+ *   CreateChn and DestroyChn.
+ * - without it (the default build): OpenIMP's own software decoder
+ *   (openimp_t23_jpegdec.c, baseline JPEG) in the caller's thread; the
+ *   picture is a malloc()ed buffer (frame phyAddr 0).  Progressive and
+ *   other non-baseline files are refused (-1), pictures larger than
+ *   maxWidth x maxHeight too. */
 
 #include <errno.h>
 #include <pthread.h>
@@ -23,6 +29,7 @@
 #include "dma_alloc.h"
 #include "imp_log_int.h"
 #include "t23/openimp_t23_helix_bridge.h"
+#include "t23/openimp_t23_jpegdec.h"
 
 /* vendor imp_decoder.h */
 typedef struct {
@@ -62,6 +69,7 @@ typedef struct {
 static struct {
     int created;
     int receiving;
+    int sw;                         /* software decoder instead of the OEM worker */
     T23DecoderChnAttr attr;
     T23HelixBridge bridge;
     T23DecSlot slots[T23_DEC_SLOTS];
@@ -110,12 +118,15 @@ int IMP_Decoder_CreateChn(int chn, const T23DecoderChnAttr *attr)
     dec.depth = attr->nrKeepStream ? (int)attr->nrKeepStream : 1;
     if (dec.depth > T23_DEC_SLOTS)
         dec.depth = T23_DEC_SLOTS;
+    dec.sw = 0;
     ret = OpenIMP_T23_HelixDecoderOpen(&dec.bridge, attr, sizeof(*attr),
                                        attr->maxWidth, attr->maxHeight);
-    if (ret == 0)
-        dec.created = 1;
-    else
+    if (ret != 0) {
         OpenIMP_T23_HelixExit(&dec.bridge);
+        dec.sw = 1;                 /* no OEM worker: decode in software */
+        ret = 0;
+    }
+    dec.created = 1;
     pthread_mutex_unlock(&dec.lock);
     return ret == 0 ? 0 : -1;
 }
@@ -133,7 +144,8 @@ int IMP_Decoder_DestroyChn(int chn)
     dec.receiving = 0;
     pthread_cond_broadcast(&dec.cond);
     /* the worker returns every frame it still holds when it exits */
-    OpenIMP_T23_HelixExit(&dec.bridge);
+    if (!dec.sw)
+        OpenIMP_T23_HelixExit(&dec.bridge);
     for (int i = 0; i < T23_DEC_SLOTS; i++)
         free(dec.slots[i].copy);
     memset(dec.slots, 0, sizeof(dec.slots));
@@ -234,6 +246,35 @@ int IMP_Decoder_SendStreamTimeout(int chn, T23DecoderStream *stream,
 
     memset(&frame, 0, sizeof(frame));
     handle = 0;
+    if (dec.sw) {
+        uint8_t *pic = NULL;
+        uint32_t w, h;
+
+        if (t23_jpeg_decode(stream->p_payload, (size_t)stream->i_payload,
+                            dec.attr.pixelFormat, dec.attr.maxWidth,
+                            dec.attr.maxHeight, &pic, &w, &h) != 0) {
+            pthread_mutex_lock(&dec.lock);
+            slot->state = SLOT_FREE;
+            pthread_cond_broadcast(&dec.cond);
+            pthread_mutex_unlock(&dec.lock);
+            return -1;
+        }
+        pthread_mutex_lock(&dec.lock);
+        slot->handle = 0;
+        memset(&slot->frame, 0, sizeof(slot->frame));
+        slot->frame.width = w;
+        slot->frame.height = h;
+        slot->frame.pixfmt = dec.attr.pixelFormat;
+        slot->frame.size = (uint32_t)t23_jpeg_size(w, h);
+        slot->frame.virAddr = (uint32_t)(uintptr_t)pic;
+        slot->frame.timeStamp = stream->timeStamp;
+        slot->copy = pic;
+        slot->order = ++dec.order;
+        slot->state = SLOT_READY;
+        pthread_cond_broadcast(&dec.cond);
+        pthread_mutex_unlock(&dec.lock);
+        return 0;
+    }
     if (OpenIMP_T23_HelixDecode(&dec.bridge, stream->p_payload,
                                 (uint32_t)stream->i_payload,
                                 stream->timeStamp,
@@ -330,7 +371,8 @@ int IMP_Decoder_ReleaseFrame(int chn, IMPFrameInfo *frame)
         pthread_mutex_unlock(&dec.lock);
         return -1;
     }
-    (void)OpenIMP_T23_HelixDecoderRelease(&dec.bridge, slot->handle);
+    if (!dec.sw)
+        (void)OpenIMP_T23_HelixDecoderRelease(&dec.bridge, slot->handle);
     free(slot->copy);
     memset(slot, 0, sizeof(*slot));
     pthread_cond_broadcast(&dec.cond);

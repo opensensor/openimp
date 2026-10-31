@@ -433,7 +433,7 @@ functions:
   Encoder_SetMultiSectionMode:
     group: h26x
     summary: "Splits the encoder memory into `cnt` sections of `size` KiB. Kept only on T23: the values are recorded, nothing is allocated differently."
-    returns: "0 on success, -1 for mode 0, a size or count of 0 or less. Modes above 2 count as 1."
+    returns: "0 on success, -1 for mode 0, a size or count of 0 or less, and (as the vendor library) -1 once the encoder module is initialised, i.e. after the first encoder group or channel was created. Modes above 2 count as 1."
     soc: T23
   Encoder_Get/SetJpegeQl:
     group: jpeg

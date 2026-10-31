@@ -3880,6 +3880,17 @@ static void cs_enchelp_t23(void)
         rep(FN(IMP_Encoder_PadFrame), r2, (r2 == -1 && g_pad_released == 1) ? V_PASS : V_FAIL,
             "rt: chn %d not registered: frame refused (%d) and handed back to the release callback (%d call), as stock (encoding of pad frames: case padframe_t23)", ENC_IDLE_CHN, r2, g_pad_released);
     }
+    NEED(IMP_Encoder_SetMultiSectionMode) {
+        /* stock 1.3.0 (0x57e80): module-level setting, -1 once the encoder module is initialised (first group / channel);
+         * before that: mode 0, size <= 0, cnt <= 0 -> -1, else 0 (stored for the closed encoder, no effect here) */
+        int pre = IMP_Encoder_SetMultiSectionMode(1, 300, 2), bad0 = IMP_Encoder_SetMultiSectionMode(0, 300, 2), bad1 = IMP_Encoder_SetMultiSectionMode(1, 0, 2);
+        int g = IMP_Encoder_CreateGroup(ENC_IDLE_CHN), late = IMP_Encoder_SetMultiSectionMode(1, 300, 2);
+
+        if (g == 0) IMP_Encoder_DestroyGroup(ENC_IDLE_CHN);
+        rep(FN(IMP_Encoder_SetMultiSectionMode), late, (g == 0 && late == -1 && (pre == 0 || pre == -1) && bad0 == -1 && bad1 == -1) ? V_PASS : V_FAIL,
+            "rt: before the encoder module exists %d (0 on a fresh process, -1 when an earlier case initialised it), mode 0 %d, size 0 %d; after CreateGroup(%d) %d (stock: refused)",
+            pre, bad0, bad1, ENC_IDLE_CHN, late);
+    }
     NEED(IMP_Encoder_SetChnRcTrigLevel) {
         union { float f; uint32_t u; } lv = { 1.5f };
         int r1 = IMP_Encoder_SetChnRcTrigLevel(ENC_IDLE_CHN, lv.u, 1), r2 = IMP_Encoder_SetChnRcTrigLevel(99, lv.u, 1);
@@ -4558,9 +4569,249 @@ static void cs_t41isp(void)
 static void cs_t41isp(void) {}
 #endif
 
+#if defined(PLATFORM_T23) && HAS_IMP_ISP_Tuning_SwitchBin
+/* T23 SwitchBin (control 0x8000185, #9): switch to the bin file in use (the driver validates file, header, size and CRC, swaps the
+ * day / night banks under the AE/AWB pause); picture the same, frames flow.  As in the stock driver enable 0 is refused ("enable is 0",
+ * -EINVAL: there is no way back to a default, the old bin is switched to again), and a path that is no bin file is refused by the
+ * validation before anything is published and leaves the picture alone. */
+static void cs_switchbin_t23(void)
+{
+    NEED(IMP_ISP_Tuning_SwitchBin) {
+        char *p = (char *)gnew(128);
+        G(IMPISPBinAttr, a);
+        int r1 = -1, r2 = -1, r3 = -1, r4 = -1, ms = 0, ms2 = 0;
+        Fst base, back, bad;
+        struct stat st;
+
+        p[0] = 0;
+#if HAS_IMP_ISP_GetDefaultBinPath
+        if (IMP_ISP_GetDefaultBinPath(p) != 0) p[0] = 0;
+#endif
+        if (!p[0] || stat(p, &st) != 0) snprintf(p, 128, "/etc/sensor/%s-t23.bin", g_sensor.name);
+        if (stat(p, &st) != 0) {
+            rep(FN(IMP_ISP_Tuning_SwitchBin), -1, V_SKIP, "no usable current bin file (\"%.80s\")", p);
+        } else {
+            base = fst(800);
+            a->enable = IMPISP_TUNING_OPS_MODE_ENABLE; snprintf(a->bname, sizeof(a->bname), "%s", p);
+            r1 = IMP_ISP_Tuning_SwitchBin(a); back = recover(base.y, &ms);
+            r2 = IMP_ISP_Tuning_SwitchBin(a);                                   /* again: the same file, a second swap */
+            a->enable = IMPISP_TUNING_OPS_MODE_DISABLE;
+            r3 = IMP_ISP_Tuning_SwitchBin(a);                                   /* stock: refused */
+            a->enable = IMPISP_TUNING_OPS_MODE_ENABLE; snprintf(a->bname, sizeof(a->bname), "/etc/passwd");
+            r4 = IMP_ISP_Tuning_SwitchBin(a); bad = recover(base.y, &ms2);
+            rep(FN(IMP_ISP_Tuning_SwitchBin), r1 | r2, (r1 == 0 && r2 == 0 && r3 != 0 && r4 != 0 && ms >= 0 && ms2 >= 0 && flow()) ? V_PASS : V_FAIL,
+                "rt: %.50s (ret %d), again (ret %d), enable 0 refused as stock (ret %d), a file that is no bin refused (ret %d), Y %.1f -> %.1f -> %.1f, frames flow",
+                p, r1, r2, r3, r4, base.y, back.y, bad.y);
+        }
+        gfree(p); gfree(a);
+    }
+}
+#else
+static void cs_switchbin_t23(void) {}
+#endif
+
+#if defined(PLATFORM_T23)
+/* The two undocumented rmem helpers of the OEM libimp (#12 / #13, exported, not in the SDK header).  Stock 1.3.0 (disassembly):
+ * IMP_OSD_Alloc(uint32_t *phys, const void *data, int size) = IMP_Alloc(descriptor, size), memcpy(virt, data, size), *phys = descriptor phys, 0;
+ * IMP_ISPOSD_Alloc(int size) = IMP_Alloc(descriptor, size) and the virtual address (0 when the allocation fails). */
+static void cs_osdalloc_t23(void)
+{
+    int (*oa)(uint32_t *, const void *, int) = (int (*)(uint32_t *, const void *, int))dsym("IMP_OSD_Alloc");
+    void *(*ia)(int) = (void *(*)(int))dsym("IMP_ISPOSD_Alloc");
+    void *(*p2v)(uint32_t) = (void *(*)(uint32_t))dsym("IMP_Phys_to_Virt");
+    uint32_t (*v2p)(void *) = (uint32_t (*)(void *))dsym("IMP_Virt_to_Phys");
+    unsigned char *src = (unsigned char *)gnew(4096);
+    uint32_t ph = 0;
+    unsigned i;
+    int r, ok;
+
+    for (i = 0; i < 4096; i++) src[i] = (unsigned char)(i * 13 + 5);
+    if (oa) {
+        r = oa(&ph, src, 4096);
+        ok = r == 0 && ph != 0;
+        if (ok && p2v) { unsigned char *v = (unsigned char *)p2v(ph); ok = v && !memcmp(v, src, 4096); }
+        rep(LBL("IMP_OSD_Alloc"), r, ok ? V_PASS : V_FAIL, "4096 bytes: ret %d phys 0x%x, rmem content %s the source", r, ph, ok ? "equals" : "DIFFERS from");
+    } else ALN("IMP_OSD_Alloc");
+    if (ia) {
+        unsigned char *v = (unsigned char *)ia(4096);
+
+        ok = v != NULL;
+        if (ok) { memset(v, 0xa5, 4096); ok = v[0] == 0xa5 && v[4095] == 0xa5; }
+        if (ok && v2p) ok = v2p(v) != 0;
+        rep(LBL("IMP_ISPOSD_Alloc"), v ? 0 : -1, ok ? V_PASS : V_FAIL, "4096 bytes at %p written, physical address %s", (void *)v, ok ? "known" : "NOT known");
+    } else ALN("IMP_ISPOSD_Alloc");
+    gfree(src);
+}
+#else
+static void cs_osdalloc_t23(void) {}
+#endif
+
+
+#if defined(PLATFORM_T23)
+/* IMP_Decoder_* (#11): JPEG decode on channel 0 (stock: ijpegd on the VPU; OpenIMP without the OEM worker: its own baseline decoder).
+ * A 32x24 JFIF 4:2:0 picture, left half yellow (Y 208, Cb 33, Cr 143), right half blue (Y 70, Cb 201, Cr 107), decoded to NV12. */
+static const unsigned char at_dec_jpg[] = {
+    0xff,0xd8,0xff,0xe0,0x00,0x10,0x4a,0x46,0x49,0x46,0x00,0x01,0x01,0x00,0x00,0x01,
+    0x00,0x01,0x00,0x00,0xff,0xdb,0x00,0x43,0x00,0x03,0x02,0x02,0x02,0x02,0x02,0x03,
+    0x02,0x02,0x02,0x03,0x03,0x03,0x03,0x04,0x06,0x04,0x04,0x04,0x04,0x04,0x08,0x06,
+    0x06,0x05,0x06,0x09,0x08,0x0a,0x0a,0x09,0x08,0x09,0x09,0x0a,0x0c,0x0f,0x0c,0x0a,
+    0x0b,0x0e,0x0b,0x09,0x09,0x0d,0x11,0x0d,0x0e,0x0f,0x10,0x10,0x11,0x10,0x0a,0x0c,
+    0x12,0x13,0x12,0x10,0x13,0x0f,0x10,0x10,0x10,0xff,0xdb,0x00,0x43,0x01,0x03,0x03,
+    0x03,0x04,0x03,0x04,0x08,0x04,0x04,0x08,0x10,0x0b,0x09,0x0b,0x10,0x10,0x10,0x10,
+    0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,
+    0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,
+    0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10,0xff,0xc0,
+    0x00,0x11,0x08,0x00,0x18,0x00,0x20,0x03,0x01,0x22,0x00,0x02,0x11,0x01,0x03,0x11,
+    0x01,0xff,0xc4,0x00,0x1f,0x00,0x00,0x01,0x05,0x01,0x01,0x01,0x01,0x01,0x01,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,
+    0x0a,0x0b,0xff,0xc4,0x00,0xb5,0x10,0x00,0x02,0x01,0x03,0x03,0x02,0x04,0x03,0x05,
+    0x05,0x04,0x04,0x00,0x00,0x01,0x7d,0x01,0x02,0x03,0x00,0x04,0x11,0x05,0x12,0x21,
+    0x31,0x41,0x06,0x13,0x51,0x61,0x07,0x22,0x71,0x14,0x32,0x81,0x91,0xa1,0x08,0x23,
+    0x42,0xb1,0xc1,0x15,0x52,0xd1,0xf0,0x24,0x33,0x62,0x72,0x82,0x09,0x0a,0x16,0x17,
+    0x18,0x19,0x1a,0x25,0x26,0x27,0x28,0x29,0x2a,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,
+    0x43,0x44,0x45,0x46,0x47,0x48,0x49,0x4a,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5a,
+    0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6a,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7a,
+    0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8a,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,
+    0x9a,0xa2,0xa3,0xa4,0xa5,0xa6,0xa7,0xa8,0xa9,0xaa,0xb2,0xb3,0xb4,0xb5,0xb6,0xb7,
+    0xb8,0xb9,0xba,0xc2,0xc3,0xc4,0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xd2,0xd3,0xd4,0xd5,
+    0xd6,0xd7,0xd8,0xd9,0xda,0xe1,0xe2,0xe3,0xe4,0xe5,0xe6,0xe7,0xe8,0xe9,0xea,0xf1,
+    0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,0xf9,0xfa,0xff,0xc4,0x00,0x1f,0x01,0x00,0x03,
+    0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x01,
+    0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0xff,0xc4,0x00,0xb5,0x11,0x00,
+    0x02,0x01,0x02,0x04,0x04,0x03,0x04,0x07,0x05,0x04,0x04,0x00,0x01,0x02,0x77,0x00,
+    0x01,0x02,0x03,0x11,0x04,0x05,0x21,0x31,0x06,0x12,0x41,0x51,0x07,0x61,0x71,0x13,
+    0x22,0x32,0x81,0x08,0x14,0x42,0x91,0xa1,0xb1,0xc1,0x09,0x23,0x33,0x52,0xf0,0x15,
+    0x62,0x72,0xd1,0x0a,0x16,0x24,0x34,0xe1,0x25,0xf1,0x17,0x18,0x19,0x1a,0x26,0x27,
+    0x28,0x29,0x2a,0x35,0x36,0x37,0x38,0x39,0x3a,0x43,0x44,0x45,0x46,0x47,0x48,0x49,
+    0x4a,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5a,0x63,0x64,0x65,0x66,0x67,0x68,0x69,
+    0x6a,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7a,0x82,0x83,0x84,0x85,0x86,0x87,0x88,
+    0x89,0x8a,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0x9a,0xa2,0xa3,0xa4,0xa5,0xa6,
+    0xa7,0xa8,0xa9,0xaa,0xb2,0xb3,0xb4,0xb5,0xb6,0xb7,0xb8,0xb9,0xba,0xc2,0xc3,0xc4,
+    0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xd2,0xd3,0xd4,0xd5,0xd6,0xd7,0xd8,0xd9,0xda,0xe2,
+    0xe3,0xe4,0xe5,0xe6,0xe7,0xe8,0xe9,0xea,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,0xf9,
+    0xfa,0xff,0xda,0x00,0x0c,0x03,0x01,0x00,0x02,0x11,0x03,0x11,0x00,0x3f,0x00,0xfb,
+    0x56,0x8a,0x28,0xaf,0xe0,0x23,0xea,0x0f,0xc8,0xfa,0x28,0xa2,0xbf,0xdc,0x03,0xf1,
+    0xf3,0xf5,0xc2,0x8a,0x28,0xaf,0xf0,0xfc,0xfd,0x80,0xfc,0x8f,0xa2,0x8a,0x2b,0xfd,
+    0xc0,0x3f,0x1f,0x3f,0xff,0xd9,
+};
+typedef struct { int decType; uint32_t maxWidth, maxHeight; int pixelFormat; uint32_t nrKeepStream, frmRateNum, frmRateDen; } at_decattr;
+typedef struct { int i_payload; uint8_t *p_payload; int64_t timeStamp; } at_decstream;
+
+static void cs_decoder_t23(void)
+{
+    int (*cc)(int, const void *) = (int (*)(int, const void *))dsym("IMP_Decoder_CreateChn");
+    int (*dc)(int) = (int (*)(int))dsym("IMP_Decoder_DestroyChn");
+    int (*sr)(int) = (int (*)(int))dsym("IMP_Decoder_StartRecvPic");
+    int (*st)(int) = (int (*)(int))dsym("IMP_Decoder_StopRecvPic");
+    int (*sd)(int, void *, uint32_t) = (int (*)(int, void *, uint32_t))dsym("IMP_Decoder_SendStreamTimeout");
+    int (*pf)(int, uint32_t) = (int (*)(int, uint32_t))dsym("IMP_Decoder_PollingFrame");
+    int (*gf)(int, IMPFrameInfo **) = (int (*)(int, IMPFrameInfo **))dsym("IMP_Decoder_GetFrame");
+    int (*rf)(int, IMPFrameInfo *) = (int (*)(int, IMPFrameInfo *))dsym("IMP_Decoder_ReleaseFrame");
+    at_decattr a;
+    at_decstream str;
+    unsigned char *jp = (unsigned char *)gnew(sizeof(at_dec_jpg));
+    IMPFrameInfo *fr = NULL;
+
+    if (!(cc && dc && sr && st && sd && pf && gf && rf)) {
+        rep_na(LBL("IMP_Decoder_CreateChn")); rep_na(LBL("IMP_Decoder_DestroyChn")); rep_na(LBL("IMP_Decoder_StartRecvPic")); rep_na(LBL("IMP_Decoder_StopRecvPic"));
+        rep_na(LBL("IMP_Decoder_SendStreamTimeout")); rep_na(LBL("IMP_Decoder_PollingFrame")); rep_na(LBL("IMP_Decoder_GetFrame")); rep_na(LBL("IMP_Decoder_ReleaseFrame"));
+        gfree(jp);
+        return;
+    }
+    memcpy(jp, at_dec_jpg, sizeof(at_dec_jpg));
+    memset(&a, 0, sizeof(a));
+    a.decType = PT_JPEG; a.maxWidth = 64; a.maxHeight = 64; a.pixelFormat = PIX_FMT_NV12; a.nrKeepStream = 2; a.frmRateNum = 25; a.frmRateDen = 1;
+    {
+        at_decattr bad = a;
+        int rbad0, rbad1, rbad2, rno, rc, rsr, rs, rp, rg = -1, rr = -1, rst, rd, rdd, ok = 0, ryl = 0, ryr = 0, fw = 0, fh = 0, cb0 = -1, cr0 = -1;
+        unsigned char *pic = NULL;
+
+        bad.decType = PT_H264;
+        rbad0 = cc(0, &bad);                                    /* only JPEG */
+        bad = a; bad.pixelFormat = PIX_FMT_BGRA;
+        rbad1 = cc(0, &bad);                                    /* only YUV420P / NV12 / NV21 */
+        rbad2 = cc(1, &a);                                      /* channel 0 only */
+        rno = sd(0, &str, 100);
+        rc = cc(0, &a);
+        rsr = sr(0);
+        str.i_payload = (int)sizeof(at_dec_jpg); str.p_payload = jp; str.timeStamp = 4242;
+        rs = rc == 0 ? sd(0, &str, 2000) : -1;
+        rp = rs == 0 ? pf(0, 2000) : -1;
+        if (rp == 0) rg = gf(0, &fr);
+        if (rg == 0 && fr) {
+            const unsigned char *y;
+            int i, j;
+            long sl = 0, sr_ = 0;
+
+            pic = (unsigned char *)(uintptr_t)fr->virAddr;
+            y = pic;
+            for (j = 0; j < 24; j++) for (i = 0; i < 16; i++) { sl += y[j * 32 + i]; sr_ += y[j * 32 + 16 + i]; }
+            ryl = (int)(sl / (16 * 24)); ryr = (int)(sr_ / (16 * 24));
+            ok = fr->width == 32 && fr->height == 24 && pic && abs(ryl - 208) < 8 && abs(ryr - 70) < 8 &&
+                 abs(pic[32 * 24] - 33) < 8 && abs(pic[32 * 24 + 1] - 143) < 8 && abs(pic[32 * 24 + 16] - 201) < 8 && abs(pic[32 * 24 + 17] - 107) < 8;
+            fw = (int)fr->width; fh = (int)fr->height; cb0 = pic[32 * 24]; cr0 = pic[32 * 24 + 1];
+            rr = rf(0, fr);
+        }
+        {   /* a broken payload and a picture above maxWidth are refused, the channel keeps working */
+            at_decstream b2;
+            unsigned char junk[64];
+            int rj, rbig;
+            at_decattr small = a;
+
+            memset(junk, 0x5a, sizeof(junk));
+            b2.i_payload = (int)sizeof(junk); b2.p_payload = junk; b2.timeStamp = 1;
+            rj = sd(0, &b2, 200);
+            rst = st(0);
+            rd = dc(0);
+            small.maxWidth = 16;
+            rbig = cc(0, &small) == 0 ? sd(0, &str, 200) : 0;
+            if (rbig == -1 || rbig == 0) dc(0);
+            rdd = dc(0);
+            rep(LBL("IMP_Decoder_CreateChn"), rc, (rc == 0 && rbad0 == -1 && rbad1 == -1 && rbad2 == -1) ? V_PASS : V_FAIL,
+                "JPEG -> NV12 chn 0 created; H.264 %d, BGRA %d, chn 1 %d refused", rbad0, rbad1, rbad2);
+            rep(LBL("IMP_Decoder_StartRecvPic"), rsr, rsr == 0 ? V_PASS : V_FAIL, "ret %d", rsr);
+            rep(LBL("IMP_Decoder_SendStreamTimeout"), rs, (rs == 0 && rno == -1 && rj == -1 && rbig == -1) ? V_PASS : V_FAIL,
+                "32x24 JPEG ret %d; before CreateChn %d, junk %d, picture above maxWidth %d", rs, rno, rj, rbig);
+            rep(LBL("IMP_Decoder_PollingFrame"), rp, rp == 0 ? V_PASS : V_FAIL, "frame ready ret %d", rp);
+            rep(LBL("IMP_Decoder_GetFrame"), rg, (rg == 0 && ok) ? V_PASS : V_FAIL, "%dx%d, Y left %d (208) right %d (70), Cb/Cr %d/%d (33/143)",
+                fw, fh, ryl, ryr, cb0, cr0);
+            rep(LBL("IMP_Decoder_ReleaseFrame"), rr, rr == 0 ? V_PASS : V_FAIL, "ret %d", rr);
+            rep(LBL("IMP_Decoder_StopRecvPic"), rst, rst == 0 ? V_PASS : V_FAIL, "ret %d", rst);
+            rep(LBL("IMP_Decoder_DestroyChn"), rd, (rd == 0 && rdd == -1) ? V_PASS : V_FAIL, "ret %d, second destroy %d", rd, rdd);
+        }
+    }
+    gfree(jp);
+}
+#else
+static void cs_decoder_t23(void) {}
+#endif
+
+
+#if defined(PLATFORM_T23)
+/* ISP_Tuning_SetWB_ALGO (#10, control 0x800000c): no getter.  Stock 1.3.0 passes the algorithm number through (num < 4 checked per sensor);
+ * the open driver stores 0..2 and always returns 0 (no picture effect, class d, documented), so the case checks the return codes and that
+ * the picture and the frame flow are untouched, then restores 0. */
+static void cs_wbalgo_t23(void)
+{
+    int (*set)(int) = (int (*)(int))dsym("IMP_ISP_Tuning_SetWB_ALGO");
+
+    if (set) {
+        Fst base = fst(800), after;
+        int r0 = set(1), r1 = set(2), r2 = set(0), ms = 0;
+
+        after = recover(base.y, &ms);
+        rep(LBL("IMP_ISP_Tuning_SetWB_ALGO"), r0 | r1 | r2, (r0 == 0 && r1 == 0 && r2 == 0 && ms >= 0 && flow()) ? V_PASS : V_FAIL,
+            "rt: algo 1 / 2 / 0 -> %d %d %d (no getter; no picture effect expected), Y %.1f -> %.1f, frames flow", r0, r1, r2, base.y, after.y);
+    } else rep_na(LBL("IMP_ISP_Tuning_SetWB_ALGO"));
+}
+#else
+static void cs_wbalgo_t23(void) {}
+#endif
+
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4663,6 +4914,10 @@ void t_cases(void)
     if (cs_on("enchelp_t23")) cs_enchelp_t23(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("t140c")) cs_t140c(); wdog("cases", 120);
     if (cs_on("padframe_t23")) cs_padframe_t23(); wdog("cases", 120);
+    if (cs_on("switchbin_t23")) cs_switchbin_t23(); wdog("cases", 90);
+    if (cs_on("osdalloc_t23")) cs_osdalloc_t23(); wdog("cases", 60);
+    if (cs_on("decoder_t23")) cs_decoder_t23(); wdog("cases", 60);
+    if (cs_on("wbalgo_t23")) cs_wbalgo_t23(); wdog("cases", 90);
     if (getenv("APITEST_CASES") && cs_on("framedrop_t40")) cs_framedrop_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("ratiohang_t40")) cs_ratiohang_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("awbctstart_t40")) cs_awbctstart_t40(); wdog("cases", 60);

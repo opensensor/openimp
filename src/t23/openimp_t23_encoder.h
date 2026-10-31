@@ -16,6 +16,9 @@ typedef struct {
 
 typedef int (*OpenIMPT23P2Fn)(OpenIMPT23P2View *view, void *arg);
 
+/* 1 once the encoder module is initialised (first group / channel call). */
+int openimp_t23_p2_initialized(void);
+
 /* Run fn with the channel locked; -1 for an invalid channel. */
 int openimp_t23_p2_call(int channel, OpenIMPT23P2Fn fn, void *arg);
 
