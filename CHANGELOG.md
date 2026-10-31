@@ -8,6 +8,16 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-10-31, late evening (image agg60)
+
+- **Device proof (Eufy T40XP, image agg60 = all #140 batches incl. 19 sensor/WDR ioctl sites and 2 AE sites):** apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oopses, 0 `unresolved jalr`; the lost-argument counters (`cnt_core_ops_init`, `cnt_sec_init`, `cnt_main_long_tgain_update`) stay 0; raw ioctl probe ok.
+- **CPU, vendor-like (T40):** #133 closed (ISP busy 1.6 % against 1.4 % for the vendor); #149 closed (encoder load 0.71 % against 0.77 / 0.84 %; `t40_dqbuf_wait_ms` stays 0).
+- **Closed with camera proof:** #92 (T31X `isp_memopt=1`, 5 days plus a 10 min check; the firmware pin to the RC3 tag is open), #93, #133, #139, #140, #149, #167, #168, #169.
+- **Closed with evidence or decision:** #88 (not reproducible); #96 (the silent reset was a full tmpfs, reproduced on the T41 test camera; mitigations: save guard in the tools and the /tmp rule, a firmware size cap is prepared); #131 (no DMIC hardware: the T40/T41 flow runs in QEMU only, the T31 as API round trip only).
+- **Open RC3 blockers (gate red, 3 blocking issues; streamer-function cells 1787 of 1787):** #84 (paused until the light measurement box exists), #94 and #108 (unexplained resets).
+- **Reboot diagnostics:** the RTC scratch register keeps the last panic record across a reset (proven on the T31L and the T31X); the T23 has no store that survives a reset (load sampler and reset-cause register only); DRAM pstore is useless; the SD-card autoupdate recovery is proven. Lesson: the kernel symbol table (KALLSYMS) must match the module ABI.
+- Docs: feature matrix #38 (T40 CPU load) ⚠️ -> ✅, notes on #31, #36, #41; issues cache refreshed.
+
 ## 2026-10-31, evening (OpenIMP next 10d3fe59, open-tx-isp next 71d00b99 = agg59)
 
 - **Device proof (Eufy T40XP, image agg59, ko 176f0f5b):** apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oopses, 0 `unresolved jalr` (agg58: 268 / 2).

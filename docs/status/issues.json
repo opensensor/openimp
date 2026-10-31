@@ -1454,7 +1454,7 @@
   {
    "number": 88,
    "title": "[T40] Unplanned reboot while inserting a temporary test build (observe)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/88",
    "labels": [
     "area:Driver",
@@ -1519,7 +1519,7 @@
   {
    "number": 92,
    "title": "[T31] isp_memopt=1 as the default: firmware pin and a second board check",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/92",
    "labels": [
     "area:Driver",
@@ -1536,7 +1536,7 @@
   {
    "number": 93,
    "title": "[T31] Long-term stability: evidence for the AE-zone stack fix (>= 5 days)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/93",
    "labels": [
     "area:Driver",
@@ -1586,7 +1586,7 @@
   {
    "number": 96,
    "title": "[T41] Unexplained reboot during a userland JPEG benchmark in /tmp (suspected OOM)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/96",
    "labels": [
     "area:System",
@@ -2182,7 +2182,7 @@
   {
    "number": 131,
    "title": "DMIC_* on T31/T40/T41: no DMIC hardware on the test boards",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/131",
    "labels": [
     "area:Audio",
@@ -2217,7 +2217,7 @@
   {
    "number": 133,
    "title": "T40: ISP event work costs more CPU than the vendor (~9 % less free CPU; AWB process + ADR)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/133",
    "labels": [
     "area:Driver",
@@ -2251,7 +2251,7 @@
   {
    "number": 139,
    "title": "T40: lifted ioctl handlers store through uninitialised pointers (GetFaceAe, tisp_set_ae_info, further)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/139",
    "labels": [
     "area:Driver",
@@ -2268,7 +2268,7 @@
   {
    "number": 140,
    "title": "T40: lifted calls lost arguments (about 380 sites, mostly per-frame code)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/140",
    "labels": [
     "area:Driver",
@@ -2389,7 +2389,7 @@
   {
    "number": 149,
    "title": "T40: OpenIMP encoder path costs about 3.5x the vendor user CPU (H.264 1080p20, encload)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/149",
    "labels": [
     "area:Encoder",

@@ -42,7 +42,7 @@ Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC2 `v2026.10.25
 | T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Frequent Helix frame drops fixed (residual interrupt 0x100, kernel patch merged upstream); still open: a rare single Helix encode error (errno 5), no real WDR yet. |
 | T30 | Builds against a real T30 kernel; H.264 command lists match the vendor in an emulator. No device in the test campaign, so not device-verified here. |
 | T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
-| T40 | Runs the open stack (open-tx-isp driver + OpenIMP) from a flashed image on the T40XP test camera: H.264/H.265, day/night, AE/AWB and the tuning API with device tests (2026-10-31, image agg59: apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oops). Open: ISP event thread CPU load vs. the vendor (#133, 6.25 -> about 2.3 ms per frame so far), ISP OSD picture of the Set calls (#141). |
+| T40 | Runs the open stack (open-tx-isp driver + OpenIMP) from a flashed image on the T40XP test camera: H.264/H.265, day/night, AE/AWB and the tuning API with device tests (2026-10-31, image agg59: apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oops, image agg60). CPU load is vendor-like (ISP busy 1.6 % against 1.4 %, encoder 0.71 % against 0.77 / 0.84 %; #133, #149 closed). Open: ISP OSD picture of the Set calls (#141). |
 | T41 | Runs from a flashed image with H.264 and H.265 on the test cameras, with day/night and AE/AWB; the API coverage is strict (every vendor function has a case). Open items are tracked in the GitHub issues (label `soc:T41`). |
 
 ### Completeness
