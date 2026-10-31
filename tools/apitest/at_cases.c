@@ -3884,6 +3884,7 @@ static void cs_enchelp_t23(void)
         rep(FN(IMP_Encoder_PadFrame), r2, (r2 == -1 && g_pad_released == 1) ? V_PASS : V_FAIL,
             "rt: chn %d not registered: frame refused (%d) and handed back to the release callback (%d call), as stock (encoding of pad frames: case padframe_t23)", ENC_IDLE_CHN, r2, g_pad_released);
     }
+#if HAS_IMP_Encoder_SetMultiSectionMode
     NEED(IMP_Encoder_SetMultiSectionMode) {
         /* stock 1.3.0 (0x57e80): module-level setting, -1 once the encoder module is initialised (first group / channel);
          * before that: mode 0, size <= 0, cnt <= 0 -> -1, else 0 (stored for the closed encoder, no effect here) */
@@ -3895,6 +3896,7 @@ static void cs_enchelp_t23(void)
             "rt: before the encoder module exists %d (0 on a fresh process, -1 when an earlier case initialised it), mode 0 %d, size 0 %d; after CreateGroup(%d) %d (stock: refused)",
             pre, bad0, bad1, ENC_IDLE_CHN, late);
     }
+#endif
     NEED(IMP_Encoder_SetChnRcTrigLevel) {
         union { float f; uint32_t u; } lv = { 1.5f };
         int r1 = IMP_Encoder_SetChnRcTrigLevel(ENC_IDLE_CHN, lv.u, 1), r2 = IMP_Encoder_SetChnRcTrigLevel(99, lv.u, 1);
