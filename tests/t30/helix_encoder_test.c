@@ -35,6 +35,8 @@
 #if defined(PLATFORM_T20)
 #include "rc_t20/rc_t20.h"
 #include "rc_t10/rc_t10.h"
+#include "t30/helix_bitstream.h"
+int IMP_Encoder_SetPoolSize(int size);
 #endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 #include "t21/t21_h264_descriptor.h"
@@ -243,8 +245,9 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
     return 0;
 }
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-/* T21: one bitstream buffer shared by every channel (stock "vpuBs") */
+#if defined(PLATFORM_T21)
+/* T21, T20/T10: one bitstream buffer shared by every channel (stock
+ * "vpuBs") */
 #define BS_TAG "helix-bs"
 #else
 #define BS_TAG "t30-helix-bs"
@@ -1131,8 +1134,38 @@ static void test_dma_footprint(void)
     assert(allocation("helix-bs")->size >= (1u << 20) + 4096u);
 #else
     assert(allocation("t30-helix-emc") == NULL);
+#if defined(PLATFORM_T20)
+    /* T20/T10: no buffer of its own; the shared "vpuBs" is the stock
+     * 0x12c000 pool (libimp 3.12.0), the 1 MiB window fits */
+    assert(allocation("t30-helix-bs") == NULL);
+    assert(allocation("helix-bs")->size == 0x12c000u);
+    assert(OpenIMP_HelixBitstream_PoolSize() == 0x12c000u);
+#endif
 #endif
     OpenIMP_T30_HelixDestroy(encoder);
+#if defined(PLATFORM_T20)
+    /* a second channel adds no buffer; SetPoolSize stores like stock
+     * (<= 0 refused), a pool below the window grows to the window */
+    {
+        T30HelixEncoder *second = create(1280, 720, 25, 25);
+        PictureInfo info;
+
+        assert(second && allocation("helix-bs")->size == 0x12c000u);
+        assert(encode(second, &info) == 0);
+        OpenIMP_T30_HelixDestroy(second);
+    }
+    assert(IMP_Encoder_SetPoolSize(0) == -1);
+    assert(IMP_Encoder_SetPoolSize(-5) == -1);
+    OpenIMP_HelixBitstream_Exit();
+    assert(IMP_Encoder_SetPoolSize(600000) == 0);
+    assert(OpenIMP_HelixBitstream_PoolSize() == 600000u);
+    encoder = create(1920, 1080, 25, 25);
+    assert(allocation("helix-bs")->size == (1u << 20));
+    OpenIMP_T30_HelixDestroy(encoder);
+    OpenIMP_HelixBitstream_Exit();
+    assert(IMP_Encoder_SetPoolSize(0x12c000) == 0);
+    assert(OpenIMP_HelixBitstream_Init() == 0);
+#endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     /* 640x360: EMC scaled per macroblock (140 KiB), no buffer of its own
      * for the bitstream */

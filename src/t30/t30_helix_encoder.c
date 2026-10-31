@@ -46,9 +46,10 @@
 #define HELIX_SMALL_WINDOWS 1
 #endif
 
-#if defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23)
-/* T21: one bitstream buffer for all channels and JPEG, like the stock
- * "vpuBs" (src/t30/helix_bitstream.h). */
+#if (defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23)) || \
+    defined(PLATFORM_T20)
+/* T21, T20/T10: one bitstream buffer for all H.264 channels (and, on T21,
+ * JPEG), like the stock "vpuBs" (src/t30/helix_bitstream.h). */
 #define HELIX_SHARED_BITSTREAM 1
 #include "t30/helix_bitstream.h"
 #endif
@@ -676,7 +677,14 @@ uint32_t OpenIMP_T23_HelixBs_Size(void)
  * stays inside the buffer. */
 static uint32_t t30_bitstream_bytes(const T30HelixEncoder *encoder)
 {
+#if defined(PLATFORM_T20)
+    /* T20/T10: the command list has no window size; the 1 MiB window of
+     * the earlier per-channel buffer, slice header area included */
+    (void)encoder;
+    return T30_BITSTREAM_WINDOW;
+#else
     return (encoder->bitstream_kib << 10) + 4096u;
+#endif
 }
 #endif
 
@@ -2503,8 +2511,11 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 #if defined(HELIX_SHARED_BITSTREAM)
     /* Only the T21 command list points the VPU at an EMC scratch area.
      * The bitstream goes to the shared buffer, taken per picture. */
-    if (t30_dma_allocate(&encoder->emc, encoder->scratch_size,
+    if (
+#if !defined(PLATFORM_T20)
+        t30_dma_allocate(&encoder->emc, encoder->scratch_size,
                          "t30-helix-emc") != 0 ||
+#endif
         OpenIMP_HelixBitstream_Reserve(t30_bitstream_bytes(encoder)) != 0)
 #elif defined(PLATFORM_T21)
     if (t30_dma_allocate(&encoder->temporary, T30_BITSTREAM_WINDOW,

@@ -6319,14 +6319,21 @@ int IMP_Encoder_SetChnRcTrigLevel(int channel, float level, int mode)
 #if defined(PLATFORM_T21)
 /* T21 1.0.33 IMP_Encoder_Enable/DisableAllNCUDenoise (0x4c6a0): the NCU
  * denoise exists for CPU ids 3..5 only; on a T21 both log and return -1.
- * T20 / T10 3.12.0 (0x4e000) do have it: they set bit 0x400 of the NCU
- * register 0x13380040 and switch every created channel's i264e to the NCU
- * reference path; the Helix encoder here has no NCU integration yet, so
- * these SoCs log and return -1 too instead of claiming success. */
+ * T20 / T10 3.12.0 (0x4e000 / 0x4e1cc) do have it, and return -1 as well
+ * unless get_ncu_params() (0x55638) holds the NCU parameter set (read from
+ * the ISP tuning bin, interpolated per gain by refresh_ncu_params).  With it
+ * Enable sets bit 0x400 of the NCU register 0x13380040 (/dev/mem, regrw),
+ * sleeps 200 ms and, per created H.264 channel, clears its two denoise
+ * buffers and sets +2004; do_channel_process_h264e (0x412fc) then loads the
+ * parameter set once and hands the i264e job a denoise reference buffer
+ * (job fields 964..976).  Those are fields of the vendor's own i264e job;
+ * the Helix command list built here has no counterpart that is known, and a
+ * register write alone would not change the encoder.  So this is an API stub
+ * by design: -1 (logged), not a fake 0 (openimp issue #144). */
 static int p2_ncu_denoise_unsupported(const char *fn)
 {
 #if defined(PLATFORM_T20)
-    IMP_LOG_ERR("Encoder", "%s: NCU denoise is not implemented in OpenIMP for T20/T10 yet", fn);
+    IMP_LOG_ERR("Encoder", "%s: NCU denoise is not implemented in OpenIMP for T20/T10 (API stub by design, issue #144)", fn);
 #else
     IMP_LOG_ERR("Encoder", "%s: this CPU has no NCU denoise", fn);
 #endif

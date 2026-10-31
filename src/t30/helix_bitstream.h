@@ -38,7 +38,7 @@ void OpenIMP_HelixBitstream_Unlock(void);
 int OpenIMP_HelixBitstream_Reserve(uint32_t size);
 
 /* The stock EncoderInit (IMP_System_Init): allocates the buffer with the
- * pool size, 1920 * 1080 bytes for the T21 parts (0x1fa400) unless
+ * pool size, 0x1fa400 for the T21 parts, 0x12c000 for T20/T10 unless
  * IMP_Encoder_SetPoolSize set another size before. */
 int OpenIMP_HelixBitstream_Init(void);
 /* The stock EncoderExit (IMP_System_Exit): frees the buffer. */
@@ -49,7 +49,13 @@ uint32_t OpenIMP_HelixBitstream_Size(void);
 /* The size Init() allocates. */
 uint32_t OpenIMP_HelixBitstream_PoolSize(void);
 
-/* Stock T21 default ("vpuBs" for the T21 CPU ids, EncoderInit). */
+/* Stock default ("vpuBs", EncoderInit): 1920 * 1080 bytes for the T21 CPU
+ * ids, 0x12c000 for the T20/T10 ones (libimp 3.12.0 0x432e8, CPU id < 3;
+ * the T20 build serves the T10 too). */
+#if defined(PLATFORM_T20)
+#define OPENIMP_HELIX_BS_DEFAULT_POOL 0x12c000u
+#else
 #define OPENIMP_HELIX_BS_DEFAULT_POOL 0x1fa400u
+#endif
 
 #endif

@@ -3819,19 +3819,14 @@ static void cs_enchelp_t23(void)
     NEED(IMP_Encoder_SetPoolSize) {
         int r1 = IMP_Encoder_SetPoolSize(4 << 20), r2 = IMP_Encoder_SetPoolSize(0);
 
-#if defined(PLATFORM_T20) || defined(PLATFORM_T10)
-        /* interim until the shared vpuBs pool exists on T20 / T10 (openimp issue #146): -1 for every size, never a fake 0 */
-        rep(FN(IMP_Encoder_SetPoolSize), r1, (r1 == -1 && r2 == -1) ? V_PASS : V_FAIL,
-            "rt: 4 MiB -> %d, 0 -> %d (stock: 0 / -1; OpenIMP T20 / T10 has no shared bitstream pool yet, -1, issue #146)", r1, r2);
-#else
+        /* stock T20 / T10 3.12.0 (0x4ac40) like T21: stores the size for the next EncoderInit, <= 0 refused */
         rep(FN(IMP_Encoder_SetPoolSize), r1, (r1 == 0 && r2 == -1) ? V_PASS : V_FAIL, "rt: 4 MiB -> %d, 0 -> %d", r1, r2);
-#endif
     }
     NEED(IMP_Encoder_EnableAllNCUDenoise) NEED(IMP_Encoder_DisableAllNCUDenoise) {
         int r1 = IMP_Encoder_EnableAllNCUDenoise(), r2 = IMP_Encoder_DisableAllNCUDenoise();
 
         rep(FN(IMP_Encoder_EnableAllNCUDenoise), 0, (r1 == -1 && flow()) ? V_PASS : V_FAIL,
-            "rt: %d (stock T23 / T21: NCU denoise only on CPU ids 3..5, -1; T20 / T10: not implemented in OpenIMP yet, -1)", r1);
+            "rt: %d (stock T23 / T21: NCU denoise only on CPU ids 3..5, -1; T20 / T10: -1 as the stock when the tuning bin carries no NCU parameters; the NCU path itself is not implemented, issue #144)", r1);
         rep(FN(IMP_Encoder_DisableAllNCUDenoise), 0, r2 == -1 ? V_PASS : V_FAIL, "rt: %d (same)", r2);
     }
     NEED(IMP_Encoder_SetPadFrameAttr) NEED(IMP_Encoder_PadFrame) {

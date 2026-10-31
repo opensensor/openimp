@@ -11,9 +11,9 @@
 
 #include "trace_control.h"
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-/* T21: the stock EncoderInit allocates the shared Helix bitstream buffer
- * ("vpuBs") */
+#if defined(PLATFORM_T21)
+/* T21, T20/T10: the stock EncoderInit allocates the shared Helix bitstream
+ * buffer ("vpuBs") */
 #include "t30/helix_bitstream.h"
 #define OPENIMP_HELIX_SHARED_BS 1
 #endif
