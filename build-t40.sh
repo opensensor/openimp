@@ -115,6 +115,11 @@ done
     -c "$project_dir/src/core/su_base_shutdown.c" \
     -o "$output_dir/core_su_base_shutdown.o"
 
+# SU_* of the vendor libsysutils (RTC time/alarm, reboot/suspend, ADC, key events, LED; SU_CIPHER_* answer ENOTSUP)
+"$compiler" $strict_flags -D_GNU_SOURCE $repo_includes \
+    -c "$project_dir/src/core/su_sysutils.c" \
+    -o "$output_dir/core_su_sysutils.o"
+
 "$compiler" $base_flags $repo_includes \
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
     -o "$output_dir/backend-enc-hw-scaling-list.o"
@@ -176,6 +181,7 @@ done
     "$output_dir/core_imp_log.o" \
     "$output_dir/core_video_drop.o" \
     "$output_dir/core_su_base_shutdown.o" \
+    "$output_dir/core_su_sysutils.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_testpattern.o" \
     "$output_dir/openimp_tuning.o" \

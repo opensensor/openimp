@@ -16743,10 +16743,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_ADC_EnableChn": {
    "area": "System",
@@ -16759,10 +16762,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_ADC_Exit": {
    "area": "System",
@@ -16775,10 +16781,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_ADC_GetChnValue": {
    "area": "System",
@@ -16791,10 +16800,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_DisableAlarm": {
    "area": "System",
@@ -16807,10 +16819,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_EnableAlarm": {
    "area": "System",
@@ -16823,10 +16838,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_Get/SetAlarm": {
    "area": "System",
@@ -16839,10 +16857,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_Get/SetTime": {
    "area": "System",
@@ -16855,10 +16876,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_GetDevID": {
    "area": "System",
@@ -16988,10 +17012,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_Raw2SUTime": {
    "area": "System",
@@ -17029,10 +17056,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_SUTime2Raw": {
    "area": "System",
@@ -17102,10 +17132,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Battery_GetCapacity": {
    "area": "System",
@@ -17182,10 +17215,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_CreateHandle": {
    "area": "System",
@@ -17198,10 +17234,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DES_Exit": {
    "area": "System",
@@ -17214,10 +17253,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DES_Init": {
    "area": "System",
@@ -17230,10 +17272,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DES_Test": {
    "area": "System",
@@ -17246,10 +17291,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Decrypt": {
    "area": "System",
@@ -17262,10 +17310,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DestroyHandle": {
    "area": "System",
@@ -17278,10 +17329,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Encrypt": {
    "area": "System",
@@ -17294,10 +17348,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Exit": {
    "area": "System",
@@ -17310,10 +17367,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Init": {
    "area": "System",
@@ -17326,10 +17386,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_Key_CloseEvent": {
    "area": "System",
@@ -17366,10 +17429,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Key_EnableEvent": {
    "area": "System",
@@ -17382,10 +17448,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Key_OpenEvent": {
    "area": "System",
@@ -17422,10 +17491,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_LED_Command": {
    "area": "System",
@@ -17438,10 +17510,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "System_Bind": {
    "area": "System",
@@ -20697,10 +20772,12 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "host",
     "T41": "miss"
    },
-   "auto": true
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_CtlPwrDown": {
    "area": "System",

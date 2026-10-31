@@ -259,6 +259,106 @@ functions:
     summary: Gives a picture back so the buffer can be reused.
     returns: -1 for another channel, NULL, or a frame that was not handed out.
     soc: Implemented by OpenIMP on T23 only.
+  SU_Base_Get/SetTime:
+    group: su
+    decl: "int SU_Base_GetTime(SUTime *time);\nint SU_Base_SetTime(SUTime *time);"
+    summary: "Reads or sets the battery-backed RTC (`/dev/rtc0`). Month is 1 to 12 and the year is the full year."
+    returns: "0, -1 when the RTC node cannot be opened or the ioctl fails (a board without an RTC driver)."
+    soc: "T40 (ported from the vendor libsysutils into libimp; other SoCs use the vendor libsysutils.so)."
+  SU_Base_Get/SetAlarm:
+    group: su
+    decl: "int SU_Base_GetAlarm(SUTime *time);\nint SU_Base_SetAlarm(SUTime *time);"
+    summary: "Reads or sets the RTC alarm time."
+    returns: "0, -1 on a missing RTC or a failing ioctl."
+    soc: "T40."
+  SU_Base_EnableAlarm:
+    group: su
+    decl: "int SU_Base_EnableAlarm(void);"
+    summary: "Switches the RTC alarm interrupt on. Refused with -1 unless the alarm time lies after the current time."
+    notes: "An armed alarm can wake or power the camera on boards that wire it up."
+    soc: "T40."
+  SU_Base_DisableAlarm:
+    group: su
+    decl: "int SU_Base_DisableAlarm(void);"
+    summary: "Switches the RTC alarm interrupt off."
+    soc: "T40."
+  SU_Base_PollingAlarm:
+    group: su
+    decl: "int SU_Base_PollingAlarm(uint32_t timeoutMsec);"
+    summary: "Waits up to `timeoutMsec` for the RTC alarm."
+    returns: "0, also after the timeout (the vendor only logs it); -1 when the RTC node cannot be opened."
+    soc: "T40."
+  SU_Base_Reboot:
+    group: su
+    decl: "int SU_Base_Reboot(void);"
+    summary: "Syncs and sends SIGTERM to init (reboot on busybox init). Returns 0."
+    soc: "T40."
+  SU_Base_Suspend:
+    group: su
+    decl: "int SU_Base_Suspend(void);"
+    summary: "Writes `mem` to `/sys/power/state`."
+    returns: "0, -1 when the node cannot be opened or written."
+    soc: "T40."
+  SU_ADC_Init:
+    group: su
+    decl: "int SU_ADC_Init(void);"
+    summary: "Opens the six ADC channel nodes `/dev/ingenic_adc_aux_0` to `_5`."
+    returns: "0, -1 when one node is missing (the board has no ADC driver)."
+    soc: "T40."
+  SU_ADC_Exit:
+    group: su
+    decl: "int SU_ADC_Exit(void);"
+    summary: "Closes the channel nodes."
+    soc: "T40."
+  SU_ADC_EnableChn:
+    group: su
+    decl: "int SU_ADC_EnableChn(uint32_t chn_num);"
+    summary: "Switches an ADC channel on (0 to 5)."
+    returns: "0, -1 for a channel above 5, before `SU_ADC_Init` or on an ioctl error."
+    soc: "T40."
+  SU_ADC_DisableChn:
+    group: su
+    decl: "int SU_ADC_DisableChn(uint32_t chn_num);"
+    summary: "Switches an ADC channel off."
+    soc: "T40."
+  SU_ADC_GetChnValue:
+    group: su
+    decl: "int SU_ADC_GetChnValue(uint32_t chn_num, int *value);"
+    summary: "Reads the current value of an ADC channel."
+    returns: "0, -1 for a bad channel, NULL pointer or a failing read."
+    soc: "T40."
+  SU_Key_ReadEvent:
+    group: su
+    decl: "int SU_Key_ReadEvent(int evfd, int *keyCode, SUKeyEvent *event);"
+    summary: "Blocks until a key event arrives on the handle of `SU_Key_OpenEvent`; returns the key code (low 8 bits of the input code) and pressed / released."
+    returns: "0, -1 on a read error."
+    notes: "Key press events of the `gpio_keys` input device only."
+    soc: "T40."
+  SU_Key_EnableEvent:
+    group: su
+    decl: "int SU_Key_EnableEvent(int keyCode);"
+    summary: "Takes a hardware key out of the `disabled_keys` list of the gpio_keys driver again."
+    returns: "0, -1 when the gpio_keys sysfs nodes are missing."
+    soc: "T40."
+  SU_Key_DisableEvent:
+    group: su
+    decl: "int SU_Key_DisableEvent(int keyCode);"
+    summary: "Masks a hardware key in the gpio_keys driver (`disabled_keys`)."
+    returns: "0, -1 when the gpio_keys sysfs nodes are missing."
+    soc: "T40."
+  SU_LED_Command:
+    group: su
+    decl: "int SU_LED_Command(int ledNum, SULedCmd cmd);"
+    summary: "Drives the LED on GPIO `ledNum` through sysfs (export, active_low 0, direction out, value). `LED_GPIO_UNEXPORT` writes 0 and releases the GPIO."
+    returns: "0, -1 when one of the sysfs nodes cannot be opened."
+    soc: "T40."
+  SU_CIPHER_Init:
+    group: su
+    decl: "int SU_CIPHER_Init(void);"
+    summary: "Hardware AES engine of the vendor library. Not provided: the open stack has no AES/DES kernel driver."
+    returns: "-1 with `errno` ENOTSUP; the same for `SU_CIPHER_Exit`, `CreateHandle`, `DestroyHandle`, `ConfigHandle`, `Encrypt`, `Decrypt`, `DES_Init`, `DES_Exit` and `DES_Test`."
+    notes: "The vendor library answers -1 as well on a kernel without `/dev/aes` and `/dev/jz-des`. Software AES/DES would be an extra beyond the vendor and is not offered."
+    soc: "T40."
   SU_Base_Shutdown:
     group: su
     decl: "int SU_Base_Shutdown(void);"

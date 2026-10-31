@@ -930,8 +930,8 @@ Per area and SoC: functions that work (device-tested or vendor no-op) / function
 - **OSD:** T10 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T20 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T21 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T23 36/42 ✅ · 4 🔧 · 0 gaps · 2 ? · T30 0/17 ✅ · 1 🔧 · 0 gaps · 16 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 36/43 ✅ · 7 🔧 · 0 gaps · 0 ? · T41 37/42 ✅ · 2 🔧 · 3 gaps · 0 ?
 - **IVS:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/18 ✅ · 0 🔧 · 0 gaps · 18 ? · T31 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/18 (no OpenIMP build yet) · T33 0/18 (no OpenIMP build yet) · T40 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 18/18 ✅ · 0 🔧 · 0 gaps · 0 ?
 - **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/90 ✅ · 22 🔧 · 0 gaps · 68 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
-- **System:** T10 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T20 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T21 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T23 32/60 ✅ · 25 🔧 · 0 gaps · 3 ? · T30 0/50 ✅ · 1 🔧 · 0 gaps · 49 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 1 🔧 · 1 gaps · 27 ? · T41 19/55 ✅ · 30 🔧 · 6 gaps · 0 ?
-- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/389 ✅ · 27 🔧 · 5 gaps · 27 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
+- **System:** T10 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T20 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T21 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T23 32/60 ✅ · 25 🔧 · 0 gaps · 3 ? · T30 0/50 ✅ · 1 🔧 · 0 gaps · 49 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 19 🔧 · 10 gaps · 0 ? · T41 19/55 ✅ · 30 🔧 · 6 gaps · 0 ?
+- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/389 ✅ · 45 🔧 · 14 gaps · 0 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
 
 ### Priorities for streamers
 
@@ -945,7 +945,7 @@ Gaps (error, missing, stub, cache-only) in functions that at least one streamer 
 - **T31:** 0 streamer-used gaps; 2 further gaps no streamer calls
 - **T32:** no OpenIMP build yet; 178 vendor functions are called by a streamer. Most used: `AI_Disable` (p† r† t†), `AI_DisableAgc` (p† r† t†), `AI_DisableChn` (p† r† t†), `AI_DisableHpf` (p† r† t†), `AI_DisableNs` (p† r† t†), `AI_Enable` (p† r† t†), `AI_EnableAgc` (p† r† t†), `AI_EnableChn` (p† r† t†), `AI_EnableHpf` (p† r† t†), `AI_EnableNs` (p† r† t†), `AI_Get/SetChnParam` (p† r† t†), `AI_Get/SetGain` (p† r† t†)
 - **T33:** no OpenIMP build yet; 178 vendor functions are called by a streamer. Most used: `AI_Disable` (p† r† t†), `AI_DisableAgc` (p† r† t†), `AI_DisableChn` (p† r† t†), `AI_DisableHpf` (p† r† t†), `AI_DisableNs` (p† r† t†), `AI_Enable` (p† r† t†), `AI_EnableAgc` (p† r† t†), `AI_EnableChn` (p† r† t†), `AI_EnableHpf` (p† r† t†), `AI_EnableNs` (p† r† t†), `AI_Get/SetChnParam` (p† r† t†), `AI_Get/SetGain` (p† r† t†)
-- **T40:** 0 streamer-used gaps; 4 further gaps no streamer calls
+- **T40:** 0 streamer-used gaps; 13 further gaps no streamer calls
 - **T41:** 0 streamer-used gaps; 37 further gaps no streamer calls
 
 ### Long-term backlog
@@ -1025,11 +1025,11 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 </details>
 
-<details><summary><b>T40</b>: 29 functions</summary>
+<details><summary><b>T40</b>: 13 functions</summary>
 
 - **AE / AWB / AF:** documented ENOTSUP (2): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`
 - **Encoder (and decoder):** implement (1): `Encoder_Get/SetFisheyeEnableStatus`
-- **System / sysutils / log:** implement (26): `SU_ADC_DisableChn`, `SU_ADC_EnableChn`, `SU_ADC_Exit`, `SU_ADC_GetChnValue`, `SU_ADC_Init`, `SU_Base_DisableAlarm`, `SU_Base_EnableAlarm`, `SU_Base_Get/SetAlarm`, `SU_Base_Get/SetTime`, `SU_Base_PollingAlarm`, `SU_Base_Reboot`, `SU_Base_Suspend`, `SU_CIPHER_ConfigHandle`, `SU_CIPHER_CreateHandle`, `SU_CIPHER_Decrypt`, `SU_CIPHER_DES_Exit`, `SU_CIPHER_DES_Init`, `SU_CIPHER_DES_Test`, `SU_CIPHER_DestroyHandle`, `SU_CIPHER_Encrypt`, `SU_CIPHER_Exit`, `SU_CIPHER_Init`, `SU_Key_DisableEvent`, `SU_Key_EnableEvent`, `SU_Key_ReadEvent`, `SU_LED_Command`
+- **System / sysutils / log:** documented ENOTSUP (10): `SU_CIPHER_ConfigHandle`, `SU_CIPHER_CreateHandle`, `SU_CIPHER_Decrypt`, `SU_CIPHER_DES_Exit`, `SU_CIPHER_DES_Init`, `SU_CIPHER_DES_Test`, `SU_CIPHER_DestroyHandle`, `SU_CIPHER_Encrypt`, `SU_CIPHER_Exit`, `SU_CIPHER_Init`
 
 </details>
 
@@ -2130,18 +2130,18 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `PoolPhys_to_Virt` | · | · | · | ✅ | · | ✅ | 📋 | 📋 | · | · | – |
 | `PoolVirt_to_Phys` | · | · | · | ✅ | · | ✅ | 📋 | 📋 | · | · | – |
 | `Sp_Alloc` | ? | ? | ? | ✅ | ? | ✅ | 📋 | 📋 | · | · | – |
-| `SU_ADC_DisableChn` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_ADC_EnableChn` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_ADC_Exit` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_ADC_GetChnValue` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_ADC_Init` | · | · | · | · | · | · | 📋 | 📋 | ❌ | ❌ | – |
+| `SU_ADC_DisableChn` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_ADC_EnableChn` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_ADC_Exit` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_ADC_GetChnValue` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_ADC_Init` | · | · | · | · | · | · | 📋 | 📋 | 🔧h | ❌ | – |
 | `SU_Base_CtlPwrDown` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
-| `SU_Base_DisableAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Base_DisableAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Base_DisableAlarmTimeMs` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
-| `SU_Base_EnableAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Base_EnableAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Base_EnableAlarmTimeMs` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
-| `SU_Base_Get/SetAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_Base_Get/SetTime` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Base_Get/SetAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_Base_Get/SetTime` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Base_GetAlarmTimeMs` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `SU_Base_GetDevID` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | – |
 | `SU_Base_GetModelNumber` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | – |
@@ -2149,36 +2149,36 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `SU_Base_GetVersion` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | p† r† |
 | `SU_Base_GetWakeupCount` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `SU_Base_GetWkupMode` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
-| `SU_Base_PollingAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Base_PollingAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Base_Raw2SUTime` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | – |
-| `SU_Base_Reboot` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Base_Reboot` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Base_SetAlarmTimeMs` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `SU_Base_SetWkupMode` | · | · | · | · | · | · | 📋 | 📋 | · | ❌e | – |
 | `SU_Base_Shutdown` | 🔧h | 🔧h | 🔧h | 🔧h | 🔧h | 🔧h | 📋 | 📋 | 🔧h | 🔧h | – |
-| `SU_Base_Suspend` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Base_Suspend` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Base_SUTime2Raw` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | – |
 | `SU_Battery_GetCapacity` | · | · | · | · | ? | · | · | · | · | ❌ | – |
 | `SU_Battery_GetEvent` | · | · | · | · | ? | · | · | · | · | ❌ | – |
 | `SU_Battery_GetStatus` | · | · | · | · | ? | · | · | · | · | ❌ | – |
 | `SU_Battery_GetVoltageUV` | · | · | · | · | ? | · | · | · | · | ❌ | – |
-| `SU_CIPHER_ConfigHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_CreateHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_Decrypt` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_DES_Exit` | · | · | · | · | · | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_DES_Init` | · | · | · | · | · | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_DES_Test` | · | · | · | · | · | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_DestroyHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_Encrypt` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_CIPHER_Exit` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_CIPHER_ConfigHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_CreateHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_Decrypt` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_DES_Exit` | · | · | · | · | · | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_DES_Init` | · | · | · | · | · | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_DES_Test` | · | · | · | · | · | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_DestroyHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_Encrypt` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
+| `SU_CIPHER_Exit` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
 | `SU_CIPHER_Free_Buffer` | · | · | · | · | · | · | 📋 | · | · | · | – |
-| `SU_CIPHER_Init` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_CIPHER_Init` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ❌e | 🔧a | – |
 | `SU_CIPHER_Malloc_Buffer` | · | · | · | · | · | · | 📋 | · | · | · | – |
 | `SU_Key_CloseEvent` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | 🔧a | – |
-| `SU_Key_DisableEvent` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_Key_EnableEvent` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Key_DisableEvent` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_Key_EnableEvent` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_Key_OpenEvent` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | 🔧a | – |
-| `SU_Key_ReadEvent` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_LED_Command` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
+| `SU_Key_ReadEvent` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
+| `SU_LED_Command` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | 🔧h | 🔧a | – |
 | `SU_PM_AddThreadListen` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `SU_PM_DeInit` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `SU_PM_DelThreadListen` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
@@ -2211,7 +2211,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `System_WriteReg32` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | r† |
 | `Virt_to_Phys` | ? | ? | ? | ? | ? | ✅ | 📋 | 📋 | · | · | – |
 
-<details><summary>Notes and references (67)</summary>
+<details><summary>Notes and references (68)</summary>
 
 - `Log_Get_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `Log_Set_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
@@ -2228,44 +2228,45 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `PoolPhys_to_Virt`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
 - `PoolVirt_to_Phys`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
 - `Sp_Alloc`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
-- `SU_ADC_DisableChn`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
-- `SU_ADC_EnableChn`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
-- `SU_ADC_Exit`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
-- `SU_ADC_GetChnValue`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
-- `SU_Base_DisableAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
-- `SU_Base_EnableAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
-- `SU_Base_Get/SetAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
-- `SU_Base_Get/SetTime`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
+- `SU_ADC_DisableChn`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_ADC_EnableChn`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_ADC_Exit`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_ADC_GetChnValue`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_ADC_Init`: T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_Base_DisableAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_Base_EnableAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_Base_Get/SetAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_Base_Get/SetTime`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
 - `SU_Base_GetDevID`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `SU_Base_GetModelNumber`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `SU_Base_GetVersion`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
-- `SU_Base_PollingAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
+- `SU_Base_PollingAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node) T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
 - `SU_Base_Raw2SUTime`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
-- `SU_Base_Reboot`: audit: sysfs/ioctl/syscall path
+- `SU_Base_Reboot`: audit: sysfs/ioctl/syscall path T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
 - `SU_Base_SetWkupMode`: T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged
 - `SU_Base_Shutdown`: agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD
-- `SU_Base_Suspend`: audit: sysfs/ioctl/syscall path
+- `SU_Base_Suspend`: audit: sysfs/ioctl/syscall path T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
 - `SU_Base_SUTime2Raw`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `SU_Battery_GetCapacity`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
 - `SU_Battery_GetEvent`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
 - `SU_Battery_GetStatus`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
 - `SU_Battery_GetVoltageUV`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
-- `SU_CIPHER_ConfigHandle`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_CreateHandle`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_Decrypt`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_DES_Exit`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_DES_Init`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_DES_Test`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_DestroyHandle`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_Encrypt`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_Exit`: audit: sysfs/ioctl/syscall path
-- `SU_CIPHER_Init`: audit: sysfs/ioctl/syscall path
+- `SU_CIPHER_ConfigHandle`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_CreateHandle`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_Decrypt`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_DES_Exit`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_DES_Init`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_DES_Test`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_DestroyHandle`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_Encrypt`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_Exit`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
+- `SU_CIPHER_Init`: T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40: apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls.
 - `SU_Key_CloseEvent`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184.
-- `SU_Key_DisableEvent`: audit: sysfs/ioctl/syscall path
-- `SU_Key_EnableEvent`: audit: sysfs/ioctl/syscall path
+- `SU_Key_DisableEvent`: audit: sysfs/ioctl/syscall path T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_Key_EnableEvent`: audit: sysfs/ioctl/syscall path T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
 - `SU_Key_OpenEvent`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184.
-- `SU_Key_ReadEvent`: audit: sysfs/ioctl/syscall path
-- `SU_LED_Command`: audit: sysfs/ioctl/syscall path
+- `SU_Key_ReadEvent`: audit: sysfs/ioctl/syscall path T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
+- `SU_LED_Command`: audit: sysfs/ioctl/syscall path T40: host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there).
 - `System_Bind`: audit: userspace implementation T10: apitest rc3gaps2 2026-10-27 .31. T20: apitest rc3gaps2 2026-10-27 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest rc3gaps2 2026-10-27 .30. T31: apitest rc3gaps2 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest rc3gaps2 2026-10-27 .34.
 - `System_Exit`: audit: reaches the driver/kernel; userspace implementation T10: apitest rc3gaps2 2026-10-27 .31. T20: apitest rc3gaps2 2026-10-27 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest rc3gaps2 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest agg47 2026-10-28 .34.
 - `System_GetBindbyDest`: audit: userspace implementation T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest rc3gaps2 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest rc3gaps2 2026-10-27 .34.

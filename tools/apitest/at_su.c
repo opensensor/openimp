@@ -1,12 +1,35 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 /* apitest: sysutils (SU_*) functions.  They live in libsysutils.so, resolved with dlsym
  * (type-checked against the vendor headers). Never called: SU_Base_Shutdown/Reboot/Suspend. */
+#include <errno.h>
 #include <unistd.h>
 #include "apitest.h"
 
 static void *g_su;
-#define SUSYM(name) ((__typeof__(&name))dlsym(g_su, #name))
+/* the SU_* of libimp itself (T40: ported into the open libimp) win over a vendor libsysutils.so; the rest comes from libsysutils.so */
+#define SUSYM(name) ((__typeof__(&name))(dlsym(RTLD_DEFAULT, #name) ? dlsym(RTLD_DEFAULT, #name) : (g_su ? dlsym(g_su, #name) : NULL)))
 /* resolve into 'f'; N/A line when missing */
-#define SUNEED(name) __typeof__(&name) f_##name = g_su ? SUSYM(name) : NULL; if (!f_##name) { rep_na(FN(name)); } else
+#define SUNEED(name) __typeof__(&name) f_##name = SUSYM(name); if (!f_##name) { rep_na(FN(name)); } else
+
+/* is there an input device named gpio_keys (the one SU_Key_OpenEvent looks for)? */
+static int have_gpio_keys(void)
+{
+    char path[160], name[64];
+    int i, found = 0;
+
+    for (i = 0; i < 16 && !found; i++) {
+        FILE *f;
+
+        snprintf(path, sizeof(path), "/sys/class/input/input%d/name", i);
+        f = fopen(path, "r");
+        if (!f) continue;
+        if (fgets(name, sizeof(name), f) && strstr(name, "gpio_keys")) found = 1;
+        fclose(f);
+    }
+    return found;
+}
 
 void t_su(void)
 {
@@ -15,7 +38,7 @@ void t_su(void)
     rep_area("su");
     g_su = dlopen("libsysutils.so", RTLD_NOW);
     if (!g_su) {
-        rep(LBL("libsysutils.so"), -1, V_NA, "dlopen failed: %s", dlerror());
+        rep(LBL("libsysutils.so"), -1, V_NA, "dlopen failed: %s (the SU_* that libimp exports are used)", dlerror());
     }
 
     SUNEED(SU_Base_GetModelNumber) {
@@ -89,7 +112,11 @@ void t_su(void)
     }
     }
     rep(FN(SU_Base_EnableAlarm), 0, V_SKIP, "an enabled RTC alarm can wake/power the camera");
-    rep(FN(SU_Base_PollingAlarm), 0, V_SKIP, "blocks until the alarm fires");
+    if (has_rtc) {
+        /* the vendor function returns 0 after the timeout as well (it only logs "select timeout"): a 50 ms poll is safe */
+        SUNEED(SU_Base_PollingAlarm) { int r4 = f_SU_Base_PollingAlarm(50); RET0(SU_Base_PollingAlarm, r4, "50 ms poll"); }
+    } else
+        rep(FN(SU_Base_PollingAlarm), -1, V_NA, "%s", no_rtc);
     rep(FN(SU_Base_Shutdown), 0, V_SKIP, "powers the camera off");
     rep(FN(SU_Base_Reboot), 0, V_SKIP, "reboots the camera");
     rep(FN(SU_Base_Suspend), 0, V_SKIP, "suspends the camera");
@@ -129,9 +156,9 @@ void t_su(void)
     SUNEED(SU_Key_OpenEvent) {
         int fd = f_SU_Key_OpenEvent();
 
-        int nodev = fd < 0 && access("/dev/input/event0", F_OK) != 0;   /* no key / input device on this board */
+        int nodev = fd < 0 && !have_gpio_keys();   /* no gpio_keys input device on this board: the vendor lookup fails as well */
 
-        rep(FN(SU_Key_OpenEvent), fd, fd >= 0 ? V_PASS : nodev ? V_NA : V_FAIL, "event fd %d%s", fd, nodev ? " (no /dev/input/event* on this board)" : "");
+        rep(FN(SU_Key_OpenEvent), fd, fd >= 0 ? V_PASS : nodev ? V_NA : V_FAIL, "event fd %d%s", fd, nodev ? " (no gpio_keys input device on this board)" : "");
         SUNEED(SU_Key_CloseEvent) {
             if (nodev) rep(FN(SU_Key_CloseEvent), 0, V_NA, "no input device, nothing to close");
             else { r = fd >= 0 ? f_SU_Key_CloseEvent(fd) : -1; RET0(SU_Key_CloseEvent, r, "fd %d", fd); }
@@ -141,6 +168,21 @@ void t_su(void)
     rep(FN(SU_Key_EnableEvent), 0, V_SKIP, "masks a hardware key in the input driver");
     rep(FN(SU_Key_DisableEvent), 0, V_SKIP, "masks a hardware key in the input driver");
     rep(FN(SU_LED_Command), 0, V_SKIP, "drives the board LED");
+#ifdef APITEST_T40
+    /* T40 open stack: no AES/DES kernel driver, the SU_CIPHER_* of libimp answer -1 / ENOTSUP (a vendor libsysutils.so is not loaded first) */
+#define CIPHER_ENOTSUP(call, name) do { errno = 0; int rc_ = (call); \
+        rep(FN(name), rc_, (rc_ == -1 && errno == ENOTSUP) ? V_PASS : V_FAIL, "-1 / ENOTSUP expected (no /dev/aes in the open stack), got %d errno %d", rc_, errno); } while (0)
+    SUNEED(SU_CIPHER_Init) { CIPHER_ENOTSUP(f_SU_CIPHER_Init(), SU_CIPHER_Init); }
+    SUNEED(SU_CIPHER_Exit) { CIPHER_ENOTSUP(f_SU_CIPHER_Exit(), SU_CIPHER_Exit); }
+    SUNEED(SU_CIPHER_CreateHandle) { CIPHER_ENOTSUP(f_SU_CIPHER_CreateHandle(), SU_CIPHER_CreateHandle); }
+    SUNEED(SU_CIPHER_DestroyHandle) { CIPHER_ENOTSUP(f_SU_CIPHER_DestroyHandle(-1), SU_CIPHER_DestroyHandle); }
+    SUNEED(SU_CIPHER_ConfigHandle) { CIPHER_ENOTSUP(f_SU_CIPHER_ConfigHandle(-1, NULL), SU_CIPHER_ConfigHandle); }
+    SUNEED(SU_CIPHER_Encrypt) { CIPHER_ENOTSUP(f_SU_CIPHER_Encrypt(-1, NULL, NULL, 0), SU_CIPHER_Encrypt); }
+    SUNEED(SU_CIPHER_Decrypt) { CIPHER_ENOTSUP(f_SU_CIPHER_Decrypt(-1, NULL, NULL, 0), SU_CIPHER_Decrypt); }
+    SUNEED(SU_CIPHER_DES_Init) { CIPHER_ENOTSUP(f_SU_CIPHER_DES_Init(), SU_CIPHER_DES_Init); }
+    SUNEED(SU_CIPHER_DES_Exit) { CIPHER_ENOTSUP(f_SU_CIPHER_DES_Exit(), SU_CIPHER_DES_Exit); }
+    SUNEED(SU_CIPHER_DES_Test) { CIPHER_ENOTSUP(f_SU_CIPHER_DES_Test(), SU_CIPHER_DES_Test); }
+#else
     rep(FN(SU_CIPHER_Init), 0, V_SKIP, "hardware AES/DES DMA engine, not part of the base/misc set");
     rep(FN(SU_CIPHER_Exit), 0, V_SKIP, "see CIPHER_Init");
     rep(FN(SU_CIPHER_CreateHandle), 0, V_SKIP, "see CIPHER_Init");
@@ -152,6 +194,7 @@ void t_su(void)
     rep(FN(SU_CIPHER_DES_Init), 0, V_SKIP, "see CIPHER_Init");
     rep(FN(SU_CIPHER_DES_Exit), 0, V_SKIP, "see CIPHER_Init");
     rep(FN(SU_CIPHER_DES_Test), 0, V_SKIP, "see CIPHER_Init");
+#endif
 #endif
     if (g_su) dlclose(g_su);
 }
