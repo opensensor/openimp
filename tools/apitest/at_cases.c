@@ -4254,6 +4254,46 @@ static void cs_padframe_t23(void)
 static void cs_padframe_t23(void) {}
 #endif
 
+#if defined(PLATFORM_T23) && HAS_IMP_ISP_Tuning_SwitchBin
+/* T23 SwitchBin (control 0x8000185, #9): switch to the bin file in use (the driver validates file, header, size and CRC, swaps the
+ * day / night banks under the AE/AWB pause); picture the same, frames flow.  As in the stock driver enable 0 is refused ("enable is 0",
+ * -EINVAL: there is no way back to a default, the old bin is switched to again), and a path that is no bin file is refused by the
+ * validation before anything is published and leaves the picture alone. */
+static void cs_switchbin_t23(void)
+{
+    NEED(IMP_ISP_Tuning_SwitchBin) {
+        char *p = (char *)gnew(128);
+        G(IMPISPBinAttr, a);
+        int r1 = -1, r2 = -1, r3 = -1, r4 = -1, ms = 0, ms2 = 0;
+        Fst base, back, bad;
+        struct stat st;
+
+        p[0] = 0;
+#if HAS_IMP_ISP_GetDefaultBinPath
+        if (IMP_ISP_GetDefaultBinPath(p) != 0) p[0] = 0;
+#endif
+        if (!p[0] || stat(p, &st) != 0) snprintf(p, 128, "/etc/sensor/%s-t23.bin", g_sensor.name);
+        if (stat(p, &st) != 0) {
+            rep(FN(IMP_ISP_Tuning_SwitchBin), -1, V_SKIP, "no usable current bin file (\"%.80s\")", p);
+        } else {
+            base = fst(800);
+            a->enable = IMPISP_TUNING_OPS_MODE_ENABLE; snprintf(a->bname, sizeof(a->bname), "%s", p);
+            r1 = IMP_ISP_Tuning_SwitchBin(a); back = recover(base.y, &ms);
+            r2 = IMP_ISP_Tuning_SwitchBin(a);                                   /* again: the same file, a second swap */
+            a->enable = IMPISP_TUNING_OPS_MODE_DISABLE;
+            r3 = IMP_ISP_Tuning_SwitchBin(a);                                   /* stock: refused */
+            a->enable = IMPISP_TUNING_OPS_MODE_ENABLE; snprintf(a->bname, sizeof(a->bname), "/etc/passwd");
+            r4 = IMP_ISP_Tuning_SwitchBin(a); bad = recover(base.y, &ms2);
+            rep(FN(IMP_ISP_Tuning_SwitchBin), r1 | r2, (r1 == 0 && r2 == 0 && r3 != 0 && r4 != 0 && ms >= 0 && ms2 >= 0 && flow()) ? V_PASS : V_FAIL,
+                "rt: %.50s (ret %d), again (ret %d), enable 0 refused as stock (ret %d), a file that is no bin refused (ret %d), Y %.1f -> %.1f -> %.1f, frames flow",
+                p, r1, r2, r3, r4, base.y, back.y, bad.y);
+        }
+        gfree(p); gfree(a);
+    }
+}
+#else
+static void cs_switchbin_t23(void) {}
+#endif
 
 
 
@@ -4283,7 +4323,7 @@ static void cs_wbalgo_t23(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "wbalgo_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "switchbin_t23", "wbalgo_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4386,6 +4426,7 @@ void t_cases(void)
     if (cs_on("enchelp_t23")) cs_enchelp_t23(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("t140c")) cs_t140c(); wdog("cases", 120);
     if (cs_on("padframe_t23")) cs_padframe_t23(); wdog("cases", 120);
+    if (cs_on("switchbin_t23")) cs_switchbin_t23(); wdog("cases", 90);
     if (cs_on("wbalgo_t23")) cs_wbalgo_t23(); wdog("cases", 90);
     if (getenv("APITEST_CASES") && cs_on("framedrop_t40")) cs_framedrop_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("ratiohang_t40")) cs_ratiohang_t40(); wdog("cases", 60);
