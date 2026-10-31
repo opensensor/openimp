@@ -3629,6 +3629,30 @@ extern int IMP_OSD_UpdateRgnAttrData_ISP(int sensor, int handle, T23IspPic *a);
 #pragma weak IMP_OSD_DestroyRgn_ISP
 #pragma weak IMP_OSD_UpdateRgnAttrData_ISP
 
+/* open T23 ISP driver counters (parameters osd_commits / mask_commits, 0444): "-" = parameter absent = a tx_isp_t23.ko without the
+ * MSCA update of the ISP OSD pictures / mask / draw blocks (flash images up to agg47: nothing of the three calls can show then) */
+static const char *t23_drv_info(void)
+{
+    static char buf[96];
+    const char *names[2] = { "osd_commits", "mask_commits" };
+    char path[96], v[2][16];
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        FILE *f;
+
+        snprintf(path, sizeof(path), "/sys/module/tx_isp_t23/parameters/%s", names[i]);
+        snprintf(v[i], sizeof(v[i]), "-");
+        if ((f = fopen(path, "r")) != NULL) {
+            if (!fgets(v[i], sizeof(v[i]), f)) snprintf(v[i], sizeof(v[i]), "?");
+            fclose(f);
+            v[i][strcspn(v[i], "\n")] = 0;
+        }
+    }
+    snprintf(buf, sizeof(buf), "; driver osd_commits %s mask_commits %s", v[0], v[1]);
+    return buf;
+}
+
 /* mean luma of a rectangle of FS channel ch (its own coordinates), 2 frames after a settle time and 8 dropped ones */
 static double reg_luma(int ch, int x0, int y0, int x1, int y1)
 {
@@ -3726,8 +3750,8 @@ static void cs_ispcover_t23(void)
         rbad = IMP_OSD_MultiCamera_SetRgnAttr_ISP(3, a, 0);
         rnul = IMP_OSD_MultiCamera_SetRgnAttr_ISP(0, NULL, 0);
         rep(FN(IMP_OSD_MultiCamera_SetRgnAttr_ISP), r1 | r3, (r1 == 0 && r3 == 0 && dabs(on - base) > 40 && dabs(off - base) < 20 && rbad == -1 && rnul != 0 && flow()) ? V_PASS : V_FAIL,
-            "sensor 0, ch1 cover %dx%d at (%d,%d) Y %u: luma %.1f -> %.1f, disabled %.1f; vi 3 -> %d, NULL -> %d", w, h, x, y,
-            a->osdispdraw.stCoverAttr.mask_value.ayuv.y_value, base, on, off, rbad, rnul);
+            "sensor 0, ch1 cover %dx%d at (%d,%d) Y %u: luma %.1f -> %.1f, disabled %.1f; vi 3 -> %d, NULL -> %d%s", w, h, x, y,
+            a->osdispdraw.stCoverAttr.mask_value.ayuv.y_value, base, on, off, rbad, rnul, t23_drv_info());
         /* stock tisp_g_mscaler_mask_block_attr always reports mask_en = 0; the geometry of an enabled block is read back */
         rep(FN(IMP_OSD_MultiCamera_GetRgnAttr_ISP), r2, (r2 == 0 && show == 1 && g->osdispdraw.stCoverAttr.mask_width == w && g->osdispdraw.stCoverAttr.mask_height == h
             && g->osdispdraw.stCoverAttr.mask_pos_left == x && g->osdispdraw.stCoverAttr.mask_pos_top == y && r4 == -1) ? V_PASS : V_FAIL,
@@ -3765,8 +3789,8 @@ static void cs_ispdraw_t23(void)
         {
             int eff = (dabs(e1 - e0) > 40 || dabs(e1s - e0s) > 40) && dabs(i1 - i0) < 15 && dabs(e2 - e0) < 20;
             rep(LBL("IMP_OSD_MultiCamera_SetRgnAttr_ISP draw"), r1 | r3, (r1 == 0 && r3 == 0 && eff && flow()) ? V_PASS : V_FAIL,
-                "window %dx%d at (%d,%d) line %d Y %u: top edge ch0 %.1f -> %.1f (ch1 %.1f -> %.1f), inside %.1f -> %.1f; disabled: edge %.1f inside %.1f; get rc %d show %d",
-                w, h, x, y, lw, wd->color.ayuv.y_value, e0, e1, e0s, e1s, i0, i1, e2, i2, r2, show);
+                "window %dx%d at (%d,%d) line %d Y %u: top edge ch0 %.1f -> %.1f (ch1 %.1f -> %.1f), inside %.1f -> %.1f; disabled: edge %.1f inside %.1f; get rc %d show %d%s",
+                w, h, x, y, lw, wd->color.ayuv.y_value, e0, e1, e0s, e1s, i0, i1, e2, i2, r2, show, t23_drv_info());
         }
         gfree(a); gfree(g);
     }
@@ -3808,7 +3832,7 @@ static void cs_isppicupd_t23(void)
         }
         rnul = IMP_OSD_UpdateRgnAttrData_ISP(0, 7, NULL);
         rep(FN(IMP_OSD_UpdateRgnAttrData_ISP), r2, (hdl >= 0 && r1 == 0 && r2 == 0 && r3 == 0 && on > base + 30 && upd < on - 60 && rbad == -1 && rnul == -1 && flow()) ? V_PASS : V_FAIL,
-            "handle %d white %dx%d at (%d,%d): luma %.1f -> %.1f; updated to black: %.1f; other size -> %d, NULL -> %d", hdl, PW, PH, x, y, base, on, upd, rbad, rnul);
+            "handle %d white %dx%d at (%d,%d): luma %.1f -> %.1f; updated to black: %.1f; other size -> %d, NULL -> %d%s", hdl, PW, PH, x, y, base, on, upd, rbad, rnul, t23_drv_info());
         free(white); free(black);
     }
 }
