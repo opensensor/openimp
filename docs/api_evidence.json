@@ -19477,7 +19477,8 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "auto": true
+   "auto": true,
+   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_ISPOSD_Alloc(4096) returns a writable address whose physical address IMP_Virt_to_Phys knows; stock returns the descriptor's virtual address or 0 when IMP_Alloc fails (same). QEMU T23 PASS; camera run missing."
   },
   "ISP_AddSensor_Free": {
    "area": "ISP tuning",
@@ -20432,7 +20433,8 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "auto": true
+   "auto": true,
+   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_OSD_Alloc(&phys, data, 4096) returns 0, the rmem content seen through IMP_Phys_to_Virt equals the source; stock 1.3.0 (disassembly) is IMP_Alloc + memcpy and always 0, OpenIMP additionally refuses a NULL output or size <= 0 and flushes the cache. QEMU T23 PASS; camera run missing."
   },
   "OSD_DetachToGroup": {
    "area": "OSD",
@@ -20485,7 +20487,8 @@
     "T41": "n.a."
    },
    "auto": true,
-   "ref": {}
+   "ref": {},
+   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case isppicupd_t23 exists (device 2026-10-29 .30: white -> black picture PASS); the cell stays ? until the evidence is merged by a camera run."
   },
   "Phys_to_Virt": {
    "area": "System",

@@ -4295,6 +4295,41 @@ static void cs_switchbin_t23(void)
 static void cs_switchbin_t23(void) {}
 #endif
 
+#if defined(PLATFORM_T23)
+/* The two undocumented rmem helpers of the OEM libimp (#12 / #13, exported, not in the SDK header).  Stock 1.3.0 (disassembly):
+ * IMP_OSD_Alloc(uint32_t *phys, const void *data, int size) = IMP_Alloc(descriptor, size), memcpy(virt, data, size), *phys = descriptor phys, 0;
+ * IMP_ISPOSD_Alloc(int size) = IMP_Alloc(descriptor, size) and the virtual address (0 when the allocation fails). */
+static void cs_osdalloc_t23(void)
+{
+    int (*oa)(uint32_t *, const void *, int) = (int (*)(uint32_t *, const void *, int))dsym("IMP_OSD_Alloc");
+    void *(*ia)(int) = (void *(*)(int))dsym("IMP_ISPOSD_Alloc");
+    void *(*p2v)(uint32_t) = (void *(*)(uint32_t))dsym("IMP_Phys_to_Virt");
+    uint32_t (*v2p)(void *) = (uint32_t (*)(void *))dsym("IMP_Virt_to_Phys");
+    unsigned char *src = (unsigned char *)gnew(4096);
+    uint32_t ph = 0;
+    unsigned i;
+    int r, ok;
+
+    for (i = 0; i < 4096; i++) src[i] = (unsigned char)(i * 13 + 5);
+    if (oa) {
+        r = oa(&ph, src, 4096);
+        ok = r == 0 && ph != 0;
+        if (ok && p2v) { unsigned char *v = (unsigned char *)p2v(ph); ok = v && !memcmp(v, src, 4096); }
+        rep(LBL("IMP_OSD_Alloc"), r, ok ? V_PASS : V_FAIL, "4096 bytes: ret %d phys 0x%x, rmem content %s the source", r, ph, ok ? "equals" : "DIFFERS from");
+    } else ALN("IMP_OSD_Alloc");
+    if (ia) {
+        unsigned char *v = (unsigned char *)ia(4096);
+
+        ok = v != NULL;
+        if (ok) { memset(v, 0xa5, 4096); ok = v[0] == 0xa5 && v[4095] == 0xa5; }
+        if (ok && v2p) ok = v2p(v) != 0;
+        rep(LBL("IMP_ISPOSD_Alloc"), v ? 0 : -1, ok ? V_PASS : V_FAIL, "4096 bytes at %p written, physical address %s", (void *)v, ok ? "known" : "NOT known");
+    } else ALN("IMP_ISPOSD_Alloc");
+    gfree(src);
+}
+#else
+static void cs_osdalloc_t23(void) {}
+#endif
 
 
 
@@ -4323,7 +4358,7 @@ static void cs_wbalgo_t23(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "switchbin_t23", "wbalgo_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "switchbin_t23", "osdalloc_t23", "wbalgo_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4427,6 +4462,7 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("t140c")) cs_t140c(); wdog("cases", 120);
     if (cs_on("padframe_t23")) cs_padframe_t23(); wdog("cases", 120);
     if (cs_on("switchbin_t23")) cs_switchbin_t23(); wdog("cases", 90);
+    if (cs_on("osdalloc_t23")) cs_osdalloc_t23(); wdog("cases", 60);
     if (cs_on("wbalgo_t23")) cs_wbalgo_t23(); wdog("cases", 90);
     if (getenv("APITEST_CASES") && cs_on("framedrop_t40")) cs_framedrop_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("ratiohang_t40")) cs_ratiohang_t40(); wdog("cases", 60);

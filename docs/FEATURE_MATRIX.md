@@ -1848,7 +1848,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `OSD_UpdateRgnAttrData` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | p† r† |
 | `OSD_UpdateRgnAttrData_ISP` | · | · | · | ? | · | · | 📋 | 📋 | · | · | – |
 
-<details><summary>Notes and references (39)</summary>
+<details><summary>Notes and references (41)</summary>
 
 - `ISP_Get/SetOSDAttr`: T40: apitest agg47z-combo 2026-10-29 .184 (open-tx-isp t40-isposd-oops): Set with an array image in chx0 pic0 returns 0, GetOSDAttr reads back the state; the picture does not appear yet (luma 33.0 vs base 33.7), effect path open.
 - `ISP_Get/SetSingleOSDAttr`: T40: apitest agg47z-combo 2026-10-29 .184: GetSingleOSDAttr PASS, SetSingleOSDAttr returns 0 but shows no picture (enable 1: luma 34.1 vs 33.7), effect path open; the oops of agg47 is fixed.
@@ -1860,6 +1860,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `ISP_Tuning_SetOsdPoolSize`: T41: 2 insns, returns ? T41: 2 insns, returns ? T23: apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing. T41: apitest next+ko/libimp swap 2026-10-27 .34: isposd: picture visible in FS ch0 (Y 111 -> 234), hide/destroy back to the background, frames flow; needs open-tx-isp next 8d3504c8 (ISP OSD) and the OpenIMP next libimp; stock agg47 ko draws nothing.
 - `ISP_Tuning_SetOsdRgnAttr`: T41: implemented on the ISP OSD of the open driver (open-tx-isp next); an older stock ko draws nothing T41: implemented on the ISP OSD of the open driver (open-tx-isp next); an older stock ko draws nothing T23: apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `ISP_Tuning_ShowOsdRgn`: T41: implemented on the ISP OSD of the open driver (open-tx-isp next); an older stock ko draws nothing T41: implemented on the ISP OSD of the open driver (open-tx-isp next); an older stock ko draws nothing T23: apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing. T41: apitest next+ko/libimp swap 2026-10-27 .34: isposd: picture visible in FS ch0 (Y 111 -> 234), hide/destroy back to the background, frames flow; needs open-tx-isp next 8d3504c8 (ISP OSD) and the OpenIMP next libimp; stock agg47 ko draws nothing.
+- `OSD_Alloc`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_OSD_Alloc(&phys, data, 4096) returns 0, the rmem content seen through IMP_Phys_to_Virt equals the source; stock 1.3.0 (disassembly) is IMP_Alloc + memcpy and always 0, OpenIMP additionally refuses a NULL output or size <= 0 and flushes the cache. QEMU T23 PASS; camera run missing.
 - `OSD_AttachToGroup`: T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build T41: device-tested through main-matrix feature #28 (OSD: text, bitmap, rectangle, line, cover).
 - `OSD_CreateGroup`: audit: userspace implementation T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `OSD_CreateRgn`: audit: reaches the driver/kernel T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
@@ -1889,6 +1890,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `OSD_Stop`: audit: userspace implementation T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `OSD_UnRegisterRgn`: audit: userspace implementation T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `OSD_UpdateRgnAttrData`: audit: reaches the driver/kernel T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
+- `OSD_UpdateRgnAttrData_ISP`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case isppicupd_t23 exists (device 2026-10-29 .30: white -> black picture PASS); the cell stays ? until the evidence is merged by a camera run.
 
 </details>
 
@@ -2210,8 +2212,9 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `System_WriteReg32` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | r† |
 | `Virt_to_Phys` | ? | ? | ? | ? | ? | ✅ | 📋 | 📋 | · | · | – |
 
-<details><summary>Notes and references (67)</summary>
+<details><summary>Notes and references (68)</summary>
 
+- `ISPOSD_Alloc`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_ISPOSD_Alloc(4096) returns a writable address whose physical address IMP_Virt_to_Phys knows; stock returns the descriptor's virtual address or 0 when IMP_Alloc fails (same). QEMU T23 PASS; camera run missing.
 - `Log_Get_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `Log_Set_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `MemPool_GetById`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
