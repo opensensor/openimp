@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-10-31, night (T31 backlog #28, #29)
+
+- **T31 API data:** `Encoder_ClearPoolId`, `FrameSource_ClearPoolId` and `FrameSource_SetFrameDepthCopyType` were already implemented to the 1.1.6 libimp semantics (pool tables dropped, argument unused; copy type only while the frame depth is 0, any non-zero value counts as 1); the 2026-10-29 device run (two T31 cameras) is now recorded as evidence. `FB_*` is not exported by the 1.1.6 libimp and not implemented (no display); `Encoder_Get/SetFisheyeEnableStatus` stays a stored flag like the vendor.
+- **apitest:** the `fsset_t31` copy-type case now also runs the success path (frame depth reset to 0, then restored).
+
 ## 2026-10-31, late evening (image agg60)
 
 - **Device proof (Eufy T40XP, image agg60 = all #140 batches incl. 19 sensor/WDR ioctl sites and 2 AE sites):** apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oopses, 0 `unresolved jalr`; the lost-argument counters (`cnt_core_ops_init`, `cnt_sec_init`, `cnt_main_long_tgain_update`) stay 0; raw ioctl probe ok.
