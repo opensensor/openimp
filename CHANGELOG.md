@@ -8,6 +8,15 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, state of `next` (backlog rounds merged, T40 agg63 camera proof)
+
+- **Backlogs closed:** T31 (#28 #29 #30; 14 + 4 T31 cells `dev` on the two T31L cameras), T23 (#9 #10 #11 #12 #13 #172: software JPEG decoder in the default build, SwitchBin, WB algorithm, OSD alloc; Jooan T23 camera PASS 68), T41 (#77 #78; T41 camera PASS 44 / FAIL 0 with 17 N/A), T40 (#66 to #70), T10/T20/T21 (#4 #6 #8; T20 127/0, T10 127/0, T21 133/0 after the libimp swap).
+- **Driver hardening closed:** #158 #160 #161 #164 #165 #166. The `/dev/tisp` parameter node exists only with `TX_ISP_T40_TISP_PAR=y`.
+- **T40 camera proof (image agg63, includes #161):** apitest all areas PASS 279, 6 of 6 reload cycles of our module clean, dark IR scene stable. #141 (OSD pictures on T40) is proven on the camera. #148 (dark-scene livelock in the libimp gap flush) is fixed in OpenIMP (stale bound). #149: encoder CPU at vendor level (0.71 % against 0.77 / 0.84 %).
+- **Other closed:** #2 (AE limit cycle), #88, #92, #93, #96 (full tmpfs), #104 (Linux 7.2: the T31L boots 7.2.11 with the IRQ balance fix), #131 (no DMIC hardware), #133.
+- **New doc:** [docs/RESET_DIAGNOSTICS.md](docs/RESET_DIAGNOSTICS.md): how to capture the cause of an unplanned reboot (RTC scratch record on the T31, reset-PC sled on the T23, SD ring log).
+- **Still open:** RC3 blockers #84 (waits for the light measurement box), #94 and #108 (unexplained resets). #65 (T40 AE/AWB algorithm callbacks: off by default, driver bug #173 in open-tx-isp). #3 #5 #7 (T10/T20/T21 stored-only stubs). #171 (T41 ISP routes in the open-tx-isp T41 module, branch `claude/t41-isp-routes` not merged). T30 audits run separately; the T32/T33 backlog is open. A fleet image needs the next modules (T23 ISP OSD pictures, SU CIPHER in libimp).
+
 ## 2026-10-31, T10/T20/T21 backlog (#3 to #8, branch claude/t2x-backlog)
 
 - **System (#4, #6, #8):** the vendor `IMP_Sp_Alloc` of the T10/T20 3.12.0 and T21 1.0.33 libraries was disassembled: it is not an allocation of a size but the allocator's reference-count increment (descriptor plus the physical address of a live buffer; `IMP_Free` releases the last reference). OpenIMP had the T23 call form on these SoCs; it now has the vendor form. `Phys_to_Virt` and `Virt_to_Phys` forward to the allocator's linear region conversion in the vendor library; OpenIMP converts inside live buffers (documented difference). apitest case `alloc` checks the reference count.

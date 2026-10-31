@@ -147,7 +147,8 @@ selected only where the SoC ABI differs.
 Platform conditionals are limited to real ABI differences (structure sizes, ioctl layouts,
 device behaviour, cache maintenance). Status notes per SoC: [`docs/T30_STATUS.md`](docs/T30_STATUS.md),
 [`docs/T40_STATUS.md`](docs/T40_STATUS.md), [`docs/T41_STATUS.md`](docs/T41_STATUS.md),
-profiling: [`docs/PROFILING.md`](docs/PROFILING.md).
+profiling: [`docs/PROFILING.md`](docs/PROFILING.md),
+unexplained reboots: [`docs/RESET_DIAGNOSTICS.md`](docs/RESET_DIAGNOSTICS.md).
 
 Audio processing belongs to [`libaudioProcess-neo`](https://github.com/gtxaspec/libaudioProcess-neo),
 logging and system libraries to [`ingenic-system-libs-neo`](https://github.com/gtxaspec/ingenic-system-libs-neo).
