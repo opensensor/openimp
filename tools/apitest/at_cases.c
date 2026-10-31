@@ -2576,6 +2576,8 @@ static void cs_isposdapi(void)
             if (s && s2) {
                 s->chx = 0; s->pic_num = h;
                 rgs = show ? IMP_ISP_GetSingleOSDAttr(IMPVI_MAIN, s) : 0;
+                /* like the T41 block case: Get returns the picture as KSEG0 virtual, the control takes the physical address */
+                s->pic.osd_image = (char *)((uintptr_t)s->pic.osd_image & 0x1fffffffu);
                 *s2 = *s; s2->pic.osd_enable = 0;
                 rss0 = show ? IMP_ISP_SetSingleOSDAttr(IMPVI_MAIN, s2) : 0; off = show ? region_y(cx0, cy0, cx1, cy1) : base;
                 rss1 = show ? IMP_ISP_SetSingleOSDAttr(IMPVI_MAIN, s) : 0; on = show ? region_y(cx0, cy0, cx1, cy1) : (dark ? base + 100 : base - 100);
