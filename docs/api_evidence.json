@@ -20465,13 +20465,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "qemu",
     "T41": "aud"
    },
    "auto": true,
    "ref": {
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): static audit against the vendor libimp.a, no host test of its own; no camera run yet",
-    "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing"
+    "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
+    "T40": "apitest isposdapi in QEMU T40 2026-10-31 (open-tx-isp agg59 ko, OpenIMP claude/t40-backlog): Init returns 0 twice in a row, region create/set/get/destroy follow, frames flow, 0 oops; no camera run yet. Vendor 1.3.1 (0xc3f14): allocates the pool and the 6x8 table, -1 when the allocation fails; OpenIMP is lazy and cannot fail"
    }
   },
   "OSD_UpdateRgnAttrData_ISP": {

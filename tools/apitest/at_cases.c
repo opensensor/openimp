@@ -2551,7 +2551,10 @@ static void cs_isposdapi(void)
         dark = base < 140;
         for (k = 0; k < OPW * OPH; k++) { uint8_t v = dark ? 255 : 0; pic[k * 4] = v; pic[k * 4 + 1] = v; pic[k * 4 + 2] = v; pic[k * 4 + 3] = 255; }
         jenc = isposd_cons_up();
-        if (oinit) oinit();
+        if (oinit) {
+            int ri = oinit(), ri2 = oinit();      /* the second call must not break the table (vendor: no check, OpenIMP: idempotent) */
+            rep(LBL("IMP_OSD_Init_ISP"), ri, (ri == 0 && ri2 == 0) ? V_PASS : V_FAIL, "init %d, second init %d", ri, ri2);
+        }
         rp = IMP_OSD_SetPoolSize_ISP(512 * 1024);
         rep(FN(IMP_OSD_SetPoolSize_ISP), rp, rp == 0 ? V_PASS : V_FAIL, "512 KB");
         rbad = IMP_OSD_CreateRgn_ISP(99, NULL);

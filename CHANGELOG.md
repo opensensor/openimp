@@ -17,6 +17,11 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - **T31 API data:** `Encoder_ClearPoolId`, `FrameSource_ClearPoolId` and `FrameSource_SetFrameDepthCopyType` were already implemented to the 1.1.6 libimp semantics (pool tables dropped, argument unused; copy type only while the frame depth is 0, any non-zero value counts as 1); the 2026-10-29 device run (two T31 cameras) is now recorded as evidence. `FB_*` is not exported by the 1.1.6 libimp and not implemented (no display); `Encoder_Get/SetFisheyeEnableStatus` stays a stored flag like the vendor.
 - **apitest:** the `fsset_t31` copy-type case now also runs the success path (frame depth reset to 0, then restored).
 
+## 2026-10-31, night (T40 API backlog #65 to #70, branch claude/t40-backlog)
+
+- **#67 `IMP_EmuFrameSource_*`: not applicable on T40.** The 1.3.1 SDK declares them in `imp_emu_framesource.h`, no shipped vendor library exports them (`nm -D`, `strings` on uclibc and glibc `libimp.so`, `libimp.a`); API evidence cell `miss` -> `n.a.`.
+- **#68 `IMP_OSD_Init_ISP`:** already implemented (lazy table, idempotent, cannot fail; the vendor builds the pool and the 6x8 table and returns -1 if the allocation fails, documented as a difference). New apitest line `IMP_OSD_Init_ISP` (two calls in a row), QEMU T40 PASS; API cell `?` -> `qemu` (camera run missing).
+
 ## 2026-10-31, late evening (image agg60)
 
 - **Device proof (Eufy T40XP, image agg60 = all #140 batches incl. 19 sensor/WDR ioctl sites and 2 AE sites):** apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oopses, 0 `unresolved jalr`; the lost-argument counters (`cnt_core_ops_init`, `cnt_sec_init`, `cnt_main_long_tgain_update`) stay 0; raw ioctl probe ok.

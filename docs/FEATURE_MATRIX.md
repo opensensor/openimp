@@ -927,11 +927,11 @@ Per area and SoC: functions that work (device-tested or vendor no-op) / function
 - **AE / AWB / AF:** T10 27/27 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 27/27 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 29/29 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 48/51 ✅ · 2 🔧 · 1 gaps · 0 ? · T30 0/26 ✅ · 4 🔧 · 0 gaps · 22 ? · T31 47/49 ✅ · 2 🔧 · 0 gaps · 0 ? · T32 0/41 (no OpenIMP build yet) · T33 0/41 (no OpenIMP build yet) · T40 25/29 ✅ · 2 🔧 · 2 gaps · 0 ? · T41 28/39 ✅ · 0 🔧 · 11 gaps · 0 ?
 - **Encoder:** T10 38/70 ✅ · 0 🔧 · 31 gaps · 1 ? · T20 40/70 ✅ · 0 🔧 · 29 gaps · 1 ? · T21 51/67 ✅ · 0 🔧 · 16 gaps · 0 ? · T23 72/90 ✅ · 1 🔧 · 13 gaps · 4 ? · T30 0/67 ✅ · 3 🔧 · 19 gaps · 45 ? · T31 43/45 ✅ · 0 🔧 · 2 gaps · 0 ? · T32 0/116 (no OpenIMP build yet) · T33 0/128 (no OpenIMP build yet) · T40 46/59 ✅ · 3 🔧 · 10 gaps · 0 ? · T41 48/74 ✅ · 9 🔧 · 17 gaps · 0 ?
 - **FrameSource:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 22/22 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/19 ✅ · 0 🔧 · 0 gaps · 19 ? · T31 24/30 ✅ · 1 🔧 · 5 gaps · 0 ? · T32 0/47 (no OpenIMP build yet) · T33 0/49 (no OpenIMP build yet) · T40 22/28 ✅ · 6 🔧 · 0 gaps · 0 ? · T41 24/36 ✅ · 7 🔧 · 5 gaps · 0 ?
-- **OSD:** T10 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T20 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T21 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T23 36/42 ✅ · 4 🔧 · 0 gaps · 2 ? · T30 0/17 ✅ · 1 🔧 · 0 gaps · 16 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 36/43 ✅ · 6 🔧 · 0 gaps · 1 ? · T41 37/42 ✅ · 2 🔧 · 3 gaps · 0 ?
+- **OSD:** T10 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T20 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T21 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T23 36/42 ✅ · 4 🔧 · 0 gaps · 2 ? · T30 0/17 ✅ · 1 🔧 · 0 gaps · 16 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 36/43 ✅ · 7 🔧 · 0 gaps · 0 ? · T41 37/42 ✅ · 2 🔧 · 3 gaps · 0 ?
 - **IVS:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/18 ✅ · 0 🔧 · 0 gaps · 18 ? · T31 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/18 (no OpenIMP build yet) · T33 0/18 (no OpenIMP build yet) · T40 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 18/18 ✅ · 0 🔧 · 0 gaps · 0 ?
 - **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/90 ✅ · 22 🔧 · 0 gaps · 68 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
 - **System:** T10 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T20 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T21 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T23 32/60 ✅ · 25 🔧 · 0 gaps · 3 ? · T30 0/50 ✅ · 1 🔧 · 0 gaps · 49 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 1 🔧 · 1 gaps · 27 ? · T41 19/55 ✅ · 30 🔧 · 6 gaps · 0 ?
-- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/397 ✅ · 26 🔧 · 13 gaps · 28 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
+- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/397 ✅ · 27 🔧 · 13 gaps · 27 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
 
 ### Priorities for streamers
 
@@ -1025,11 +1025,10 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 </details>
 
-<details><summary><b>T40</b>: 31 functions</summary>
+<details><summary><b>T40</b>: 30 functions</summary>
 
 - **AE / AWB / AF:** implement (2): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`
 - **Encoder (and decoder):** implement (2): `Decoder_*`, `Encoder_Get/SetFisheyeEnableStatus`
-- **OSD:** implement (1): `OSD_Init_ISP`
 - **System / sysutils / log:** implement (26): `SU_ADC_DisableChn`, `SU_ADC_EnableChn`, `SU_ADC_Exit`, `SU_ADC_GetChnValue`, `SU_ADC_Init`, `SU_Base_DisableAlarm`, `SU_Base_EnableAlarm`, `SU_Base_Get/SetAlarm`, `SU_Base_Get/SetTime`, `SU_Base_PollingAlarm`, `SU_Base_Reboot`, `SU_Base_Suspend`, `SU_CIPHER_ConfigHandle`, `SU_CIPHER_CreateHandle`, `SU_CIPHER_Decrypt`, `SU_CIPHER_DES_Exit`, `SU_CIPHER_DES_Init`, `SU_CIPHER_DES_Test`, `SU_CIPHER_DestroyHandle`, `SU_CIPHER_Encrypt`, `SU_CIPHER_Exit`, `SU_CIPHER_Init`, `SU_Key_DisableEvent`, `SU_Key_EnableEvent`, `SU_Key_ReadEvent`, `SU_LED_Command`
 
 </details>
@@ -1799,7 +1798,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 ### OSD
 
-43 rows (19 with a gap or unknown state in at least one SoC). Columns: T10, T20, T21, T23, T30, T31, T32, T33, T40, T41.
+43 rows (18 with a gap or unknown state in at least one SoC). Columns: T10, T20, T21, T23, T30, T31, T32, T33, T40, T41.
 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T32 | T33 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -1829,7 +1828,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `OSD_Get/SetRgnAttr_ISP` | · | · | · | 🔧a | · | · | 📋 | 📋 | 🔧h | ❌ | – |
 | `OSD_GetRegionLuma` | · | · | · | · | · | · | · | · | · | ❌ | – |
 | `OSD_GetRgnAttr_ISPPic` | · | · | · | ✅ | · | · | 📋 | 📋 | ✅ | ✅ | – |
-| `OSD_Init_ISP` | · | · | · | ✅ | · | · | 📋 | 📋 | ? | 🔧a | – |
+| `OSD_Init_ISP` | · | · | · | ✅ | · | · | 📋 | 📋 | 🔧+ | 🔧a | – |
 | `OSD_RegisterRgn` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | p† r† t t† |
 | `OSD_RgnCreate_Query` | · | · | · | ✅ | · | · | 📋 | 📋 | ✅ | ✅ | – |
 | `OSD_RgnRegister_Query` | · | · | · | ✅ | · | · | 📋 | 📋 | ✅ | ✅ | – |
@@ -1872,7 +1871,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `OSD_Get/SetRgnAttr_ISP`: T23: picture type works (apitest isposd .30, #127); line/rect/cover draw blocks are stored only, no MSCA draw path yet.
 - `OSD_GetRegionLuma`: T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either
 - `OSD_GetRgnAttr_ISPPic`: T41: apitest agg47 2026-10-28 .34. T23: apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing. T40: apitest agg47 2026-10-28 .184.
-- `OSD_Init_ISP`: T41: OpenIMP claude/t4x-api-gaps (2026-10-26): static audit against the vendor libimp.a, no host test of its own; no camera run yet. T23: apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing.
+- `OSD_Init_ISP`: T41: OpenIMP claude/t4x-api-gaps (2026-10-26): static audit against the vendor libimp.a, no host test of its own; no camera run yet. T23: apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing. T40: apitest isposdapi in QEMU T40 2026-10-31 (open-tx-isp agg59 ko, OpenIMP claude/t40-backlog): Init returns 0 twice in a row, region create/set/get/destroy follow, frames flow, 0 oops; no camera run yet. Vendor 1.3.1 (0xc3f14): allocates the pool and the 6x8 table, -1 when the allocation fails; OpenIMP is lazy and cannot fail.
 - `OSD_RegisterRgn`: audit: reaches the driver/kernel; userspace implementation T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `OSD_RgnCreate_Query`: audit: userspace implementation T23: apitest agg47 2026-10-26 .30. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `OSD_RgnRegister_Query`: audit: userspace implementation T23: apitest agg47 2026-10-26 .30. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.

@@ -240,6 +240,7 @@ functions:
     summary: "Prepares the ISP OSD. Calling it is optional on T40 and T41, which prepare themselves on the first region call."
     returns: "0."
     notes: "T23 clears its picture slots; the pictures get their own rmem buffers, so `SetPoolSize_ISP` has no memory effect there."
+    diff: "The T40 vendor function (1.3.1, 0xc3f14) allocates the picture pool from the latest pool size and builds the table of 6 channels x 8 pictures, and returns -1 when the pool allocation fails; it has no check for a second call. OpenIMP builds the table lazily (also on the first `CreateRgn_ISP`), never fails and may be called again (extra: idempotent)."
     soc: "Only on T23, T40 and T41."
   OSD_Exit_ISP:
     group: isp
