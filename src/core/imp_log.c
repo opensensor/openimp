@@ -109,9 +109,17 @@ void IMP_Log_Set_Option(int option)
 static int imp_log_fd = -1;
 static pthread_once_t imp_log_fd_once = PTHREAD_ONCE_INIT;
 
+/* Log-path env overrides are ignored in a set-id process (review L5). */
+static const char *imp_log_env(const char *name)
+{
+    if (geteuid() != getuid() || getegid() != getgid())
+        return NULL;
+    return getenv(name);
+}
+
 static void imp_log_fd_open(void)
 {
-    const char *dev = getenv("OPENIMP_LOGGER_DEV");
+    const char *dev = imp_log_env("OPENIMP_LOGGER_DEV");
     int fd = open(dev && dev[0] ? dev : "/dev/log_main", O_WRONLY | O_APPEND | O_CLOEXEC);
 
     if (fd < 0 && !(dev && dev[0]))
@@ -140,7 +148,7 @@ static pthread_once_t imp_log_file_once = PTHREAD_ONCE_INIT;
 
 static void imp_log_file_open(void)
 {
-    const char *fn = getenv("OPENIMP_LOG_FILE");
+    const char *fn = imp_log_env("OPENIMP_LOG_FILE");
 
     imp_log_file = fopen(fn && fn[0] ? fn : "timp.log", "a+");
 }
