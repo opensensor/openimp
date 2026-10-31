@@ -11,6 +11,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 ## 2026-10-31, T23 backlog (#9 to #13, branch claude/t23-backlog)
 
 - **#10 AE / AWB / AF (`ISP_Tuning_SetWB_ALGO`, T23):** the libimp side was checked against the 1.3.0 disassembly (algorithm number passed to control `0x800000c`, sensor number below 4); the open driver stores 0 to 2 and has no picture effect (documented class d). New apitest case `wbalgo_t23` (algorithm 1, 2, 0 return 0, picture and frame flow unchanged): QEMU T23 PASS; the camera run is missing, so the matrix cell stays.
+- **#9 ISP tuning (`ISP_Tuning_SwitchBin`, `ISP_Tuning_Get/SetDrawBlock`, T23):** the driver handlers are in open-tx-isp next since agg-38. The stock T23 driver refuses `SwitchBin` with enable 0 ("enable is 0", -EINVAL) and so does the open one, so there is no way back to a default bin; new case `switchbin_t23` switches to the bin file in use twice, checks both refusals (enable 0, a file that is no bin) and that the picture and frame flow stay: QEMU T23 PASS. `DrawBlock` keeps its case `ispdraw_t23`; the picture effect cannot be shown in QEMU. Camera runs are missing, so both cells stay.
 
 ## 2026-10-31, T31 System backlog (#30, branch claude/t31-backlog-sys)
 
