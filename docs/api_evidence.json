@@ -19365,7 +19365,7 @@
    "ref": {
     "T31": "apitest rc3cov 2026-10-29 .26 (and .33) (refusal path only)"
    },
-   "note": "T31 libimp 1.1.6 (disassembly): channel below 5; allowed only while the channel frame depth is 0 (stores bNoCopy != 0), otherwise logs and returns -1; OpenIMP matches this, any non-zero value counts as 1. Device (apitest, SetFrameDepth was 2 at that point): the refusal path and the invalid channel are proven; the success path (depth 0) and the copy-type storage are not yet run on a camera (host and QEMU only), and OpenIMP records the flag without a separate zero-copy frame path, so the cell stays an API round trip."
+   "note": "T31 libimp 1.1.6 (disassembly): channel below 5; allowed only while the channel frame depth is 0 (stores bNoCopy != 0), otherwise logs and returns -1; OpenIMP matches this, any non-zero value counts as 1. Device (apitest, SetFrameDepth was 2 at that point): the refusal path and the invalid channel are proven; the success path (depth reset to 0, then set and clear) passes in the QEMU T31 only and has not run on a camera yet, and OpenIMP records the flag without a separate zero-copy frame path, so the cell stays an API round trip."
   },
   "FrameSource_SetIvdcMemLine": {
    "area": "FrameSource",
