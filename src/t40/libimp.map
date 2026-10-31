@@ -22,6 +22,7 @@
         OpenIMP_P2_PoolRange;
         OpenIMP_IVS_Move*;
         SU_Base_Shutdown;
+        SU_Base_SetWkupMode;
     local:
         *;
 };

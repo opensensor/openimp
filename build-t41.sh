@@ -134,6 +134,11 @@ done
     -c "$project_dir/src/core/su_base_shutdown.c" \
     -o "$output_dir/core_su_base_shutdown.o"
 
+# SU_Base_SetWkupMode (the vendor RTC request; the board libsysutils writes /sys/power/state)
+"$compiler" $strict_flags $repo_includes \
+    -c "$project_dir/src/core/su_base_wkup.c" \
+    -o "$output_dir/core_su_base_wkup.o"
+
 "$compiler" $base_flags $repo_includes \
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
     -o "$output_dir/backend-enc-hw-scaling-list.o"
@@ -203,6 +208,7 @@ done
     "$output_dir/core_imp_log.o" \
     "$output_dir/core_video_drop.o" \
     "$output_dir/core_su_base_shutdown.o" \
+    "$output_dir/core_su_base_wkup.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_testpattern.o" \
     "$output_dir/openimp_tuning.o" \

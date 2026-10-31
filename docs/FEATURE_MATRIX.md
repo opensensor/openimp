@@ -929,8 +929,8 @@ Per area and SoC: functions that work (device-tested or vendor no-op) / function
 - **OSD:** T10 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T20 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T21 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T23 36/42 ✅ · 4 🔧 · 0 gaps · 2 ? · T30 0/17 ✅ · 1 🔧 · 0 gaps · 16 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 36/43 ✅ · 6 🔧 · 0 gaps · 1 ? · T41 37/42 ✅ · 2 🔧 · 3 gaps · 0 ?
 - **IVS:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/18 ✅ · 0 🔧 · 0 gaps · 18 ? · T31 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/18 (no OpenIMP build yet) · T33 0/18 (no OpenIMP build yet) · T40 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 18/18 ✅ · 0 🔧 · 0 gaps · 0 ?
 - **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 0/90 ✅ · 22 🔧 · 0 gaps · 68 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
-- **System:** T10 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T20 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T21 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T23 32/60 ✅ · 25 🔧 · 0 gaps · 3 ? · T30 0/50 ✅ · 1 🔧 · 0 gaps · 49 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 1 🔧 · 1 gaps · 27 ? · T41 19/55 ✅ · 30 🔧 · 6 gaps · 0 ?
-- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 362/406 ✅ · 34 🔧 · 7 gaps · 3 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/402 ✅ · 26 🔧 · 18 gaps · 28 ? · T41 341/449 ✅ · 50 🔧 · 58 gaps · 0 ?
+- **System:** T10 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T20 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T21 20/48 ✅ · 25 🔧 · 0 gaps · 3 ? · T23 32/60 ✅ · 25 🔧 · 0 gaps · 3 ? · T30 0/50 ✅ · 1 🔧 · 0 gaps · 49 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 1 🔧 · 1 gaps · 27 ? · T41 19/51 ✅ · 32 🔧 · 0 gaps · 0 ?
+- **All areas:** T10 272/333 ✅ · 26 🔧 · 31 gaps · 4 ? · T20 273/333 ✅ · 27 🔧 · 29 gaps · 4 ? · T21 288/333 ✅ · 26 🔧 · 16 gaps · 3 ? · T23 391/457 ✅ · 40 🔧 · 17 gaps · 9 ? · T30 0/354 ✅ · 44 🔧 · 21 gaps · 289 ? · T31 362/406 ✅ · 34 🔧 · 7 gaps · 3 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 330/402 ✅ · 26 🔧 · 18 gaps · 28 ? · T41 341/445 ✅ · 52 🔧 · 52 gaps · 0 ?
 
 ### Priorities for streamers
 
@@ -945,7 +945,7 @@ Gaps (error, missing, stub, cache-only) in functions that at least one streamer 
 - **T32:** no OpenIMP build yet; 178 vendor functions are called by a streamer. Most used: `AI_Disable` (p† r† t†), `AI_DisableAgc` (p† r† t†), `AI_DisableChn` (p† r† t†), `AI_DisableHpf` (p† r† t†), `AI_DisableNs` (p† r† t†), `AI_Enable` (p† r† t†), `AI_EnableAgc` (p† r† t†), `AI_EnableChn` (p† r† t†), `AI_EnableHpf` (p† r† t†), `AI_EnableNs` (p† r† t†), `AI_Get/SetChnParam` (p† r† t†), `AI_Get/SetGain` (p† r† t†)
 - **T33:** no OpenIMP build yet; 178 vendor functions are called by a streamer. Most used: `AI_Disable` (p† r† t†), `AI_DisableAgc` (p† r† t†), `AI_DisableChn` (p† r† t†), `AI_DisableHpf` (p† r† t†), `AI_DisableNs` (p† r† t†), `AI_Enable` (p† r† t†), `AI_EnableAgc` (p† r† t†), `AI_EnableChn` (p† r† t†), `AI_EnableHpf` (p† r† t†), `AI_EnableNs` (p† r† t†), `AI_Get/SetChnParam` (p† r† t†), `AI_Get/SetGain` (p† r† t†)
 - **T40:** 0 streamer-used gaps; 6 further gaps no streamer calls
-- **T41:** 0 streamer-used gaps; 37 further gaps no streamer calls
+- **T41:** 0 streamer-used gaps; 31 further gaps no streamer calls
 
 ### Long-term backlog
 
@@ -1034,14 +1034,13 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 </details>
 
-<details><summary><b>T41</b>: 37 functions</summary>
+<details><summary><b>T41</b>: 31 functions</summary>
 
 - **ISP tuning:** implement (12): `ISP_Get/SetCsccrMode`, `ISP_Get/SetInternalChnAttr`, `ISP_LDC_Get/SetAttr`, `ISP_LDC_INIT`, `ISP_RAW_RwControl`, `ISP_SET_GPIO_INIT_OR_FREE`, `ISP_SET_GPIO_STA`, `ISP_SetVicDoneCbFunc`, `ISP_StartNightMode`, `ISP_Tuning_Get/SetDrawBlock`, `ISP_Tuning_SetTmoFaceae`, `ISP_WDR_OPEN`
 - **AE / AWB / AF:** implement (9): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`, `ISP_Tuning_Get/SetAeConvergeStep`, `ISP_Tuning_Get/SetFaceAeWeiget`, `ISP_Tuning_GetAeBv`, `ISP_Tuning_GetAEFlickerFlag`, `ISP_Tuning_GetAFMetricesInfo`, `ISP_Tuning_GetAfStatistics`, `ISP_Tuning_GetFaceAeLuma`
 - **Encoder (and decoder):** implement (7): `Decoder_*`, `Encoder_Get/SetChnRoiAttr`, `Encoder_Get/SetChnSeiAttr`, `Encoder_Get/SetFisheyeEnableStatus`, `Encoder_SetAvpuBsSize`, `Encoder_SetChnMapRoi`, `Encoder_SetFrameRelease`
 - **FrameSource:** documented ENOTSUP (1): `EmuFrameSource_*`
 - **OSD:** implement (1): `OSD_Get/SetRgnAttr_ISP`; not applicable (1): `OSD_GetRegionLuma`
-- **System / sysutils / log:** implement (2): `SU_ADC_Init`, `SU_Base_SetWkupMode`; not applicable (4): `SU_Battery_GetCapacity`, `SU_Battery_GetEvent`, `SU_Battery_GetStatus`, `SU_Battery_GetVoltageUV`
 
 </details>
 
@@ -2092,7 +2091,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 ### System / sysutils / log
 
-108 rows (53 with a gap or unknown state in at least one SoC). Columns: T10, T20, T21, T23, T30, T31, T32, T33, T40, T41.
+108 rows (52 with a gap or unknown state in at least one SoC). Columns: T10, T20, T21, T23, T30, T31, T32, T33, T40, T41.
 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T32 | T33 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -2128,7 +2127,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `SU_ADC_EnableChn` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_ADC_Exit` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_ADC_GetChnValue` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
-| `SU_ADC_Init` | · | · | · | · | · | · | 📋 | 📋 | ❌ | ❌ | – |
+| `SU_ADC_Init` | · | · | · | · | · | · | 📋 | 📋 | ❌ | 🔧a | – |
 | `SU_Base_CtlPwrDown` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `SU_Base_DisableAlarm` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_Base_DisableAlarmTimeMs` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
@@ -2147,14 +2146,14 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `SU_Base_Raw2SUTime` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | – |
 | `SU_Base_Reboot` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_Base_SetAlarmTimeMs` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
-| `SU_Base_SetWkupMode` | · | · | · | · | · | · | 📋 | 📋 | · | ❌e | – |
+| `SU_Base_SetWkupMode` | · | · | · | · | · | · | 📋 | 📋 | · | 🔧h | – |
 | `SU_Base_Shutdown` | 🔧h | 🔧h | 🔧h | 🔧h | 🔧h | 🔧h | 📋 | 📋 | 🔧h | 🔧h | – |
 | `SU_Base_Suspend` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_Base_SUTime2Raw` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | – |
-| `SU_Battery_GetCapacity` | · | · | · | · | ? | · | · | · | · | ❌ | – |
-| `SU_Battery_GetEvent` | · | · | · | · | ? | · | · | · | · | ❌ | – |
-| `SU_Battery_GetStatus` | · | · | · | · | ? | · | · | · | · | ❌ | – |
-| `SU_Battery_GetVoltageUV` | · | · | · | · | ? | · | · | · | · | ❌ | – |
+| `SU_Battery_GetCapacity` | · | · | · | · | ? | · | · | · | · | · | – |
+| `SU_Battery_GetEvent` | · | · | · | · | ? | · | · | · | · | · | – |
+| `SU_Battery_GetStatus` | · | · | · | · | ? | · | · | · | · | · | – |
+| `SU_Battery_GetVoltageUV` | · | · | · | · | ? | · | · | · | · | · | – |
 | `SU_CIPHER_ConfigHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_CIPHER_CreateHandle` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
 | `SU_CIPHER_Decrypt` | 🔧a | 🔧a | 🔧a | 🔧a | ? | 🔧a | 📋 | 📋 | ? | 🔧a | – |
@@ -2205,7 +2204,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `System_WriteReg32` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | 📋 | 📋 | ✅ | ✅ | r† |
 | `Virt_to_Phys` | ? | ? | ? | ? | ? | ✅ | 📋 | 📋 | · | · | – |
 
-<details><summary>Notes and references (67)</summary>
+<details><summary>Notes and references (68)</summary>
 
 - `Log_Get_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `Log_Set_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
@@ -2226,6 +2225,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `SU_ADC_EnableChn`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
 - `SU_ADC_Exit`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
 - `SU_ADC_GetChnValue`: T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)
+- `SU_ADC_Init`: T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*' T41: disassembly of libsysutils 1.2.5 and apitest su area, QEMU T41 2026-10-31 (N/A: no node).
 - `SU_Base_DisableAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
 - `SU_Base_EnableAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
 - `SU_Base_Get/SetAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
@@ -2236,14 +2236,14 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `SU_Base_PollingAlarm`: T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)
 - `SU_Base_Raw2SUTime`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
 - `SU_Base_Reboot`: audit: sysfs/ioctl/syscall path
-- `SU_Base_SetWkupMode`: T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged
+- `SU_Base_SetWkupMode`: T41: the board's neo-sysutils writes the mode into /sys/power/state (the kernel refuses it); the vendor libsysutils 1.2.5 opens /dev/rtc0 and sends ioctl 0x80045209 with {0, 0x2c, 0xd2ad2d28 (mode 1) / 0xd2ad2d29 (mode 2)}. OpenIMP's libimp.so now exports the vendor request (src/core/su_base_wkup.c, host test with fake open/ioctl; QEMU T41: mode 0 refused by libimp.so, modes 1/2 never sent: they arm an RTC wake-up). Camera run needed: ls -l /dev/rtc0, then mode 1 once with the result of the RTC driver T41: host test tests/core/su_base_wkup_test.c; QEMU T41 2026-10-31 mode 0 refusal.
 - `SU_Base_Shutdown`: agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD
 - `SU_Base_Suspend`: audit: sysfs/ioctl/syscall path
 - `SU_Base_SUTime2Raw`: audit: sysfs/ioctl/syscall path T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest agg47 2026-10-26 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34.
-- `SU_Battery_GetCapacity`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
-- `SU_Battery_GetEvent`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
-- `SU_Battery_GetStatus`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
-- `SU_Battery_GetVoltageUV`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)
+- `SU_Battery_GetCapacity`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board
+- `SU_Battery_GetEvent`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board
+- `SU_Battery_GetStatus`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board
+- `SU_Battery_GetVoltageUV`: T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board
 - `SU_CIPHER_ConfigHandle`: audit: sysfs/ioctl/syscall path
 - `SU_CIPHER_CreateHandle`: audit: sysfs/ioctl/syscall path
 - `SU_CIPHER_Decrypt`: audit: sysfs/ioctl/syscall path

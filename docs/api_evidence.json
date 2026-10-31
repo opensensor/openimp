@@ -17066,9 +17066,15 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
+    "T41": "host"
    },
-   "note": "T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged"
+   "note": "T41: the board's neo-sysutils writes the mode into /sys/power/state (the kernel refuses it); the vendor libsysutils 1.2.5 opens /dev/rtc0 and sends ioctl 0x80045209 with {0, 0x2c, 0xd2ad2d28 (mode 1) / 0xd2ad2d29 (mode 2)}. OpenIMP's libimp.so now exports the vendor request (src/core/su_base_wkup.c, host test with fake open/ioctl; QEMU T41: mode 0 refused by libimp.so, modes 1/2 never sent: they arm an RTC wake-up). Camera run needed: ls -l /dev/rtc0, then mode 1 once with the result of the RTC driver",
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "host test tests/core/su_base_wkup_test.c; QEMU T41 2026-10-31 mode 0 refusal"
+   }
   },
   "SU_Base_Shutdown": {
    "area": "System",
@@ -17114,9 +17120,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_Battery_GetEvent": {
    "area": "System",
@@ -17130,9 +17136,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_Battery_GetStatus": {
    "area": "System",
@@ -17146,9 +17152,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_Battery_GetVoltageUV": {
    "area": "System",
@@ -17162,9 +17168,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_CIPHER_ConfigHandle": {
    "area": "System",
@@ -20683,9 +20689,16 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "aud"
    },
-   "auto": true
+   "auto": true,
+   "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*'",
+   "action": {
+    "T41": "n.a."
+   },
+   "ref": {
+    "T41": "disassembly of libsysutils 1.2.5 and apitest su area, QEMU T41 2026-10-31 (N/A: no node)"
+   }
   },
   "SU_Base_CtlPwrDown": {
    "area": "System",

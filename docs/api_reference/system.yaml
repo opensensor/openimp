@@ -259,6 +259,13 @@ functions:
     summary: Gives a picture back so the buffer can be reused.
     returns: -1 for another channel, NULL, or a frame that was not handed out.
     soc: Implemented by OpenIMP on T23 only.
+  SU_Base_SetWkupMode:
+    group: su
+    decl: "int SU_Base_SetWkupMode(int mode);"
+    summary: "Selects how the RTC wake-up behaves (mode 1 or 2). T41 only."
+    returns: "0 when the RTC accepted the request, -1 (with `errno`) for a mode other than 1 or 2 (EINVAL, nothing is touched), a missing `/dev/rtc0`, or an RTC driver that does not know the request."
+    notes: "The request is the one of the vendor libsysutils: a three-word block {0, 0x2c, mode code} sent to `/dev/rtc0`. The call changes the wake-up configuration, so test it only on purpose."
+    diff: "The board's libsysutils writes the mode number into `/sys/power/state`, which the kernel rejects; OpenIMP sends the vendor request instead. The symbol is in `libimp.so`, so it wins only where libimp is resolved first."
   SU_Base_Shutdown:
     group: su
     decl: "int SU_Base_Shutdown(void);"
