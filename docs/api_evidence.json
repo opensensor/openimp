@@ -452,7 +452,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_Bypass_Bind": {
@@ -544,7 +544,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_DelSensor": {
@@ -621,7 +621,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_DisableSensor": {
@@ -698,7 +698,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_DisableTuning": {
@@ -775,7 +775,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_EnableSensor": {
@@ -852,7 +852,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_EnableTuning": {
@@ -929,7 +929,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_Get/SetCsccrMode": {
@@ -944,7 +944,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000097 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Get/SetDefaultBinPath": {
@@ -1058,7 +1064,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004542f / 0xc0045430 (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_Get/SetSensorRegister": {
@@ -1170,7 +1182,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004547a / 0xc004547b (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_LDC_INIT": {
@@ -1185,7 +1203,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc0045479 (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_Open": {
@@ -1262,7 +1286,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "ISP_RAW_RwControl": {
@@ -1277,7 +1301,14 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the vendor library allocates rmem buffers and runs a frame-done thread on tuning control 0x80000a7 to move RAW frames in and out of the ISP; the open T41 module has no such event or RAW path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_SET_GPIO_INIT_OR_FREE": {
@@ -1292,7 +1323,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548e (ENOTTY), so the call returns -4090"
    }
   },
   "ISP_SET_GPIO_STA": {
@@ -1307,7 +1344,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548f (ENOTTY), so the call returns -4090"
    }
   },
   "ISP_SetCameraInputMode": {
@@ -1445,7 +1488,14 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the vendor library runs a callback thread fed by the VIC frame-done event (ISP-device ioctl 0xc0045431); the open T41 module has no such event or RAW path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_StartNightMode": {
@@ -1460,7 +1510,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004542e (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_StreamCheck": {
@@ -2070,9 +2126,15 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
    },
-   "note": "T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged). T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged)."
+   "note": "T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged). T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).",
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31: OpenIMP pass-through (control 0x80000a0, 32 bytes, vendor 1.2.5 disassembly) returns -4090; the open-tx-isp T41 module logs \"tuning control 0x80000a0 not implemented\" (EPERM). Needs a module route to tisp_s/g_draw_block_attr"
+   }
   },
   "ISP_Tuning_Get/SetFrontCrop": {
    "area": "ISP tuning",
@@ -4340,7 +4402,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000062 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_SetVideoDrop": {
@@ -4594,7 +4662,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548d (ENOTTY), so the call returns -4090"
    }
   },
   "ISP_SetAeAlgoFunc": {
@@ -4609,7 +4683,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: needs a user-space callback thread fed by the ISP module (ioctl 0xc004541d); the open T41 module runs its own AE and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_SetAwbAlgoFunc": {
@@ -4624,7 +4705,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: needs a user-space callback thread fed by the ISP module (ioctl the AWB twin of 0xc004541d); the open T41 module runs its own AWB and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_Tuning_AE_Get/SetROI": {
@@ -4836,7 +4924,10 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "cache"
+    "T41": "rt"
+   },
+   "ref": {
+    "T41": "apitest 1027cov-T41 2026-10-27 .34: Get and same-value Set round trip PASS (control 0x8000028, routed by the open T41 module)"
    }
   },
   "ISP_Tuning_Get/SetAeExpList": {
@@ -5463,7 +5554,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000036 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_Get/SetFaceAwb": {
@@ -5562,7 +5659,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x800003a ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_GetAE_IT_MAX": {
@@ -5640,10 +5743,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "miss"
+    "T41": "err"
    },
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000034 ('not implemented'), so the call returns -4090"
+   },
+   "action": {
+    "T41": "implement"
    }
   },
   "ISP_Tuning_GetAWBCt": {
@@ -5705,7 +5812,14 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the call is in the vendor library 1.2.6 only (not in 1.2.5); control 0x80000b3, one integer",
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x80000b3 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_GetAeEvList": {
@@ -5896,10 +6010,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "miss"
+    "T41": "err"
    },
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000031 ('not implemented'), so the call returns -4090"
+   },
+   "action": {
+    "T41": "implement"
    }
   },
   "ISP_Tuning_GetAfZone": {
@@ -6085,7 +6203,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000037 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_GetWB_GOL_Statis": {
@@ -6307,7 +6431,15 @@
     "T32": "n.a.",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
+   "action": {
+    "T40": "enotsup",
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case dec 8/8"
    }
   },
   "Encoder_CreateChn": {
@@ -7097,12 +7229,16 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "dev",
-    "T41": "cache"
+    "T41": "dev"
    },
-   "note": "not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40: experimental, off unless `OPENIMP_T40_ROI=1`, code only, not device-tested; T41 (also `SetChnMapRoi`): cache, the windows/map are stored and the EP2 QP table is written (off unless `OPENIMP_T41_ROI=1`), but the T41 AVPU ignores the table (no effect on bit rate or picture in FixQP/CBR, docs/ROI.md); same valid-H.264 clamp as the Helix paths (docs/ROI.md)",
+   "note": "not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40: experimental, off unless `OPENIMP_T40_ROI=1`, code only, not device-tested; T41 (also `SetChnMapRoi`): cache, the windows/map are stored and the EP2 QP table is written (off unless `OPENIMP_T41_ROI=1`), works since 2026-10-18 (CBR/VBR) and 2026-10-24 (FixQP), docs/ROI.md; same valid-H.264 clamp as the Helix paths (docs/ROI.md)",
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
-   }
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)"
+   },
+   "better": [
+    "T41"
+   ]
   },
   "Encoder_Get/SetChnSeiAttr": {
    "area": "Encoder",
@@ -7116,8 +7252,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "host",
-    "T41": "miss"
-   }
+    "T41": "n.a."
+   },
+   "note": "T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41"
   },
   "Encoder_Get/SetFisheyeEnableStatus": {
    "area": "Encoder",
@@ -7131,9 +7268,9 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "cache",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code"
+   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41"
   },
   "Encoder_Get/SetGDRCfg": {
    "area": "Encoder",
@@ -8279,8 +8416,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
-   }
+    "T41": "n.a."
+   },
+   "note": "T41: not in the T41 1.2.5 libimp nor in the 1.2.6 library; the T41 vendor name is IMP_Encoder_SetAvpuBsShare, which OpenIMP exports"
   },
   "Encoder_SetAvpuJpegQp": {
    "area": "Encoder",
@@ -8428,8 +8566,15 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "cache"
-   }
+    "T41": "dev"
+   },
+   "note": " | T41 (vendor libimp 1.2.6 disassembly + device tests): stores the 10 windows / the map, the encoder builds the QP table before the next picture; works under CBR, VBR and, beyond the vendor, under FixQP (docs/ROI.md, roitest on the T41 test cameras 2026-10-18 and 2026-10-24)",
+   "ref": {
+    "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)"
+   },
+   "better": [
+    "T41"
+   ]
   },
   "Encoder_SetChnMaxPictureSize": {
    "area": "Encoder",
@@ -8618,7 +8763,7 @@
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "Encoder_SetFrameRelease": {
@@ -8633,12 +8778,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "no-op",
-    "T41": "miss"
+    "T41": "qemu"
    },
-   "note": "T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched)",
+   "note": "T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) | T41 (vendor libimp 1.2.5 0x4b804, 1.2.6 0x4dd88): stores num/den under the channel mutex, 0x80040001 for a channel of 8 or more, 0x80040008 for a channel that was not created; OpenIMP matches that; no visible effect (same class a as T31/T40)",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "QEMU T41 2026-10-31 case framerel"
    }
   },
   "Encoder_SetGOPSize": {
@@ -9315,6 +9461,11 @@
     "T33": "n.a.",
     "T40": "miss",
     "T41": "miss"
+   },
+   "note": "T40/T41: not exported by the T41 1.2.5 libimp (nm); the vendor name set comes from older builds (imp_emu_framesource.h, a file-fed test channel). OpenIMP exports all five names and answers -1/ENOTSUP without any state change; IMP_FrameSource_ExternInject_* is the supported way to feed frames. apitest case emu: 5/5 PASS in QEMU T41 (T40 shares the code, not run)",
+   "action": {
+    "T40": "enotsup",
+    "T41": "enotsup"
    }
   },
   "FB_*": {
@@ -9429,7 +9580,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "FrameSource_DequeueBuffer": {
@@ -9525,7 +9676,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "FrameSource_DisableChn": {
@@ -9602,7 +9753,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "FrameSource_EnableChn": {
@@ -9679,7 +9830,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "FrameSource_ExternInject_CreateChn": {
@@ -9938,7 +10089,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "FrameSource_Get/SetDirectModeAttr": {
@@ -10090,7 +10241,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "FrameSource_Get/SetPool": {
@@ -11306,10 +11457,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "miss"
+    "T41": "err"
    },
    "ref": {
-    "T23": "picture type works (apitest isposd .30, #127); line/rect/cover draw blocks are stored only, no MSCA draw path yet"
+    "T23": "picture type works (apitest isposd .30, #127); line/rect/cover draw blocks are stored only, no MSCA draw path yet",
+    "T41": "QEMU T41 2026-10-31: vendor codes and the cover type (MaskBlock) work, the line/rect type and Get need DrawBlock (module route 0x80000a0 missing, EPERM)"
+   },
+   "action": {
+    "T41": "implement"
    }
   },
   "OSD_GetRegionLuma": {
@@ -11326,7 +11481,10 @@
     "T40": "n.a.",
     "T41": "miss"
    },
-   "note": "T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either"
+   "note": "T23: declared in the 1.1.x/1.3.0 headers but exported by none of the 8 vendor libimp builds (nm); a vendor-stack application cannot link it either T41: not exported by the T41 1.2.5 libimp (nm) nor by the T41 library in ext/vlib41; the name is in the header only; the apitest case runs when a library exports it",
+   "action": {
+    "T41": "n.a."
+   }
   },
   "OSD_GetRgnAttr_ISPPic": {
    "area": "OSD",
@@ -17052,9 +17210,15 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
+    "T41": "host"
    },
-   "note": "T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged T41: writes the mode number to /sys/power/state; neo PR #1 covers related struct overflows, unmerged"
+   "note": "T41: the board's neo-sysutils writes the mode into /sys/power/state (the kernel refuses it); the vendor libsysutils 1.2.5 opens /dev/rtc0 and sends ioctl 0x80045209 with {0, 0x2c, 0xd2ad2d28 (mode 1) / 0xd2ad2d29 (mode 2)}. OpenIMP's libimp.so now exports the vendor request (src/core/su_base_wkup.c, host test with fake open/ioctl; QEMU T41: mode 0 refused by libimp.so, modes 1/2 never sent: they arm an RTC wake-up). Camera run needed: ls -l /dev/rtc0, then mode 1 once with the result of the RTC driver",
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "host test tests/core/su_base_wkup_test.c; QEMU T41 2026-10-31 mode 0 refusal"
+   }
   },
   "SU_Base_Shutdown": {
    "area": "System",
@@ -17100,9 +17264,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_Battery_GetEvent": {
    "area": "System",
@@ -17116,9 +17280,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_Battery_GetStatus": {
    "area": "System",
@@ -17132,9 +17296,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_Battery_GetVoltageUV": {
    "area": "System",
@@ -17148,9 +17312,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs)"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
   },
   "SU_CIPHER_ConfigHandle": {
    "area": "System",
@@ -17575,7 +17739,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "System_GetBindbyDest": {
@@ -17920,7 +18084,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg47 2026-10-28 .34"
+    "T41": "apitest agg61 2026-10-31 .34"
    }
   },
   "System_MemPoolFree": {
@@ -20678,9 +20842,16 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "aud"
    },
-   "auto": true
+   "auto": true,
+   "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*'",
+   "action": {
+    "T41": "n.a."
+   },
+   "ref": {
+    "T41": "disassembly of libsysutils 1.2.5 and apitest su area, QEMU T41 2026-10-31 (N/A: no node)"
+   }
   },
   "SU_Base_CtlPwrDown": {
    "area": "System",

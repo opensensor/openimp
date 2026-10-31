@@ -12,6 +12,7 @@
  *           or the picture did not recover.
  */
 #define _GNU_SOURCE 1
+#include <errno.h>
 #include <math.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -130,6 +131,9 @@ static Fst settle_pic(int *settled)
 #define RTMSG(eff) ((eff) ? "" : "rt: ")
 
 static void *dsym(const char *n) { return dlsym(RTLD_DEFAULT, n); }
+/* T41: a tuning control the ISP module does not route comes back as -4090 with errno EPERM ("not implemented" in the module log); the cases
+ * report that as N/A with the control, not as a failure of the library. */
+#define DRV_NONE(r) ((r) == -4090 && errno == EPERM)
 
 #if !defined(PLATFORM_T41)
 # define NOT_T41(...) __VA_ARGS__
@@ -2718,6 +2722,12 @@ static void cs_faceaeweight(void)
         G(IMPISPFaceAeWeiget, o); G(IMPISPFaceAeWeiget, n); G(IMPISPFaceAeWeiget, g);
         int r0 = IMP_ISP_Tuning_GetFaceAeWeiget(IMPVI_MAIN, o), r1, r2, r3;
 
+        if (DRV_NONE(r0)) {
+            rep(FN(IMP_ISP_Tuning_GetFaceAeWeiget), r0, V_NA, "the ISP module has no handler for tuning control 0x8000036 (EPERM)");
+            rep(FN(IMP_ISP_Tuning_SetFaceAeWeiget), r0, V_NA, "see Get");
+            gfree(o); gfree(n); gfree(g);
+            return;
+        }
         gchk(o);
         *n = *o; n->global_weight = o->global_weight ^ 1; n->roi_weight = o->roi_weight ^ 2; n->smooth = o->smooth ^ 1;
         r1 = IMP_ISP_Tuning_SetFaceAeWeiget(IMPVI_MAIN, n);
@@ -2744,7 +2754,13 @@ static void cs_tmofaceae(void)
         base = fst(800);
         t->tmo_roinum = 1; t->tmo_xcent[0] = (uint16_t)(g_sw / 2); t->tmo_ycent[0] = (uint16_t)(g_sh / 2); t->tmo_distep[0] = (uint16_t)(g_sh / 3);
         t->tmo_uplumthr[0] = 128; t->tmo_upk[0] = 16;
-        r1 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, t); on = fst(1500);
+        r1 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, t);
+        if (DRV_NONE(r1)) {
+            rep(FN(IMP_ISP_Tuning_SetTmoFaceae), r1, V_NA, "the ISP module has no handler for tuning control 0x8000062 (EPERM)");
+            gfree(t);
+            return;
+        }
+        on = fst(1500);
         memset(t, 0, sizeof(*t));
         r2 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, t); back = recover(base.y, &ms);
         {
@@ -2773,12 +2789,18 @@ static void cs_drawblock(void)
         a->cfg.wind.color.ayuv.y_value = base < 140 ? 235 : 16; a->cfg.wind.color.ayuv.u_value = 128; a->cfg.wind.color.ayuv.v_value = 128;
         a->cfg.wind.line_width = bw; a->cfg.wind.alpha = 7;
         r1 = IMP_ISP_Tuning_SetDrawBlock(IMPVI_MAIN, a);
+        if (DRV_NONE(r1)) {
+            rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1, V_NA, "the ISP module has no handler for tuning control 0x80000a0 (EPERM)");
+            rep(FN(IMP_ISP_Tuning_GetDrawBlock), r1, V_NA, "see Set");
+            gfree(a); gfree(g);
+            return;
+        }
         on = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
         memset(g, 0, sizeof(*g)); g->pinum = 0; g->type = IMP_ISP_DRAW_WIND;
         r2 = IMP_ISP_Tuning_GetDrawBlock(IMPVI_MAIN, g); gchk(g);
         a->cfg.wind.enable = 0; r3 = IMP_ISP_Tuning_SetDrawBlock(IMPVI_MAIN, a);
         off = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
-        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && (base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20 && flow()) ? V_PASS : V_FAIL,
+        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && (getenv("APITEST_NOEFFECT") || ((base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20)) && flow()) ? V_PASS : V_FAIL,
             "window frame %d px at (%d,%d): top edge luma %.1f -> %.1f; disabled: %.1f (base %.1f); frames flow", bw, x, y, base, on, off, base);
         rep(FN(IMP_ISP_Tuning_GetDrawBlock), r2, (r2 == 0 && g->cfg.wind.enable == 1 && g->cfg.wind.left == x && g->cfg.wind.top == y && g->cfg.wind.width == w && g->cfg.wind.line_width == bw) ? V_PASS : V_FAIL,
             "read while drawn: enable %u at (%u,%u) width %u line %u", g->cfg.wind.enable, g->cfg.wind.left, g->cfg.wind.top, g->cfg.wind.width, g->cfg.wind.line_width);
@@ -4254,9 +4276,291 @@ static void cs_padframe_t23(void)
 static void cs_padframe_t23(void) {}
 #endif
 
+/* ---------------------------------------------------------------------------------------------- T41 backlog (#78..#80) */
+/* IMP_EmuFrameSource_*: the vendor emulator channel is not part of the T41 1.2.5/1.2.6 libimp; the OpenIMP T40/T41 libimp exports the
+ * five names as documented ENOTSUP (-1, errno ENOTSUP, no state change); a vendor libimp without them prints N/A. */
+#if HAS_IMP_EmuFrameSource_CreateChn && (defined(PLATFORM_T41) || defined(APITEST_T40))
+static int emu_enotsup(int r)
+{
+    return r == -1 && errno == ENOTSUP;
+}
+
+static void cs_emu(void)
+{
+    G(IMPFSChnAttr, a);
+
+    NEED(IMP_EmuFrameSource_CreateChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_CreateChn(0, a);
+        rep(FN(IMP_EmuFrameSource_CreateChn), r, emu_enotsup(r) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_EnableChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_EnableChn(0);
+        rep(FN(IMP_EmuFrameSource_EnableChn), r, emu_enotsup(r) ? V_PASS : V_FAIL, "ret %d errno %d", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_GetChnAttr) {
+        int r; errno = 0; r = IMP_EmuFrameSource_GetChnAttr(0, a);
+        rep(FN(IMP_EmuFrameSource_GetChnAttr), r, emu_enotsup(r) && !gtouched(a) ? V_PASS : V_FAIL, "ret %d errno %d, attribute untouched", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_DisableChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_DisableChn(0);
+        rep(FN(IMP_EmuFrameSource_DisableChn), r, emu_enotsup(r) ? V_PASS : V_FAIL, "ret %d errno %d", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_DestroyChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_DestroyChn(0);
+        rep(FN(IMP_EmuFrameSource_DestroyChn), r, emu_enotsup(r) && flow() ? V_PASS : V_FAIL, "ret %d errno %d, FrameSource frames still flow", r, errno);
+    }
+    gchk(a); gfree(a);
+}
+#else
+static void cs_emu(void) {}
+#endif
+
+/* IMP_OSD_Set/GetRgnAttr_ISP (T41): an ISP-drawn line/rectangle (type 11) and cover (type 12) region.  Return codes (sensor 2, NULL, picture
+ * type), set/get round trip of the draw block and the cover block, the stored show flag, and (camera only; APITEST_NOEFFECT=1 skips it, QEMU has
+ * no MSCA draw) the luma at the top edge of the frame while drawn and after it is disabled. */
+#if defined(PLATFORM_T41) && !defined(APITEST_T40) && HAS_IMP_OSD_SetRgnAttr_ISP && HAS_IMP_OSD_GetRgnAttr_ISP
+static void cs_rgnisp(void)
+{
+    NEED(IMP_OSD_SetRgnAttr_ISP) NEED(IMP_OSD_GetRgnAttr_ISP) {
+        G(IMPOSDRgnAttr, a); G(IMPOSDRgnAttr, g);
+        IMPISPDrawBlockAttr *d = &a->osdispdraw.stDrawAttr;
+        IMPISPMaskBlockAttr *m = &a->osdispdraw.stCoverAttr;
+        int x = g_sw / 4, y = g_sh / 4, w = g_sw / 2, bw = 24, r1, r2, r3, r4, r5, shown = -1, e1, e2, e3, e4, g1 = 0, g2, noeff = getenv("APITEST_NOEFFECT") != NULL;
+        int nodrv, ok;
+        double base = 0, on = 0, off = 0;
+
+        if (!noeff) base = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        memset(a, 0, sizeof(*a));
+        a->type = OSD_REG_ISP_LINE_RECT;
+        d->pinum = 0; d->type = IMP_ISP_DRAW_WIND; d->color_type = IMPISP_MASK_TYPE_YUV;
+        d->cfg.wind.enable = 1; d->cfg.wind.left = x; d->cfg.wind.top = y; d->cfg.wind.width = w; d->cfg.wind.height = g_sh / 2;
+        d->cfg.wind.color.ayuv.y_value = base < 140 ? 235 : 16; d->cfg.wind.color.ayuv.u_value = 128; d->cfg.wind.color.ayuv.v_value = 128;
+        d->cfg.wind.line_width = bw; d->cfg.wind.alpha = 7;
+        errno = 0; r1 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);
+        nodrv = r1 != 0 && errno == EPERM;        /* the module answers EPERM to a tuning control it does not route */
+        if (!noeff) on = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        memset(g, 0, sizeof(*g)); g->osdispdraw.stDrawAttr.pinum = 0; g->osdispdraw.stDrawAttr.type = IMP_ISP_DRAW_WIND;
+        r2 = IMP_OSD_GetRgnAttr_ISP(0, g, &shown); gchk(g);
+        g1 = r2 == 0 && shown == 1 && g->osdispdraw.stDrawAttr.cfg.wind.enable == 1 && g->osdispdraw.stDrawAttr.cfg.wind.left == x &&
+             g->osdispdraw.stDrawAttr.cfg.wind.top == y && g->osdispdraw.stDrawAttr.cfg.wind.width == w && g->osdispdraw.stDrawAttr.cfg.wind.line_width == bw;
+        d->cfg.wind.enable = 0; r3 = IMP_OSD_SetRgnAttr_ISP(0, a, 0);
+        if (!noeff) off = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        /* cover region: one 64x64 block, read back through the same call (the draw block part fails with the module's EPERM too) */
+        memset(a, 0, sizeof(*a)); a->type = OSD_REG_ISP_COVER;
+        m->chx = 0; m->pinum = 0; m->mask_en = 1; m->mask_pos_left = 64; m->mask_pos_top = 64; m->mask_width = 64; m->mask_height = 64;
+        m->mask_type = IMPISP_MASK_TYPE_YUV; m->mask_value.ayuv.y_value = 16; m->mask_value.ayuv.u_value = 128; m->mask_value.ayuv.v_value = 128;
+        r5 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);
+        memset(g, 0, sizeof(*g)); g->osdispdraw.stCoverAttr.chx = 0; g->osdispdraw.stCoverAttr.pinum = 0;
+        r4 = IMP_OSD_GetRgnAttr_ISP(0, g, &shown); gchk(g);
+        g2 = g->osdispdraw.stCoverAttr.mask_en == 1 && g->osdispdraw.stCoverAttr.mask_width == 64 && g->osdispdraw.stCoverAttr.mask_height == 64 &&
+             g->osdispdraw.stCoverAttr.mask_pos_left == 64 && g->osdispdraw.stCoverAttr.mask_pos_top == 64;
+        m->mask_en = 0; IMP_OSD_SetRgnAttr_ISP(0, a, 1);
+        a->type = OSD_REG_ISP_PIC; e1 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);           /* pictures: IMP_OSD_SetRgnAttr_PicISP */
+        e2 = IMP_OSD_SetRgnAttr_ISP(2, a, 1); e3 = IMP_OSD_SetRgnAttr_ISP(0, NULL, 1);
+        e4 = IMP_OSD_GetRgnAttr_ISP(0, g, NULL);
+        ok = e1 == (int)0x80020040 && e2 == (int)0x80020001 && e3 == (int)0x80020010 && e4 == (int)0x80020010 && flow();
+        if (nodrv)
+            rep(FN(IMP_OSD_SetRgnAttr_ISP), r1, V_NA, "line/rect: the ISP module has no handler for tuning control 0x80000a0 (EPERM); cover set %d, codes picture %#x sensor2 %#x NULL %#x",
+                       r5, (unsigned)e1, (unsigned)e2, (unsigned)e3);
+        else
+            rep(FN(IMP_OSD_SetRgnAttr_ISP), r1 | r3 | r5, (r1 == 0 && r3 == 0 && r5 == 0 && ok &&
+                (noeff || ((base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20))) ? V_PASS : V_FAIL,
+                "line/rect %d px frame at (%d,%d): %s; cover set %d; picture %#x, sensor 2 %#x, NULL %#x; frames flow", bw, x, y,
+                noeff ? "effect not checked" : "top edge luma", r5, (unsigned)e1, (unsigned)e2, (unsigned)e3);
+        if (!noeff && !nodrv) printf("[T] rgnisp top edge luma base %.1f drawn %.1f disabled %.1f\n", base, on, off);
+        if (nodrv)
+            rep(FN(IMP_OSD_GetRgnAttr_ISP), r2, V_NA, "the call reads draw block, OSD attr and cover block in one go and the ISP module has no handler for tuning control 0x80000a0 (EPERM): ret %d; NULL show flag %#x", r2, (unsigned)e4);
+        else
+            rep(FN(IMP_OSD_GetRgnAttr_ISP), r2 | r4, (g1 && g2 && r2 == 0 && r4 == 0 && e4 == (int)0x80020010) ? V_PASS : V_FAIL,
+                "draw block read back (show flag %d); cover block %ux%u at (%u,%u) en %u; NULL show flag %#x", shown, g->osdispdraw.stCoverAttr.mask_width,
+                g->osdispdraw.stCoverAttr.mask_height, g->osdispdraw.stCoverAttr.mask_pos_left, g->osdispdraw.stCoverAttr.mask_pos_top, g->osdispdraw.stCoverAttr.mask_en, (unsigned)e4);
+        gfree(a); gfree(g);
+    }
+}
+#else
+static void cs_rgnisp(void) {}
+#endif
+
+/* IMP_Decoder_* (T40/T41): the vendor JPEG decoder is not in the T41 1.2.5/1.2.6 libimp and OpenIMP has no JPEG decoder on these SoCs; its eight exports
+ * answer -1 with errno ENOTSUP and touch nothing (the T23 build implements them with the Helix decoder, own cases there). */
+#if (defined(PLATFORM_T41) || defined(APITEST_T40)) && HAS_IMP_Decoder_CreateChn
+static void cs_dec(void)
+{
+    G(IMPDecoderCHNAttr, a); G(IMPDecoderStream, s); IMPFrameInfo *fr = NULL;
+    int r;
+
+#define DEC1(f, call) NEED(f) { errno = 0; r = call; rep(FN(f), r, (r == -1 && errno == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, errno); }
+    DEC1(IMP_Decoder_CreateChn, IMP_Decoder_CreateChn(0, a))
+    DEC1(IMP_Decoder_StartRecvPic, IMP_Decoder_StartRecvPic(0))
+    DEC1(IMP_Decoder_SendStreamTimeout, IMP_Decoder_SendStreamTimeout(0, s, 10))
+    DEC1(IMP_Decoder_PollingFrame, IMP_Decoder_PollingFrame(0, 10))
+    DEC1(IMP_Decoder_GetFrame, IMP_Decoder_GetFrame(0, &fr))
+    DEC1(IMP_Decoder_ReleaseFrame, IMP_Decoder_ReleaseFrame(0, fr))
+    DEC1(IMP_Decoder_StopRecvPic, IMP_Decoder_StopRecvPic(0))
+    NEED(IMP_Decoder_DestroyChn) { errno = 0; r = IMP_Decoder_DestroyChn(0); rep(FN(IMP_Decoder_DestroyChn), r, (r == -1 && errno == ENOTSUP && !gtouched(a) && !gtouched(s) && flow()) ? V_PASS : V_FAIL, "ret %d errno %d, arguments untouched, frames still flow", r, errno); }
+#undef DEC1
+    gchk(a); gchk(s); gfree(a); gfree(s);
+}
+#else
+static void cs_dec(void) {}
+#endif
+
+/* IMP_Encoder_SetFrameRelease (T41): stored ratio without any effect on the frame flow, vendor codes for a bad (0x80040001) or an uncreated (0x80040008) channel. */
+#if defined(PLATFORM_T41) && !defined(APITEST_T40)
+/* not declared in the T41 1.2.6 header, but exported by the T41 1.2.5 and 1.2.6 libimp */
+extern int IMP_Encoder_SetFrameRelease(int encChn, int num, int den) __attribute__((weak));
+static void cs_framerel(void)
+{
+    NEED(IMP_Encoder_SetFrameRelease) {
+        int e_idle = IMP_Encoder_SetFrameRelease(0, 1, 1), e_bad = IMP_Encoder_SetFrameRelease(8, 1, 1), r1 = -1, r2 = -1, n = 0;
+
+        if (enc_chain_up() == 0) {
+            r1 = IMP_Encoder_SetFrameRelease(0, 1, 2);
+            r2 = IMP_Encoder_SetFrameRelease(0, 1, 1);
+            n = enc_pull_h264(10);
+            enc_chain_down();
+        }
+        rep(FN(IMP_Encoder_SetFrameRelease), r1 | r2, (e_idle == (int)0x80040008 && e_bad == (int)0x80040001 && r1 == 0 && r2 == 0 && n >= 5) ? V_PASS : V_FAIL,
+            "uncreated channel %#x, channel 8 %#x, 1/2 and 1/1 on a running channel %d %d, %d frames still pulled", (unsigned)e_idle, (unsigned)e_bad, r1, r2, n);
+    }
+}
+#else
+static void cs_framerel(void) {}
+#endif
+
+/* T41 ISP calls without a streamer (#75/#76, src/t40/openimp_t41_isp_extra.c).  Safe part (always): getters, same-value writes, the error codes for a
+ * NULL pointer and sensor 2, and the four documented ENOTSUP calls.  Risky part (APITEST_RISKY=1, QEMU only: they reprogram the ISP back end or
+ * claim a GPIO): LDC attribute/initialisation, StartNightMode, WDR_OPEN, GPIO.  A control the ISP module does not route (EPERM/ENOTTY) is N/A. */
+#if defined(PLATFORM_T41) && !defined(APITEST_T40) && HAS_IMP_ISP_StartNightMode && HAS_IMP_ISP_SetCsccrMode && HAS_IMP_ISP_SET_GPIO_STA
+static int t41x_nomod(int r, int e)
+{
+    return (r == -4090 || r == -4095) && (e == EPERM || e == ENOTTY || e == EOPNOTSUPP || e == ENOSYS || e == EINVAL);
+}
+
+#define T41X_NA(fn, r, e) rep(FN(fn), r, V_NA, "the ISP module has no handler for this call (errno %d)", e)
+
+static void cs_t41isp(void)
+{
+    int r, e, e1, e2, risky = getenv("APITEST_RISKY") != NULL;
+
+    /* getters and same-value writes */
+    NEED(IMP_ISP_GetCsccrMode) NEED(IMP_ISP_SetCsccrMode) {
+        G(IMPISPCsccrModeAttr, c); G(IMPISPCsccrModeAttr, b);
+        errno = 0; r = IMP_ISP_GetCsccrMode(IMPVI_MAIN, c); e = errno; gchk(c);
+        if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_GetCsccrMode, r, e); T41X_NA(IMP_ISP_SetCsccrMode, r, e); }
+        else {
+            int r2, r3;
+            r2 = IMP_ISP_SetCsccrMode(IMPVI_MAIN, c); r3 = IMP_ISP_GetCsccrMode(IMPVI_MAIN, b); gchk(b);
+            rep(FN(IMP_ISP_GetCsccrMode), r, r == 0 ? V_PASS : V_FAIL, "mode %d", (int)c->mode);
+            rep(FN(IMP_ISP_SetCsccrMode), r2, (r2 == 0 && r3 == 0 && !memcmp(b, c, sizeof(*c)) && flow()) ? V_PASS : V_FAIL, "rt: same value written, read back equal, frames flow");
+        }
+        gfree(c); gfree(b);
+    }
+    NEED(IMP_ISP_Tuning_GetFaceAeLuma) {
+        G(IMPISPFaceAeLuma, v);
+        errno = 0; r = IMP_ISP_Tuning_GetFaceAeLuma(IMPVI_MAIN, v); e = errno; gchk(v);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetFaceAeLuma, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetFaceAeLuma), r, r == 0 ? V_PASS : V_FAIL, "global %u roi %u", v->global, v->roi);
+        gfree(v);
+    }
+    NEED(IMP_ISP_Tuning_GetAEFlickerFlag) {
+        G(IMPISPFlickerFlag, v);
+        errno = 0; r = IMP_ISP_Tuning_GetAEFlickerFlag(IMPVI_MAIN, v); e = errno; gchk(v);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAEFlickerFlag, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAEFlickerFlag), r, r == 0 ? V_PASS : V_FAIL, "flag %d", v->flag);
+        gfree(v);
+    }
+    NEED(IMP_ISP_Tuning_GetAeBv) {
+        int *v = gnew(4);
+        errno = 0; r = IMP_ISP_Tuning_GetAeBv(IMPVI_MAIN, v); e = errno; gchk(v);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAeBv, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAeBv), r, r == 0 ? V_PASS : V_FAIL, "bv %d", *v);
+        gfree(v);
+    }
+    NEED(IMP_ISP_Tuning_GetAFMetricesInfo) {
+        G(IMPISPAFMetricsInfo, m);
+        errno = 0; r = IMP_ISP_Tuning_GetAFMetricesInfo(IMPVI_MAIN, m); e = errno; gchk(m);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAFMetricesInfo, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAFMetricesInfo), r, r == 0 ? V_PASS : V_FAIL, "read");
+        gfree(m);
+    }
+    NEED(IMP_ISP_Tuning_GetAfStatistics) {
+        G(IMPISPAFStatisInfo, m);
+        errno = 0; r = IMP_ISP_Tuning_GetAfStatistics(IMPVI_MAIN, m); e = errno; gchk(m);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAfStatistics, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAfStatistics), r, r == 0 ? V_PASS : V_FAIL, "read (%zu bytes)", sizeof(*m));
+        gfree(m);
+    }
+    NEED(IMP_ISP_GetInternalChnAttr) NEED(IMP_ISP_SetInternalChnAttr) {
+        G(IMPISPInternalChnAttr, c); G(IMPISPInternalChnAttr, b);
+        errno = 0; r = IMP_ISP_GetInternalChnAttr(IMPVI_MAIN, c); e = errno; gchk(c);
+        if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_GetInternalChnAttr, r, e); T41X_NA(IMP_ISP_SetInternalChnAttr, r, e); }
+        else {
+            int r2 = -1, r3 = -1;
+            rep(FN(IMP_ISP_GetInternalChnAttr), r, r == 0 ? V_PASS : V_FAIL, "ch0 type %d ch1 type %d ch2 type %d", (int)c->ch[0].type, (int)c->ch[1].type, (int)c->ch[2].type);
+            if (risky) { r2 = IMP_ISP_SetInternalChnAttr(IMPVI_MAIN, c); r3 = IMP_ISP_GetInternalChnAttr(IMPVI_MAIN, b); gchk(b);
+                rep(FN(IMP_ISP_SetInternalChnAttr), r2, (r2 == 0 && r3 == 0 && !memcmp(b, c, sizeof(*c)) && flow()) ? V_PASS : V_FAIL, "rt: same value written, read back equal"); }
+            else rep(FN(IMP_ISP_SetInternalChnAttr), 0, V_SKIP, "reprograms the ISP output routing (APITEST_RISKY=1, QEMU)");
+        }
+        gfree(c); gfree(b);
+    }
+    NEED(IMP_ISP_LDC_GetAttr) {
+        G(IMPISPLDCAttr, l);
+        errno = 0; r = IMP_ISP_LDC_GetAttr(IMPVI_MAIN, l); e = errno; gchk(l);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_GetAttr, r, e);
+        else rep(FN(IMP_ISP_LDC_GetAttr), r, r == 0 ? V_PASS : V_FAIL, "read");
+        gfree(l);
+    }
+    if (risky) {
+        NEED(IMP_ISP_StartNightMode) { errno = 0; r = IMP_ISP_StartNightMode(IMPVI_MAIN); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_StartNightMode, r, e); else rep(FN(IMP_ISP_StartNightMode), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "night-start flag set after the sensor runs, frames flow"); }
+        NEED(IMP_ISP_LDC_SetAttr) { G(IMPISPLDCAttr, l); IMP_ISP_LDC_GetAttr(IMPVI_MAIN, l); errno = 0; r = IMP_ISP_LDC_SetAttr(IMPVI_MAIN, l); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_SetAttr, r, e); else rep(FN(IMP_ISP_LDC_SetAttr), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "same value written, frames flow"); gfree(l); }
+        NEED(IMP_ISP_LDC_INIT) { G(IMPISPLDCInitAttr, l); errno = 0; r = IMP_ISP_LDC_INIT(IMPVI_MAIN, l); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_INIT, r, e); else rep(FN(IMP_ISP_LDC_INIT), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "zero init block, frames flow"); gfree(l); }
+        NEED(IMP_ISP_WDR_OPEN) { IMPISPWdrOpenAttr w; memset(&w, 0, sizeof(w)); w.rmode = IMPISP_TYPE_RUN_LINEAR; errno = 0; r = IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_WDR_OPEN, r, e); else rep(FN(IMP_ISP_WDR_OPEN), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "linear start mode request, frames flow"); }
+        NEED(IMP_ISP_SET_GPIO_STA) NEED(IMP_ISP_SET_GPIO_INIT_OR_FREE) { G(IMPISPGPIO, g); g->gpio_num[0] = 0xff; errno = 0; r = IMP_ISP_SET_GPIO_INIT_OR_FREE(IMPVI_MAIN, g); e = errno;
+            if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_SET_GPIO_INIT_OR_FREE, r, e); T41X_NA(IMP_ISP_SET_GPIO_STA, r, e); }
+            else { int r2 = IMP_ISP_SET_GPIO_STA(IMPVI_MAIN, g);
+                rep(FN(IMP_ISP_SET_GPIO_INIT_OR_FREE), r, r == 0 ? V_PASS : V_FAIL, "empty GPIO list (0xff first)");
+                rep(FN(IMP_ISP_SET_GPIO_STA), r2, r2 == 0 ? V_PASS : V_FAIL, "empty GPIO list"); }
+            gfree(g); }
+    } else {
+        rep(FN(IMP_ISP_StartNightMode), 0, V_SKIP, "APITEST_RISKY=1 (QEMU)");
+        rep(FN(IMP_ISP_LDC_SetAttr), 0, V_SKIP, "reprograms the lens distortion stage (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_LDC_INIT), 0, V_SKIP, "reprograms the lens distortion stage (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_WDR_OPEN), 0, V_SKIP, "meant for the time before AddSensor (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_SET_GPIO_INIT_OR_FREE), 0, V_SKIP, "claims sensor GPIOs (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_SET_GPIO_STA), 0, V_SKIP, "sets sensor GPIOs (APITEST_RISKY=1, QEMU)");
+    }
+    /* error codes: NULL pointer -4087, sensor 2 -4084 (vendor 0xfffff009 / 0xfffff00c); no hardware touched */
+    {
+        uint32_t *buf = gnew(0x1600);
+        int c1, c2, c3, c4, c5, c6, c7, c8;
+
+        c1 = IMP_ISP_Tuning_GetFaceAeLuma(IMPVI_MAIN, NULL); c2 = IMP_ISP_Tuning_GetFaceAeLuma((IMPVI_NUM)2, (void *)buf);
+        c3 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, NULL); c4 = IMP_ISP_Tuning_SetTmoFaceae((IMPVI_NUM)2, (void *)buf);
+        c5 = IMP_ISP_GetCsccrMode(IMPVI_MAIN, NULL); c6 = IMP_ISP_GetCsccrMode((IMPVI_NUM)2, (IMPISPCsccrModeAttr *)buf);
+        c7 = IMP_ISP_Tuning_GetAfStatistics(IMPVI_MAIN, NULL); c8 = IMP_ISP_Tuning_GetAfStatistics((IMPVI_NUM)2, (IMPISPAFStatisInfo *)buf);
+        gchk(buf);
+        rep(LBL("IMP_ISP t41 error codes"), 0, (c1 == -4087 && c2 == -4084 && c3 == -4087 && c4 == -4084 && c5 == -4087 && c6 == -4084 && c7 == -4087 && c8 == -4084) ? V_PASS : V_FAIL,
+            "NULL -> %d %d %d %d, sensor 2 -> %d %d %d %d (expect -4087 / -4084)", c1, c3, c5, c7, c2, c4, c6, c8);
+        gfree(buf);
+    }
+    /* documented ENOTSUP */
+    NEED(IMP_ISP_SetAeAlgoFunc) { errno = 0; r = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, NULL); e1 = errno; rep(FN(IMP_ISP_SetAeAlgoFunc), r, (r == -1 && e1 == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, e1); }
+    NEED(IMP_ISP_SetAwbAlgoFunc) { errno = 0; r = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, NULL); e2 = errno; rep(FN(IMP_ISP_SetAwbAlgoFunc), r, (r == -1 && e2 == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d", r, e2); }
+    NEED(IMP_ISP_SetVicDoneCbFunc) { errno = 0; r = IMP_ISP_SetVicDoneCbFunc(NULL); e = errno; rep(FN(IMP_ISP_SetVicDoneCbFunc), r, (r == -1 && e == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d", r, e); }
+    NEED(IMP_ISP_RAW_RwControl) { errno = 0; r = IMP_ISP_RAW_RwControl(IMPVI_MAIN, NULL); e = errno; rep(FN(IMP_ISP_RAW_RwControl), r, (r == -1 && e == ENOTSUP && flow()) ? V_PASS : V_FAIL, "ret %d errno %d, frames still flow", r, e); }
+}
+#else
+static void cs_t41isp(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4364,5 +4668,10 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("awbctstart_t40")) cs_awbctstart_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("tisp2open_t40")) cs_tisp2open_t40(); wdog("cases", 60);
     if (cs_on("sensorattr_t40")) cs_sensorattr_t40(); wdog("cases", 30);
+    if (cs_on("emu")) { cs_emu(); wdog("cases", 30); }
+    if (cs_on("dec")) { cs_dec(); wdog("cases", 30); }
+    if (cs_on("framerel")) { cs_framerel(); wdog("cases", 60); }
+    if (cs_on("t41isp")) { cs_t41isp(); wdog("cases", 90); }
+    if (cs_on("rgnisp")) { cs_rgnisp(); wdog("cases", 90); }
     wdog("cases", 60);
 }

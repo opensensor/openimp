@@ -1,3 +1,4 @@
+#define _GNU_SOURCE 1
 /* apitest: sysutils (SU_*) functions.  They live in libsysutils.so, resolved with dlsym
  * (type-checked against the vendor headers). Never called: SU_Base_Shutdown/Reboot/Suspend. */
 #include <unistd.h>
@@ -94,7 +95,20 @@ void t_su(void)
     rep(FN(SU_Base_Reboot), 0, V_SKIP, "reboots the camera");
     rep(FN(SU_Base_Suspend), 0, V_SKIP, "suspends the camera");
 #if HAS_SU_Base_SetWkupMode
-    rep(FN(SU_Base_SetWkupMode), 0, V_SKIP, "changes the wake-up configuration");
+    /* modes 1 and 2 arm an RTC wake-up: never sent.  A mode outside 1..2 must be refused without touching the hardware; the symbol found first
+     * (OpenIMP's libimp when it exports one, else the board's libsysutils) answers, the detail names the library. */
+    {
+        __typeof__(&SU_Base_SetWkupMode) fw = (__typeof__(&SU_Base_SetWkupMode))dlsym(RTLD_DEFAULT, "SU_Base_SetWkupMode");
+        Dl_info di;
+
+        if (!fw && g_su) fw = SUSYM(SU_Base_SetWkupMode);
+        if (!fw) rep_na(FN(SU_Base_SetWkupMode));
+        else {
+            const char *lib = dladdr((void *)fw, &di) && di.dli_fname ? strrchr(di.dli_fname, '/') : NULL;
+            r = fw(0);
+            rep(FN(SU_Base_SetWkupMode), r, r == -1 ? V_PASS : V_FAIL, "mode 0 refused (%d) by %s; modes 1/2 not sent (arm an RTC wake-up)", r, lib ? lib + 1 : "?");
+        }
+    }
 #endif
 
     /* misc / ADC / battery / cipher / key / LED */

@@ -192,6 +192,100 @@ int32_t IMP_ISP_Tuning_GetOSDBlock(IMPVI_NUM num, IMPISPOSDBlockAttr *attr)
 {
     return isp_osd_tuning(num, 1, TISP_CID_OSD_BLOCK, attr);
 }
+
+/* Vendor T41 1.2.5 IMP_ISP_Tuning_Set/GetDrawBlock (0x6910c / 0x68af4):
+ * pointer pass-through of the 32-byte IMPISPDrawBlockAttr, control
+ * 0x080000a0, the same checks and codes as the OSD pair above.  The
+ * vendor also keeps the attribute for replay at the next AddSensor, which
+ * OpenIMP has no use for. */
+#define TISP_CID_DRAW_BLOCK 0x080000a0
+_Static_assert(sizeof(IMPISPDrawBlockAttr) == 32, "IMPISPDrawBlockAttr");
+
+int32_t IMP_ISP_Tuning_SetDrawBlock(IMPVI_NUM num, IMPISPDrawBlockAttr *attr)
+{
+    return isp_osd_tuning(num, 0, TISP_CID_DRAW_BLOCK, attr);
+}
+
+int32_t IMP_ISP_Tuning_GetDrawBlock(IMPVI_NUM num, IMPISPDrawBlockAttr *attr)
+{
+    return isp_osd_tuning(num, 1, TISP_CID_DRAW_BLOCK, attr);
+}
+
+/* Vendor T41 1.2.5 IMP_OSD_SetRgnAttr_ISP (0xaaa68) / GetRgnAttr_ISP
+ * (0xaae78): the IMPOSDRgnAttr of an ISP-drawn region carries an
+ * IMPOSDIspDraw at +48 { IMPISPDrawBlockAttr (+48, 32 bytes),
+ * IMPISPOSDBlockAttr (+80, 20 bytes), IMPISPMaskBlockAttr (+100) }.
+ * Set: sensor < 2 (0x80020001), attr (0x80020010), type 10..12 (else
+ * 0x80020040); bosdshow is kept for Get; type 11 (line/rectangle) goes to
+ * IMP_ISP_Tuning_SetDrawBlock (failure 0x80020040), type 12 (cover) to
+ * IMP_ISP_Tuning_SetMaskBlock (failure -1), type 10 (picture) is refused
+ * with 0x80020040 (pictures go through IMP_OSD_SetRgnAttr_PicISP).  Get:
+ * sensor, attr and pbosdshow, then GetDrawBlock, GetOSDAttr (the 12-byte
+ * format, written at +80) and GetMaskBlock (any failure 0x80020040).
+ * Difference: the vendor answers 0x80020008 before IMP_System_Init
+ * created its OSD module; OpenIMP has no such module state. */
+#define P3_OSD_ISP_DRAW 48
+#define P3_OSD_ISP_PIC 80
+#define P3_OSD_ISP_COVER 100
+#define P3_OSD_ISP_ERR_NUM 0x80020001
+#define P3_OSD_ISP_ERR_PARAM 0x80020010
+#define P3_OSD_ISP_ERR_OP 0x80020040
+_Static_assert(P3_OSD_ISP_DRAW + sizeof(IMPISPDrawBlockAttr) == P3_OSD_ISP_PIC,
+               "the OSD block follows the draw block");
+_Static_assert(P3_OSD_ISP_PIC + sizeof(IMPISPOSDBlockAttr) == P3_OSD_ISP_COVER,
+               "the mask block follows the OSD block");
+static int isp_osd_rgn_show;
+static pthread_mutex_t isp_osd_rgn_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int IMP_OSD_SetRgnAttr_ISP(int sensornum, void *prAttr, int bosdshow)
+{
+    unsigned char *attr = prAttr;
+    uint32_t type;
+    int result;
+
+    if ((unsigned)sensornum >= 2U)
+        return (int)P3_OSD_ISP_ERR_NUM;
+    if (!attr)
+        return (int)P3_OSD_ISP_ERR_PARAM;
+    memcpy(&type, attr, sizeof(type));
+    if (type < 10U || type > 12U)
+        return (int)P3_OSD_ISP_ERR_OP;
+    pthread_mutex_lock(&isp_osd_rgn_lock);
+    isp_osd_rgn_show = bosdshow != 0;
+    if (type == 11U)
+        result = IMP_ISP_Tuning_SetDrawBlock((IMPVI_NUM)sensornum,
+                     (IMPISPDrawBlockAttr *)(attr + P3_OSD_ISP_DRAW)) < 0 ?
+                     (int)P3_OSD_ISP_ERR_OP : 0;
+    else if (type == 12U)
+        result = IMP_ISP_Tuning_SetMaskBlock((IMPVI_NUM)sensornum,
+                     (IMPISPMaskBlockAttr *)(attr + P3_OSD_ISP_COVER)) < 0 ?
+                     -1 : 0;
+    else
+        result = (int)P3_OSD_ISP_ERR_OP;
+    pthread_mutex_unlock(&isp_osd_rgn_lock);
+    return result;
+}
+
+int IMP_OSD_GetRgnAttr_ISP(int sensornum, void *prAttr, int *pbosdshow)
+{
+    unsigned char *attr = prAttr;
+
+    if ((unsigned)sensornum >= 2U)
+        return (int)P3_OSD_ISP_ERR_NUM;
+    if (!attr || !pbosdshow)
+        return (int)P3_OSD_ISP_ERR_PARAM;
+    pthread_mutex_lock(&isp_osd_rgn_lock);
+    *pbosdshow = isp_osd_rgn_show;
+    pthread_mutex_unlock(&isp_osd_rgn_lock);
+    if (IMP_ISP_Tuning_GetDrawBlock((IMPVI_NUM)sensornum,
+            (IMPISPDrawBlockAttr *)(attr + P3_OSD_ISP_DRAW)) < 0 ||
+        IMP_ISP_Tuning_GetOSDAttr((IMPVI_NUM)sensornum,
+            (IMPISPOSDAttr *)(attr + P3_OSD_ISP_PIC)) < 0 ||
+        IMP_ISP_Tuning_GetMaskBlock((IMPVI_NUM)sensornum,
+            (IMPISPMaskBlockAttr *)(attr + P3_OSD_ISP_COVER)) < 0)
+        return (int)P3_OSD_ISP_ERR_OP;
+    return 0;
+}
 #else
 /* Vendor IMP_ISP_SetSingleOSDAttr / GetSingleOSDAttr: sensor 0..3, pointer
  * pass-through of the 44-byte attribute; a failed ioctl is -6. */

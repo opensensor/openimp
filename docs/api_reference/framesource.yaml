@@ -278,6 +278,18 @@ functions:
     group: inject
     summary: "Stops the injection channel and frees its buffers."
     returns: "0 on success, -1 when the channel does not exist or a consumer (such as the encoder) still holds a frame."
+  EmuFrameSource_*:
+    group: inject
+    decl: |
+      int IMP_EmuFrameSource_CreateChn(uint32_t chn_num, IMPFSChnAttr *chn_attr);
+      int IMP_EmuFrameSource_DestroyChn(uint32_t chn_num);
+      int IMP_EmuFrameSource_EnableChn(uint32_t chn_num);
+      int IMP_EmuFrameSource_DisableChn(uint32_t chn_num);
+      int IMP_EmuFrameSource_GetChnAttr(uint32_t chn_num, IMPFSChnAttr *chn_attr);
+    summary: "The five calls of the vendor encoder-emulator channel (a channel fed from a file by a vendor test harness). They are exported so a program that links them still starts, but they do nothing."
+    returns: "-1 with errno ENOTSUP on every call; no channel is created and no attribute is written."
+    notes: "The stock T41 libimp of the SDKs we hold does not export these names at all; use `IMP_FrameSource_ExternInject_*` to feed your own NV12 frames."
+    soc: "T40 and T41."
   FrameSource_EnableChnUndistort:
     group: misc
     summary: "Switches the lens distortion correction of the channel on. Accepted, no effect in OpenIMP."
