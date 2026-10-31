@@ -115,6 +115,11 @@ done
     -c "$project_dir/src/core/su_base_shutdown.c" \
     -o "$output_dir/core_su_base_shutdown.o"
 
+# SU_* of the vendor libsysutils (RTC time/alarm, reboot/suspend, ADC, key events, LED; SU_CIPHER_* answer ENOTSUP)
+"$compiler" $strict_flags -D_GNU_SOURCE $repo_includes \
+    -c "$project_dir/src/core/su_sysutils.c" \
+    -o "$output_dir/core_su_sysutils.o"
+
 "$compiler" $base_flags $repo_includes \
     -c "$project_dir/src/alcodec/EncHwScalingList.c" \
     -o "$output_dir/backend-enc-hw-scaling-list.o"
@@ -145,6 +150,11 @@ do
         -o "$output_dir/$source.o"
 done
 
+# custom AE/AWB callbacks (IMP_ISP_SetAeAlgoFunc / SetAwbAlgoFunc)
+"$compiler" $strict_flags -I"$T40_HEADERS" -I"$project_dir/src" \
+    -c "$project_dir/src/t40/openimp_p1_algo.c" \
+    -o "$output_dir/openimp_p1_algo.o"
+
 # ISP-drawn OSD (IMP_ISP_Tuning_*OsdRgn, IMP_ISP_Set/GetSingleOSDAttr): vendor
 # T40 structures, the rmem allocator from src/dma_alloc.h.
 "$compiler" $strict_flags -I"$T40_HEADERS" -I"$project_dir/src" \
@@ -171,6 +181,7 @@ done
     "$output_dir/core_imp_log.o" \
     "$output_dir/core_video_drop.o" \
     "$output_dir/core_su_base_shutdown.o" \
+    "$output_dir/core_su_sysutils.o" \
     "$output_dir/openimp_profile.o" \
     "$output_dir/openimp_testpattern.o" \
     "$output_dir/openimp_tuning.o" \
@@ -186,6 +197,7 @@ done
     "$output_dir/openimp_audio_enc_dec.o" \
     "$output_dir/openimp_p3_compat.o" \
     "$output_dir/openimp_t40_isp_osd.o" \
+    "$output_dir/openimp_p1_algo.o" \
     "$output_dir/t40_osd.o" \
     "$output_dir/t40_ivs.o" \
     "$output_dir/t40_ivs_move.o" \

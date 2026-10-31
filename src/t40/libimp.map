@@ -23,6 +23,11 @@
         OpenIMP_IVS_Move*;
         SU_Base_Shutdown;
         SU_Base_SetWkupMode;
+        SU_Base_*;
+        SU_ADC_*;
+        SU_Key_*;
+        SU_LED_*;
+        SU_CIPHER_*;
     local:
         *;
 };

@@ -3215,6 +3215,8 @@
 "ISP_GetSensorRegister",
 "ISP_GetSingleOSDAttr",
 "ISP_Open",
+"ISP_SetAeAlgoFunc",
+"ISP_SetAwbAlgoFunc",
 "ISP_SetCameraInputMode",
 "ISP_SetCameraInputSelect",
 "ISP_SetDefaultBinPath",

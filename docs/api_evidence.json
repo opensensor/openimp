@@ -451,7 +451,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -543,7 +543,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -620,7 +620,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -697,7 +697,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -774,7 +774,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -851,7 +851,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -928,7 +928,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -1285,7 +1285,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -4682,15 +4682,16 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "err",
     "T41": "err"
    },
-   "note": "T41: needs a user-space callback thread fed by the ISP module (ioctl 0xc004541d); the open T41 module runs its own AE and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because against the open-tx-isp driver the AWB close oopses the kernel (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no statistics reached handle() in QEMU. | T41: needs a user-space callback thread fed by the ISP module (ioctl 0xc004541d); the open T41 module runs its own AE and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
    "action": {
     "T41": "enotsup"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp"
+    "T41": "QEMU T41 2026-10-31 case t41isp",
+    "T40": "apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (do not run before the driver fix)"
    }
   },
   "ISP_SetAwbAlgoFunc": {
@@ -4704,15 +4705,16 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "err",
     "T41": "err"
    },
-   "note": "T41: needs a user-space callback thread fed by the ISP module (ioctl the AWB twin of 0xc004541d); the open T41 module runs its own AWB and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because against the open-tx-isp driver the AWB close oopses the kernel (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no statistics reached handle() in QEMU. | T41: needs a user-space callback thread fed by the ISP module (ioctl the AWB twin of 0xc004541d); the open T41 module runs its own AWB and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
    "action": {
     "T41": "enotsup"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp"
+    "T41": "QEMU T41 2026-10-31 case t41isp",
+    "T40": "apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (do not run before the driver fix)"
    }
   },
   "ISP_Tuning_AE_Get/SetROI": {
@@ -6430,16 +6432,17 @@
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "n.a.",
     "T41": "err"
    },
-   "note": "T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
+   "note": "T40: declared in imp_decoder.h, exported by no vendor library; OpenIMP exports the names as -1/ENOTSUP from the shared T40/T41 code, so nothing is missing. | T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
    "action": {
     "T40": "enotsup",
     "T41": "enotsup"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case dec 8/8"
+    "T41": "QEMU T41 2026-10-31 case dec 8/8",
+    "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_Decoder_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_decoder.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #66)"
    }
   },
   "Encoder_CreateChn": {
@@ -7270,7 +7273,10 @@
     "T40": "cache",
     "T41": "n.a."
    },
-   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41"
+   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T40 (vendor 1.3.1 disassembly, 0x6bd4c Set / 0x6be44 Get, 2026-10-31): channels 0..12, the flag is stored at +872 of the channel record only while the record is not created (-1 afterwards), the getter returns 0/1; the only reader is channel_encoder_init (0x66900), which hands it to the closed encoder code. OpenIMP behaves the same (host and apitest case), the flag has no consumer in the Helix/AVPU path (stays cache, class d). The vendor getter does not check a NULL pointer; OpenIMP returns -1 instead of faulting. | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41",
+   "ref": {
+    "T40": "apitest agg60 2026-10-31 .184: Set on a created channel refused (-1), idle channel 5 set 1 -> get 1, set 0 -> get 0 (API round trip as the vendor); vendor 1.3.1 disassembly match, see note"
+   }
   },
   "Encoder_Get/SetGDRCfg": {
    "area": "Encoder",
@@ -9459,13 +9465,16 @@
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
-    "T40": "miss",
+    "T40": "n.a.",
     "T41": "miss"
    },
-   "note": "T40/T41: not exported by the T41 1.2.5 libimp (nm); the vendor name set comes from older builds (imp_emu_framesource.h, a file-fed test channel). OpenIMP exports all five names and answers -1/ENOTSUP without any state change; IMP_FrameSource_ExternInject_* is the supported way to feed frames. apitest case emu: 5/5 PASS in QEMU T41 (T40 shares the code, not run)",
+   "note": "T40: declared in imp_emu_framesource.h, exported by no vendor library; OpenIMP exports the names as -1/ENOTSUP from the shared T40/T41 code, so nothing is missing. | T41: not exported by the T41 1.2.5 libimp (nm); the vendor name set comes from older builds (imp_emu_framesource.h, a file-fed test channel). OpenIMP exports all five names and answers -1/ENOTSUP without any state change; IMP_FrameSource_ExternInject_* is the supported way to feed frames. apitest case emu: 5/5 PASS in QEMU T41 (T40 shares the code, not run)",
    "action": {
     "T40": "enotsup",
     "T41": "enotsup"
+   },
+   "ref": {
+    "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_EmuFrameSource_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_emu_framesource.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #67)"
    }
   },
   "FB_*": {
@@ -9579,7 +9588,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -9675,7 +9684,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -9752,7 +9761,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -9829,7 +9838,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -10088,7 +10097,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -10240,7 +10249,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -10794,7 +10803,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg47 2026-10-28 .184"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "ISP_Tuning_SetOsdPoolSize": {
@@ -11095,7 +11104,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg47 2026-10-28 .184"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "OSD_DestroyGroup": {
@@ -11269,7 +11278,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg47 2026-10-28 .184"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "OSD_Exit_ISP": {
@@ -11503,7 +11512,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg47 2026-10-28 .184"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "OSD_RegisterRgn": {
@@ -11760,7 +11769,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg47 2026-10-28 .184"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "OSD_SetRgnAttrWithTimestamp": {
@@ -11836,7 +11845,7 @@
    },
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
-    "T40": "apitest agg47 2026-10-28 .184"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "OSD_ShowRgn": {
@@ -11933,7 +11942,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg47z-combo 2026-10-29 .184: CreateRgn, SetRgnAttr (visible after Show), ShowRgn/Hide, DestroyRgn PASS, 0 oops (agg47 oopsed in tisp_s_osd_single_pic)"
+    "T40": "apitest agg62 2026-10-31 .184"
    }
   },
   "OSD_Start": {
@@ -13584,7 +13593,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
     "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)"
@@ -14136,7 +14145,7 @@
    },
    "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test)",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -15495,7 +15504,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -15558,7 +15567,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -15695,7 +15704,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -15811,7 +15820,7 @@
    },
    "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -15944,7 +15953,7 @@
    },
    "note": "audit: userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -16062,7 +16071,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16144,7 +16153,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16207,7 +16216,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16270,7 +16279,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16498,7 +16507,7 @@
    },
    "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -16882,10 +16891,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_ADC_EnableChn": {
    "area": "System",
@@ -16898,10 +16910,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_ADC_Exit": {
    "area": "System",
@@ -16914,10 +16929,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_ADC_GetChnValue": {
    "area": "System",
@@ -16930,10 +16948,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_DisableAlarm": {
    "area": "System",
@@ -16946,10 +16967,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_EnableAlarm": {
    "area": "System",
@@ -16962,10 +16986,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_Get/SetAlarm": {
    "area": "System",
@@ -16978,10 +17005,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_Get/SetTime": {
    "area": "System",
@@ -16994,10 +17024,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_GetDevID": {
    "area": "System",
@@ -17020,7 +17053,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -17045,7 +17078,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -17112,7 +17145,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -17127,10 +17160,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_Raw2SUTime": {
    "area": "System",
@@ -17153,7 +17189,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -17168,10 +17204,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Base_SUTime2Raw": {
    "area": "System",
@@ -17194,7 +17233,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -17247,10 +17286,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Battery_GetCapacity": {
    "area": "System",
@@ -17327,10 +17369,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_CreateHandle": {
    "area": "System",
@@ -17343,10 +17388,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DES_Exit": {
    "area": "System",
@@ -17359,10 +17407,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DES_Init": {
    "area": "System",
@@ -17375,10 +17426,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DES_Test": {
    "area": "System",
@@ -17391,10 +17445,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Decrypt": {
    "area": "System",
@@ -17407,10 +17464,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_DestroyHandle": {
    "area": "System",
@@ -17423,10 +17483,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Encrypt": {
    "area": "System",
@@ -17439,10 +17502,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Exit": {
    "area": "System",
@@ -17455,10 +17521,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_CIPHER_Init": {
    "area": "System",
@@ -17471,10 +17540,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "err",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "ref": {
+    "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
+   }
   },
   "SU_Key_CloseEvent": {
    "area": "System",
@@ -17511,10 +17583,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Key_EnableEvent": {
    "area": "System",
@@ -17527,10 +17602,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_Key_OpenEvent": {
    "area": "System",
@@ -17567,10 +17645,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "SU_LED_Command": {
    "area": "System",
@@ -17583,10 +17664,13 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path",
+   "ref": {
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
+   }
   },
   "System_Bind": {
    "area": "System",
@@ -17738,7 +17822,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -18083,7 +18167,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest agg62 2026-10-31 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -20643,13 +20727,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "?",
+    "T40": "qemu",
     "T41": "aud"
    },
    "auto": true,
    "ref": {
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): static audit against the vendor libimp.a, no host test of its own; no camera run yet",
-    "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing"
+    "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
+    "T40": "apitest isposdapi in QEMU T40 2026-10-31 (open-tx-isp agg59 ko, OpenIMP claude/t40-backlog): Init returns 0 twice in a row, region create/set/get/destroy follow, frames flow, 0 oops; no camera run yet. Vendor 1.3.1 (0xc3f14): allocates the pool and the 6x8 table, -1 when the allocation fails; OpenIMP is lazy and cannot fail"
    }
   },
   "OSD_UpdateRgnAttrData_ISP": {
@@ -20862,16 +20947,16 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "host",
     "T41": "aud"
    },
-   "auto": true,
    "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*'",
    "action": {
     "T41": "n.a."
    },
    "ref": {
-    "T41": "disassembly of libsysutils 1.2.5 and apitest su area, QEMU T41 2026-10-31 (N/A: no node)"
+    "T41": "disassembly of libsysutils 1.2.5 and apitest su area, QEMU T41 2026-10-31 (N/A: no node)",
+    "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
    }
   },
   "SU_Base_CtlPwrDown": {
