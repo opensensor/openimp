@@ -25,6 +25,11 @@
 #include "imp/imp_system.h"
 #include "imp/imp_isp.h"
 #include "imp/imp_framesource.h"
+#if defined(__has_include)
+# if __has_include("imp/imp_emu_framesource.h")
+#  include "imp/imp_emu_framesource.h"
+# endif
+#endif
 #include "imp/imp_encoder.h"
 #include "imp/imp_osd.h"
 #include "imp/imp_ivs.h"

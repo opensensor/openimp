@@ -12,6 +12,7 @@
  *           or the picture did not recover.
  */
 #define _GNU_SOURCE 1
+#include <errno.h>
 #include <math.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -4243,9 +4244,48 @@ static void cs_padframe_t23(void)
 static void cs_padframe_t23(void) {}
 #endif
 
+/* ---------------------------------------------------------------------------------------------- T41 backlog (#78..#80) */
+/* IMP_EmuFrameSource_*: the vendor emulator channel is not part of the T41 1.2.5/1.2.6 libimp; the OpenIMP T40/T41 libimp exports the
+ * five names as documented ENOTSUP (-1, errno ENOTSUP, no state change); a vendor libimp without them prints N/A. */
+#if HAS_IMP_EmuFrameSource_CreateChn && (defined(PLATFORM_T41) || defined(APITEST_T40))
+static int emu_enotsup(int r)
+{
+    return r == -1 && errno == ENOTSUP;
+}
+
+static void cs_emu(void)
+{
+    G(IMPFSChnAttr, a);
+
+    NEED(IMP_EmuFrameSource_CreateChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_CreateChn(0, a);
+        rep(FN(IMP_EmuFrameSource_CreateChn), r, emu_enotsup(r) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_EnableChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_EnableChn(0);
+        rep(FN(IMP_EmuFrameSource_EnableChn), r, emu_enotsup(r) ? V_PASS : V_FAIL, "ret %d errno %d", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_GetChnAttr) {
+        int r; errno = 0; r = IMP_EmuFrameSource_GetChnAttr(0, a);
+        rep(FN(IMP_EmuFrameSource_GetChnAttr), r, emu_enotsup(r) && !gtouched(a) ? V_PASS : V_FAIL, "ret %d errno %d, attribute untouched", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_DisableChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_DisableChn(0);
+        rep(FN(IMP_EmuFrameSource_DisableChn), r, emu_enotsup(r) ? V_PASS : V_FAIL, "ret %d errno %d", r, errno);
+    }
+    NEED(IMP_EmuFrameSource_DestroyChn) {
+        int r; errno = 0; r = IMP_EmuFrameSource_DestroyChn(0);
+        rep(FN(IMP_EmuFrameSource_DestroyChn), r, emu_enotsup(r) && flow() ? V_PASS : V_FAIL, "ret %d errno %d, FrameSource frames still flow", r, errno);
+    }
+    gchk(a); gfree(a);
+}
+#else
+static void cs_emu(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4353,5 +4393,6 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("awbctstart_t40")) cs_awbctstart_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("tisp2open_t40")) cs_tisp2open_t40(); wdog("cases", 60);
     if (cs_on("sensorattr_t40")) cs_sensorattr_t40(); wdog("cases", 30);
+    if (cs_on("emu")) { cs_emu(); wdog("cases", 30); }
     wdog("cases", 60);
 }

@@ -1028,7 +1028,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 - **AE / AWB / AF:** implement (2): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`
 - **Encoder (and decoder):** implement (2): `Decoder_*`, `Encoder_Get/SetFisheyeEnableStatus`
-- **FrameSource:** implement (1): `EmuFrameSource_*`
+- **FrameSource:** documented ENOTSUP (1): `EmuFrameSource_*`
 - **OSD:** implement (1): `OSD_Init_ISP`
 - **System / sysutils / log:** implement (26): `SU_ADC_DisableChn`, `SU_ADC_EnableChn`, `SU_ADC_Exit`, `SU_ADC_GetChnValue`, `SU_ADC_Init`, `SU_Base_DisableAlarm`, `SU_Base_EnableAlarm`, `SU_Base_Get/SetAlarm`, `SU_Base_Get/SetTime`, `SU_Base_PollingAlarm`, `SU_Base_Reboot`, `SU_Base_Suspend`, `SU_CIPHER_ConfigHandle`, `SU_CIPHER_CreateHandle`, `SU_CIPHER_Decrypt`, `SU_CIPHER_DES_Exit`, `SU_CIPHER_DES_Init`, `SU_CIPHER_DES_Test`, `SU_CIPHER_DestroyHandle`, `SU_CIPHER_Encrypt`, `SU_CIPHER_Exit`, `SU_CIPHER_Init`, `SU_Key_DisableEvent`, `SU_Key_EnableEvent`, `SU_Key_ReadEvent`, `SU_LED_Command`
 
@@ -1039,7 +1039,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - **ISP tuning:** implement (12): `ISP_Get/SetCsccrMode`, `ISP_Get/SetInternalChnAttr`, `ISP_LDC_Get/SetAttr`, `ISP_LDC_INIT`, `ISP_RAW_RwControl`, `ISP_SET_GPIO_INIT_OR_FREE`, `ISP_SET_GPIO_STA`, `ISP_SetVicDoneCbFunc`, `ISP_StartNightMode`, `ISP_Tuning_Get/SetDrawBlock`, `ISP_Tuning_SetTmoFaceae`, `ISP_WDR_OPEN`
 - **AE / AWB / AF:** implement (9): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`, `ISP_Tuning_Get/SetAeConvergeStep`, `ISP_Tuning_Get/SetFaceAeWeiget`, `ISP_Tuning_GetAeBv`, `ISP_Tuning_GetAEFlickerFlag`, `ISP_Tuning_GetAFMetricesInfo`, `ISP_Tuning_GetAfStatistics`, `ISP_Tuning_GetFaceAeLuma`
 - **Encoder (and decoder):** implement (7): `Decoder_*`, `Encoder_Get/SetChnRoiAttr`, `Encoder_Get/SetChnSeiAttr`, `Encoder_Get/SetFisheyeEnableStatus`, `Encoder_SetAvpuBsSize`, `Encoder_SetChnMapRoi`, `Encoder_SetFrameRelease`
-- **FrameSource:** implement (1): `EmuFrameSource_*`
+- **FrameSource:** documented ENOTSUP (1): `EmuFrameSource_*`
 - **OSD:** implement (1): `OSD_Get/SetRgnAttr_ISP`; not applicable (1): `OSD_GetRegionLuma`
 - **System / sysutils / log:** implement (2): `SU_ADC_Init`, `SU_Base_SetWkupMode`; not applicable (4): `SU_Battery_GetCapacity`, `SU_Battery_GetEvent`, `SU_Battery_GetStatus`, `SU_Battery_GetVoltageUV`
 
@@ -1759,8 +1759,9 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `FrameSource_SnapRaw_Start` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `FrameSource_UpdateChnLut` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 
-<details><summary>Notes and references (28)</summary>
+<details><summary>Notes and references (29)</summary>
 
+- `EmuFrameSource_*`: T40/T41: not exported by the T41 1.2.5 libimp (nm); the vendor name set comes from older builds (imp_emu_framesource.h, a file-fed test channel). OpenIMP exports all five names and answers -1/ENOTSUP without any state change; IMP_FrameSource_ExternInject_* is the supported way to feed frames. apitest case emu: 5/5 PASS in QEMU T41 (T40 shares the code, not run)
 - `FrameSource_ChnStatQuery`: audit: userspace implementation T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `FrameSource_CreateChn`: audit: reaches the driver/kernel T10: apitest rc3gaps2 2026-10-27 .31. T20: apitest rc3gaps2 2026-10-27 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest rc3gaps2 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest agg47 2026-10-28 .34.
 - `FrameSource_DequeueBuffer`: T40: OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet. T41: OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet.

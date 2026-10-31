@@ -9315,6 +9315,11 @@
     "T33": "n.a.",
     "T40": "miss",
     "T41": "miss"
+   },
+   "note": "T40/T41: not exported by the T41 1.2.5 libimp (nm); the vendor name set comes from older builds (imp_emu_framesource.h, a file-fed test channel). OpenIMP exports all five names and answers -1/ENOTSUP without any state change; IMP_FrameSource_ExternInject_* is the supported way to feed frames. apitest case emu: 5/5 PASS in QEMU T41 (T40 shares the code, not run)",
+   "action": {
+    "T40": "enotsup",
+    "T41": "enotsup"
    }
   },
   "FB_*": {

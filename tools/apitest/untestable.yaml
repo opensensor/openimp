@@ -13,9 +13,6 @@ entries:
   - match: ["IMP_Decoder_*"]
     category: own-topology
     reason: "hardware decoder channel needs a bitstream source and its own frame sink (no case yet for decode)"
-  - match: ["IMP_EmuFrameSource_*"]
-    category: own-topology
-    reason: "emulated frame source (injects frames instead of the sensor), own topology"
   - match: ["IMP_FB_*"]
     category: hardware
     reason: "framebuffer / display device, cameras have no display"

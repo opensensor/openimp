@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-10-31, T41 backlog (#75-#80, branch claude/t41-backlog)
+
+- **FrameSource (#78):** `IMP_EmuFrameSource_*` is not exported by the T41 1.2.5 vendor library (nm); the names come from older vendor builds. OpenIMP keeps its five exports as a documented ENOTSUP (-1, errno ENOTSUP, no state change). New apitest case `emu` (5/5 PASS in QEMU T41), API reference entry, evidence action `enotsup`. No matrix cell changed (no camera run yet).
+
 ## 2026-10-31, T31 System backlog (#30, branch claude/t31-backlog-sys)
 
 - **Pool and address helpers (14 functions of #30):** the T31 vendor library was disassembled. `PoolAlloc_Get_Attr`, `PoolAlloc_Set_Attr`, `PoolFlushCache`, `PoolPhys_to_Virt` and `PoolVirt_to_Phys` are empty stubs there (return 0, nothing stored or converted); OpenIMP implements them (extra, documented in the API reference). `IMP_Sp_Alloc` has a different call form on the T31 vendor library than the one OpenIMP uses (open question, no streamer calls it). The other functions take the vendor arguments.
