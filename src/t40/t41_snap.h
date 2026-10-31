@@ -93,6 +93,60 @@ static inline int t40_buffer_is_stale(int64_t now_us, int64_t queued_us,
 }
 
 /*
+ * T40 measured frame interval (#148).  The stale bounds above assume one
+ * frame per interval; the configured fps is only a lower bound for that
+ * interval (a sensor in a long-exposure night mode may run slower).  est_us
+ * follows the time between successive DQBUFs of the channel (1/8 EWMA);
+ * deltas below half the configured interval (a backlog drained back to
+ * back) or above 1 s (a pause, not a frame interval) are ignored.  The
+ * interval the bounds use is never shorter than the configured one.
+ */
+static inline void t40_interval_note(uint32_t *est_us, int64_t delta_us,
+                                     uint32_t config_us)
+{
+    if (delta_us < (int64_t)(config_us / 2u) || delta_us > 1000000)
+        return;
+    if (!*est_us)
+        *est_us = (uint32_t)delta_us;
+    else
+        *est_us = (uint32_t)(((int64_t)*est_us * 7 + delta_us) / 8);
+}
+
+static inline uint32_t t40_interval_bound(uint32_t config_us, uint32_t est_us)
+{
+    return est_us > config_us ? est_us : config_us;
+}
+
+/*
+ * T40 consumer-gap flush mark (#168, #148).  A consumer that was away
+ * longer than buffer_count intervals plus the stale limit gets only frames
+ * from buffers queued after the gap was seen: buffers queued before the
+ * returned mark are dropped.  The mark is latched: it stays the time the
+ * gap was first seen until a frame is returned (the caller then clears it),
+ * so a consumer that probes in short slices (the encoder's 20 ms WaitFrame)
+ * gets the buffers requeued after the mark once the sensor fills them.
+ * Re-arming it at every call dropped each buffer exactly when it was filled
+ * (~2 intervals after its QBUF: 100 ms at 20 fps with 3 buffers) and never
+ * returned a frame.  A mark older than the stale bound itself (channel
+ * disabled meanwhile, sensor stopped) is renewed.  Returns the mark to use
+ * (0 = no gap).
+ */
+static inline int64_t t40_gap_flush_mark(int64_t now_us, int64_t last_frame_us,
+                                         int64_t mark_us,
+                                         uint32_t buffer_count,
+                                         uint32_t interval_us)
+{
+    int64_t ahead = (int64_t)buffer_count * interval_us;
+
+    if (mark_us && !t41_frame_is_stale(now_us - mark_us - ahead, interval_us))
+        return mark_us;
+    if (last_frame_us &&
+        t41_frame_is_stale(now_us - last_frame_us - ahead, interval_us))
+        return now_us;
+    return 0;
+}
+
+/*
  * T40 3A feed: the driver's frame 3A (AE/AWB/day-night) samples completed
  * frames, and the frame channels complete a frame only into a buffer queued
  * to the driver.  A stream kept open without a consumer (timps

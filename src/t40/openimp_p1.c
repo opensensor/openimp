@@ -2572,6 +2572,13 @@ static void p1_test_pattern_fill(struct openimp_fs_channel *chn,
 /* CLOCK_MONOTONIC us of the last frame a consumer (not the 3A feeder)
  * dequeued per channel; P1 lock. */
 static int64_t p1_gap_last_us[OPENIMP_FS_CHANNELS];
+/* #148: latched consumer-gap flush mark (t40_gap_flush_mark), cleared when
+ * a consumer gets a frame; P1 lock. */
+static int64_t p1_gap_mark_us[OPENIMP_FS_CHANNELS];
+/* #148: measured DQBUF interval (t40_interval_note) and the time of the
+ * last DQBUF it is measured from; P1 lock. */
+static uint32_t p1_iv_est_us[OPENIMP_FS_CHANNELS];
+static int64_t p1_dq_prev_us[OPENIMP_FS_CHANNELS];
 #endif
 
 static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_attempts)
@@ -2647,10 +2654,14 @@ static int p1_get_frame_attempts(int channel, IMPFrameInfo **frame, int max_atte
         if (chn->attr.outFrmRateNum > 0 && chn->attr.outFrmRateDen > 0)
             iv = 1000000u * (uint32_t)chn->attr.outFrmRateDen /
                  (uint32_t)chn->attr.outFrmRateNum;
-        if (p1_gap_last_us[channel] &&
-            t41_frame_is_stale(now_us - p1_gap_last_us[channel] -
-                               (int64_t)chn->buffer_count * iv, iv))
-            flush_from_us = now_us;
+        /* #148: the mark is latched until a frame is returned; re-armed at
+         * every call (the encoder probes in 20 ms slices) it dropped every
+         * buffer as it was filled and the channel fell to fallback frames */
+        iv = t40_interval_bound(iv, p1_iv_est_us[channel]);
+        p1_gap_mark_us[channel] = t40_gap_flush_mark(
+            now_us, p1_gap_last_us[channel], p1_gap_mark_us[channel],
+            chn->buffer_count, iv);
+        flush_from_us = p1_gap_mark_us[channel];
         unlock_p1();
     }
 #endif
@@ -2796,6 +2807,13 @@ again:
         if (chn->attr.outFrmRateNum > 0 && chn->attr.outFrmRateDen > 0)
             interval_us = 1000000u * (uint32_t)chn->attr.outFrmRateDen /
                           (uint32_t)chn->attr.outFrmRateNum;
+        /* #148: the bound follows the measured interval when the sensor
+         * runs slower than configured (never shorter than configured) */
+        if (p1_dq_prev_us[channel])
+            t40_interval_note(&p1_iv_est_us[channel],
+                              now_us - p1_dq_prev_us[channel], interval_us);
+        p1_dq_prev_us[channel] = now_us;
+        interval_us = t40_interval_bound(interval_us, p1_iv_est_us[channel]);
         last_q_ago_ms = (now_us - buffer->queued_us) / 1000;
         /* #168: after a DisableChn/EnableChn cycle the open driver handed
          * back, right after the stale ones were requeued, a buffer queued
@@ -2840,6 +2858,7 @@ again:
         clock_gettime(CLOCK_MONOTONIC_RAW, &rawt);
         p1_gap_last_us[channel] = (int64_t)rawt.tv_sec * 1000000 +
                                   rawt.tv_nsec / 1000;
+        p1_gap_mark_us[channel] = 0;
         if (flush_from_us)
             syslog(LOG_INFO, "openimp-p1: chn%d: first frame after a gap: "
                    "%u buffers dropped, returned buffer queued %lld ms ago",
