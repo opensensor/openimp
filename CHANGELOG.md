@@ -21,6 +21,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 - **#67 `IMP_EmuFrameSource_*`: not applicable on T40.** The 1.3.1 SDK declares them in `imp_emu_framesource.h`, no shipped vendor library exports them (`nm -D`, `strings` on uclibc and glibc `libimp.so`, `libimp.a`); API evidence cell `miss` -> `n.a.`.
 - **#68 `IMP_OSD_Init_ISP`:** already implemented (lazy table, idempotent, cannot fail; the vendor builds the pool and the 6x8 table and returns -1 if the allocation fails, documented as a difference). New apitest line `IMP_OSD_Init_ISP` (two calls in a row), QEMU T40 PASS; API cell `?` -> `qemu` (camera run missing).
+- **#66 `IMP_Decoder_*`: not applicable on T40** (declared in `imp_decoder.h`, exported by no T40 1.3.1 / T41 1.2.5 / T41 1.2.6 vendor library; API cell `miss` -> `n.a.`). **`IMP_Encoder_Get/SetFisheyeEnableStatus`: matches the vendor, stays "cache" by design:** vendor 1.3.1 (0x6bd4c / 0x6be44) stores the flag in the channel record only while the channel is not created (-1 afterwards), channels 0..12; the only reader is `channel_encoder_init`, which hands it to the closed encoder code; OpenIMP is identical and has no consumer for it. Camera: apitest agg60 .184 PASS (refused on a created channel, idle round trip).
 
 ## 2026-10-31, late evening (image agg60)
 

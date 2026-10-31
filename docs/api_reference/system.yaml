@@ -36,7 +36,7 @@ groups:
     title: Logging
   - id: dec
     title: Decoder (T23)
-    intro: A hardware JPEG decoder on channel 0, implemented by OpenIMP on T23 only (the T40 and T41 vendor libraries export it too; OpenIMP does not). It decodes JPEG pictures into NV12, NV21 or YUV420P and runs in the helper process that also hosts the T23 H.264 encoder. The status row is marked as having a known defect because that helper is off by default since agg-37, so the decoder is not usable in a default T23 build.
+    intro: A hardware JPEG decoder on channel 0, implemented by OpenIMP on T23 only. The T40 and T41 SDK headers declare the decoder calls, but the vendor libraries that were checked (T40 1.3.1, T41 1.2.5 and 1.2.6, nm and strings) do not export them, so nothing is missing there. It decodes JPEG pictures into NV12, NV21 or YUV420P and runs in the helper process that also hosts the T23 H.264 encoder. The status row is marked as having a known defect because that helper is off by default since agg-37, so the decoder is not usable in a default T23 build.
   - id: su
     title: System utilities (SU)
 functions:
