@@ -968,7 +968,7 @@ int32_t IMP_ISP_GetDrawAttr(IMPVI_NUM num, IMPISPDrawAttr *attr)
 #endif
 
 #if defined(PLATFORM_T40)
-extern void OpenIMP_P1_AlgoNotifyFps(int num);
+extern void OpenIMP_P1_AlgoNotifyFps(int num) __attribute__((weak));
 #endif
 
 #if defined(PLATFORM_T41)
@@ -993,7 +993,8 @@ int32_t IMP_ISP_Tuning_SetSensorFPS(IMPVI_NUM num, uint32_t *numerator,
         p3_controls.fps_num = *numerator;
         p3_controls.fps_den = *denominator;
 #if defined(PLATFORM_T40)
-        OpenIMP_P1_AlgoNotifyFps((int)num);     /* vendor: an active custom AE library is told */
+        if (OpenIMP_P1_AlgoNotifyFps)
+            OpenIMP_P1_AlgoNotifyFps((int)num);     /* vendor: an active custom AE library is told */
 #endif
     }
     return result;
