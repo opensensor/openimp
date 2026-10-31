@@ -6085,6 +6085,72 @@ int IMP_Encoder_GetChnHSkip(int channel, IMPEncoderAttrHSkip *attr)
 }
 #endif
 
+#if defined(PLATFORM_T21)
+extern int AL_Codec_Encode_SetCrop(void *codec, int enable, uint32_t x, uint32_t y,
+                                   uint32_t w, uint32_t h);
+extern int AL_Codec_Encode_GetCrop(void *codec, int *enable, uint32_t *x, uint32_t *y,
+                                   uint32_t *w, uint32_t *h);
+
+/* OEM T21 1.0.33 (0x458c8) and T20/T10 3.12.0 (0x47bf0) IMP_Encoder_SetChnCrop,
+ * exported without a header: channel >= 6 and any of x, y, w, h that is not a
+ * multiple of 16 give -1 (also with enable 0); a channel that was never created
+ * answers 0 and does nothing; on a created channel the rectangle (in macroblocks)
+ * goes to the H.264 encoder's crop parameter, which here is the SPS frame
+ * cropping of the Helix encoder: the visible rectangle of the stream, applied
+ * between pictures, the next picture is an IDR.  Other codecs: 0, no effect. */
+int IMP_Encoder_SetChnCrop(int channel, const IMPEncoderCropCfg *cfg)
+{
+    P2EncoderChannel *ch;
+    int ret = 0;
+
+    if (!p2_valid_channel(channel) || !cfg)
+        return -1;
+    if ((cfg->x | cfg->y | cfg->w | cfg->h) & 15u)
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec_type == IMP_ENC_TYPE_AVC && ch->codec) {
+        if (cfg->enable && (!cfg->w || !cfg->h ||
+                            cfg->x + cfg->w > ch->attr.encAttr.picWidth ||
+                            cfg->y + cfg->h > ch->attr.encAttr.picHeight))
+            ret = -1;
+        else
+            ret = AL_Codec_Encode_SetCrop(ch->codec, cfg->enable != 0, cfg->x,
+                                          cfg->y, cfg->w, cfg->h);
+    }
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
+}
+
+/* OEM: the 20 byte record is cleared first; an uncreated channel answers 0 with
+ * that all-zero record. */
+int IMP_Encoder_GetChnCrop(int channel, IMPEncoderCropCfg *cfg)
+{
+    P2EncoderChannel *ch;
+    int ret = 0;
+
+    if (!p2_valid_channel(channel) || !cfg)
+        return -1;
+    memset(cfg, 0, sizeof(*cfg));
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec_type == IMP_ENC_TYPE_AVC && ch->codec) {
+        int en = 0;
+        uint32_t x = 0, y = 0, w = 0, h = 0;
+
+        ret = AL_Codec_Encode_GetCrop(ch->codec, &en, &x, &y, &w, &h);
+        if (ret == 0) {
+            cfg->enable = en != 0;
+            cfg->x = x; cfg->y = y; cfg->w = w; cfg->h = h;
+        }
+    }
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
+}
+#endif
+
 #if defined(PLATFORM_T30) && !defined(PLATFORM_T23)
 /* ---- vendor channel bookkeeping, T20/T21 (gap work 2026-10-10) -----------
  * Disassembly of libimp T21 1.0.33 and T20/T10 3.12.0 (identical build for

@@ -221,8 +221,9 @@ functions:
     soc: "T23, T40, T41"
   Encoder_SetChnRcTrigLevel:
     group: rc
-    summary: "Sets the trigger level and mode of the rate controller's re-encode. The pair is only stored in OpenIMP; there is no getter."
-    returns: "0 for a valid channel (also for one that was not created), -1 for an invalid channel."
+    summary: "Sets the trigger level and mode (new maximum QP) of the rate controller's QP-cap lift. There is no getter."
+    returns: "0 for a valid channel (also for one that was not created), -1 for a channel number of 6 or more (the vendor limit) or an invalid one."
+    notes: "T10 and T20: a created H.264 channel hands the pair to the rate controller, which lifts the QP cap from the application's maximum QP to the new maximum while a GOP uses more than level times its budget (stock behaviour, mode clamped to 1 to 51). T21: the pair is stored with the stock return codes only; the T21 rate controller has no trigger yet."
   Encoder_GetChnAveBitrate:
     group: rc
     summary: "Averages the bitrate over a number of streams that you pass in one by one."
@@ -302,6 +303,7 @@ functions:
     group: gop
     summary: "Sets the black enhancement flag of the skip mode."
     returns: "-1 for an invalid channel, otherwise 0 (the flag is kept; the Helix path codes no skip structure)."
+    notes: "Vendor T21 1.0.33 hands the flag to its closed encoder (parameter 10, H.264 channel only) and keeps a copy in the channel record; OpenIMP keeps the flag in the channel attribute only, because the Helix path codes no skip structure, so there is no visible effect."
   Encoder_Get/SetChnFrmUsedMode:
     group: gop
     summary: "Stores or reads the frame use mode (enable, mode, times). The vendor encoder uses it to reuse or skip input frames when the source is slower than the encoder."
@@ -376,14 +378,15 @@ functions:
     group: qp
     summary: "Stores or reads the demask attribute (enable and auto flags, count, threshold). The values are stored in the channel attribute; the Helix path has no demask stage."
     returns: "0 on success, -1 for an invalid channel or a NULL pointer."
-    notes: "Valid before and after `CreateChn`, which copies the same block in from the rate-control attribute."
+    notes: "Valid before and after `CreateChn`, which copies the same block in from the rate-control attribute. The older 3.9.0 T10/T20 library also had `Get/SetChnH264Demask`, `Get/SetChnH264Denoise`, `Get/SetChnH264FrmUsedMode` and `Get/SetChnRcAttr`; the 3.12.0 library on the cameras dropped or renamed them (to this call, `ChnDenoise` and `ChnFrmUsedMode`), and OpenIMP follows 3.12.0, so those four pairs are not exported."
     soc: T10, T20
   Encoder_Get/SetChnCrop:
     group: qp
     summary: "Sets or reads the crop window (x, y, w, h and an enable flag) at the encoder input of an H.264 channel."
     returns: "0 on success, -1 for an invalid or not created channel, a NULL pointer, a window that leaves the encoded picture, or on Set any of x, y, w, h being odd."
-    notes: "Get on a non-H.264 channel returns zero values. The window is passed to the running encoder."
-    soc: T23
+    notes: "Get on a non-H.264 channel returns zero values. The window is passed to the running encoder. On T10, T20 and T21 (exported by the vendor library without a header) x, y, w and h must be multiples of 16 (any other value is -1, also with enable 0), a channel that was never created answers 0 and does nothing, and an enabled window must be non-empty and inside the picture. The window is the visible rectangle of the stream: it is written as frame cropping into the SPS, applied between two pictures, and the next picture is an IDR. Only H.264 channels; JPEG channels answer 0 without effect."
+    diff: "T10, T20, T21: the vendor library hands the window to its closed encoder in macroblock units; OpenIMP crops through the SPS of its own Helix encoder (the stream decodes to the window size). The coded picture is still the whole macroblock-aligned picture."
+    soc: "T10, T20, T21, T23"
   Encoder_SetChnResizeMode:
     group: qp
     summary: "Stores the resize mode (0 or 1) of the channel."
@@ -611,14 +614,15 @@ functions:
     returns: "-1 on T23."
   Encoder_PadFrame:
     group: misc
-    summary: "Vendor entry for feeding application frames into the encoder in place of captured ones. On T23 OpenIMP refuses every frame: it calls the release callback to give the frame back and returns -1."
-    returns: "-1 on T23."
-    notes: "Only the attribute side (`SetPadFrameAttr`) is stored."
+    summary: "Hands a processed copy of a captured frame (with a release callback) to the encoder. While pad frames are enabled with `SetPadFrameAttr`, every captured frame is encoded from the pad frame that matches it instead, and a captured frame without one is not encoded."
+    returns: "0 when the frame was queued (also for a channel that is registered and started but not created, as stock). -1, with the release callback called, for an invalid channel, a NULL frame, a channel that is not registered or not started, pad frames not enabled, or a full queue after one frame interval."
+    notes: "The pad frame uses the encoder input layout (luma width x height rounded up to 16, chroma behind it). Matching follows the stock arithmetic: in time-stamp mode a pad frame is taken when its time stamp is within the tolerance of the capture, a newer one waits, an older one is released. The time stamp sits at +0x28 of the frame on T23 and at +0x20 on T10, T20 and T21. Device-tested on T10, T20 and T21: free mode encodes the pad frames (a black pad frame cost 26 to 51 bytes against 1000 to 8000 for the scene), stale frames in time-stamp mode are refused and released, nothing stays in flight after `DestroyChn`."
+    soc: "T10, T20, T21, T23"
   Encoder_SetPadFrameAttr:
     group: misc
-    summary: "Stores the pad-frame attribute and enable flag for an H.264 channel. The attribute is only kept, because `PadFrame` is refused."
-    returns: "0 on success for an H.264 channel, -1 for an invalid channel."
-    soc: "T23"
+    summary: "Switches pad frames on or off for an H.264 channel and stores the 32-byte attribute: word 1 selects time-stamp matching (0 takes the next pad frame), words 2 and 3 are the tolerance."
+    returns: "0 on success, -1 for an invalid channel (6 or more on T10, T20 and T21, 9 or more on T23)."
+    soc: "T10, T20, T21, T23"
   Encoder_GetChnEvalInfo:
     group: misc
     summary: 'Reads the evaluation record of the most recent picture of an H.264 channel on T31: bytes of the picture, six
