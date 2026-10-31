@@ -999,9 +999,9 @@ functions:
     summary: "Reads or sets one block of the table the ISP draws (rectangles and lines)."
     params:
       draw: "The draw block: type, channel, picture number and the configuration with colour."
-    returns: "-4090 if the driver ioctl fails; otherwise 0. There is no NULL check."
-    notes: "Set converts an RGB colour of an enabled block of the first three types to YUV in your structure and remembers it; Get puts the remembered colour type and colour back. Whether the running driver serves the control depends on its version: check the matrix cell."
-    soc: "T23 only; missing on T41."
+    returns: "T23: -4090 if the driver ioctl fails, otherwise 0, no NULL check. T41: -4087 for a NULL structure, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 if the driver ioctl fails, otherwise 0."
+    notes: "T23: Set converts an RGB colour of an enabled block of the first three types to YUV in your structure and remembers it; Get puts the remembered colour type and colour back. T41: the 32-byte block goes to the driver unchanged, as in the vendor library. Whether the running driver serves the control depends on its version: the open T41 module does not route it yet (the call then fails with -4090 and errno EPERM); check the matrix cell."
+    soc: "T23 and T41."
   ISP_Get/SetDrawAttr:
     group: osd
     summary: "Reads or sets the drawing attributes of the ISP: the 896-byte table of lines, ranges and windows (2 channels of 16 units)."

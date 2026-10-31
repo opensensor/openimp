@@ -2777,7 +2777,7 @@ static void cs_drawblock(void)
         r2 = IMP_ISP_Tuning_GetDrawBlock(IMPVI_MAIN, g); gchk(g);
         a->cfg.wind.enable = 0; r3 = IMP_ISP_Tuning_SetDrawBlock(IMPVI_MAIN, a);
         off = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
-        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && (base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20 && flow()) ? V_PASS : V_FAIL,
+        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && (getenv("APITEST_NOEFFECT") || ((base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20)) && flow()) ? V_PASS : V_FAIL,
             "window frame %d px at (%d,%d): top edge luma %.1f -> %.1f; disabled: %.1f (base %.1f); frames flow", bw, x, y, base, on, off, base);
         rep(FN(IMP_ISP_Tuning_GetDrawBlock), r2, (r2 == 0 && g->cfg.wind.enable == 1 && g->cfg.wind.left == x && g->cfg.wind.top == y && g->cfg.wind.width == w && g->cfg.wind.line_width == bw) ? V_PASS : V_FAIL,
             "read while drawn: enable %u at (%u,%u) width %u line %u", g->cfg.wind.enable, g->cfg.wind.left, g->cfg.wind.top, g->cfg.wind.width, g->cfg.wind.line_width);
@@ -4283,9 +4283,75 @@ static void cs_emu(void)
 static void cs_emu(void) {}
 #endif
 
+/* IMP_OSD_Set/GetRgnAttr_ISP (T41): an ISP-drawn line/rectangle (type 11) and cover (type 12) region.  Return codes (sensor 2, NULL, picture
+ * type), set/get round trip of the draw block and the cover block, the stored show flag, and (camera only; APITEST_NOEFFECT=1 skips it, QEMU has
+ * no MSCA draw) the luma at the top edge of the frame while drawn and after it is disabled. */
+#if defined(PLATFORM_T41) && !defined(APITEST_T40) && HAS_IMP_OSD_SetRgnAttr_ISP && HAS_IMP_OSD_GetRgnAttr_ISP
+static void cs_rgnisp(void)
+{
+    NEED(IMP_OSD_SetRgnAttr_ISP) NEED(IMP_OSD_GetRgnAttr_ISP) {
+        G(IMPOSDRgnAttr, a); G(IMPOSDRgnAttr, g);
+        IMPISPDrawBlockAttr *d = &a->osdispdraw.stDrawAttr;
+        IMPISPMaskBlockAttr *m = &a->osdispdraw.stCoverAttr;
+        int x = g_sw / 4, y = g_sh / 4, w = g_sw / 2, bw = 24, r1, r2, r3, r4, r5, shown = -1, e1, e2, e3, e4, g1 = 0, g2, noeff = getenv("APITEST_NOEFFECT") != NULL;
+        int nodrv, ok;
+        double base = 0, on = 0, off = 0;
+
+        if (!noeff) base = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        memset(a, 0, sizeof(*a));
+        a->type = OSD_REG_ISP_LINE_RECT;
+        d->pinum = 0; d->type = IMP_ISP_DRAW_WIND; d->color_type = IMPISP_MASK_TYPE_YUV;
+        d->cfg.wind.enable = 1; d->cfg.wind.left = x; d->cfg.wind.top = y; d->cfg.wind.width = w; d->cfg.wind.height = g_sh / 2;
+        d->cfg.wind.color.ayuv.y_value = base < 140 ? 235 : 16; d->cfg.wind.color.ayuv.u_value = 128; d->cfg.wind.color.ayuv.v_value = 128;
+        d->cfg.wind.line_width = bw; d->cfg.wind.alpha = 7;
+        errno = 0; r1 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);
+        nodrv = r1 != 0 && errno == EPERM;        /* the module answers EPERM to a tuning control it does not route */
+        if (!noeff) on = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        memset(g, 0, sizeof(*g)); g->osdispdraw.stDrawAttr.pinum = 0; g->osdispdraw.stDrawAttr.type = IMP_ISP_DRAW_WIND;
+        r2 = IMP_OSD_GetRgnAttr_ISP(0, g, &shown); gchk(g);
+        g1 = r2 == 0 && shown == 1 && g->osdispdraw.stDrawAttr.cfg.wind.enable == 1 && g->osdispdraw.stDrawAttr.cfg.wind.left == x &&
+             g->osdispdraw.stDrawAttr.cfg.wind.top == y && g->osdispdraw.stDrawAttr.cfg.wind.width == w && g->osdispdraw.stDrawAttr.cfg.wind.line_width == bw;
+        d->cfg.wind.enable = 0; r3 = IMP_OSD_SetRgnAttr_ISP(0, a, 0);
+        if (!noeff) off = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        /* cover region: one 64x64 block, read back through the same call (the draw block part fails with the module's EPERM too) */
+        memset(a, 0, sizeof(*a)); a->type = OSD_REG_ISP_COVER;
+        m->chx = 0; m->pinum = 0; m->mask_en = 1; m->mask_pos_left = 64; m->mask_pos_top = 64; m->mask_width = 64; m->mask_height = 64;
+        m->mask_type = IMPISP_MASK_TYPE_YUV; m->mask_value.ayuv.y_value = 16; m->mask_value.ayuv.u_value = 128; m->mask_value.ayuv.v_value = 128;
+        r5 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);
+        memset(g, 0, sizeof(*g)); g->osdispdraw.stCoverAttr.chx = 0; g->osdispdraw.stCoverAttr.pinum = 0;
+        r4 = IMP_OSD_GetRgnAttr_ISP(0, g, &shown); gchk(g);
+        g2 = g->osdispdraw.stCoverAttr.mask_en == 1 && g->osdispdraw.stCoverAttr.mask_width == 64 && g->osdispdraw.stCoverAttr.mask_height == 64 &&
+             g->osdispdraw.stCoverAttr.mask_pos_left == 64 && g->osdispdraw.stCoverAttr.mask_pos_top == 64;
+        m->mask_en = 0; IMP_OSD_SetRgnAttr_ISP(0, a, 1);
+        a->type = OSD_REG_ISP_PIC; e1 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);           /* pictures: IMP_OSD_SetRgnAttr_PicISP */
+        e2 = IMP_OSD_SetRgnAttr_ISP(2, a, 1); e3 = IMP_OSD_SetRgnAttr_ISP(0, NULL, 1);
+        e4 = IMP_OSD_GetRgnAttr_ISP(0, g, NULL);
+        ok = e1 == (int)0x80020040 && e2 == (int)0x80020001 && e3 == (int)0x80020010 && e4 == (int)0x80020010 && flow();
+        if (nodrv)
+            rep(FN(IMP_OSD_SetRgnAttr_ISP), r1, V_NA, "line/rect: the ISP module has no handler for tuning control 0x80000a0 (EPERM); cover set %d, codes picture %#x sensor2 %#x NULL %#x",
+                       r5, (unsigned)e1, (unsigned)e2, (unsigned)e3);
+        else
+            rep(FN(IMP_OSD_SetRgnAttr_ISP), r1 | r3 | r5, (r1 == 0 && r3 == 0 && r5 == 0 && ok &&
+                (noeff || ((base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20))) ? V_PASS : V_FAIL,
+                "line/rect %d px frame at (%d,%d): %s; cover set %d; picture %#x, sensor 2 %#x, NULL %#x; frames flow", bw, x, y,
+                noeff ? "effect not checked" : "top edge luma", r5, (unsigned)e1, (unsigned)e2, (unsigned)e3);
+        if (!noeff && !nodrv) printf("[T] rgnisp top edge luma base %.1f drawn %.1f disabled %.1f\n", base, on, off);
+        if (nodrv)
+            rep(FN(IMP_OSD_GetRgnAttr_ISP), r2, V_NA, "the call reads draw block, OSD attr and cover block in one go and the ISP module has no handler for tuning control 0x80000a0 (EPERM): ret %d; NULL show flag %#x", r2, (unsigned)e4);
+        else
+            rep(FN(IMP_OSD_GetRgnAttr_ISP), r2 | r4, (g1 && g2 && r2 == 0 && r4 == 0 && e4 == (int)0x80020010) ? V_PASS : V_FAIL,
+                "draw block read back (show flag %d); cover block %ux%u at (%u,%u) en %u; NULL show flag %#x", shown, g->osdispdraw.stCoverAttr.mask_width,
+                g->osdispdraw.stCoverAttr.mask_height, g->osdispdraw.stCoverAttr.mask_pos_left, g->osdispdraw.stCoverAttr.mask_pos_top, g->osdispdraw.stCoverAttr.mask_en, (unsigned)e4);
+        gfree(a); gfree(g);
+    }
+}
+#else
+static void cs_rgnisp(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4394,5 +4460,6 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("tisp2open_t40")) cs_tisp2open_t40(); wdog("cases", 60);
     if (cs_on("sensorattr_t40")) cs_sensorattr_t40(); wdog("cases", 30);
     if (cs_on("emu")) { cs_emu(); wdog("cases", 30); }
+    if (cs_on("rgnisp")) { cs_rgnisp(); wdog("cases", 90); }
     wdog("cases", 60);
 }

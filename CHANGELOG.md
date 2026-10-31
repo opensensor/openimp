@@ -11,6 +11,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 ## 2026-10-31, T41 backlog (#75-#80, branch claude/t41-backlog)
 
 - **FrameSource (#78):** `IMP_EmuFrameSource_*` is not exported by the T41 1.2.5 vendor library (nm); the names come from older vendor builds. OpenIMP keeps its five exports as a documented ENOTSUP (-1, errno ENOTSUP, no state change). New apitest case `emu` (5/5 PASS in QEMU T41), API reference entry, evidence action `enotsup`. No matrix cell changed (no camera run yet).
+- **OSD (#79):** `IMP_OSD_SetRgnAttr_ISP` / `GetRgnAttr_ISP` and `IMP_ISP_Tuning_Set/GetDrawBlock` are new on T41, rebuilt from the T41 1.2.5 vendor library (draw block at +48, OSD format at +80, cover block at +100 of the region attribute; vendor return codes 0x80020001 / 0x80020010 / 0x80020040; DrawBlock control 0x080000a0, 32 bytes). `IMP_OSD_GetRegionLuma` is not exported by any T41 library we hold (n.a.). New apitest case `rgnisp`. QEMU T41: cover type, error codes and show flag as the vendor, 0 oopses; line/rect and Get report N/A because the open-tx-isp T41 module answers EPERM to control 0x080000a0 ("not implemented"): that module route is the open part. Matrix: DrawBlock and RgnAttr_ISP cells `err` (was `miss`).
 
 ## 2026-10-31, T31 System backlog (#30, branch claude/t31-backlog-sys)
 

@@ -151,7 +151,7 @@ static void osd_flow(void)
         gfree(fr); gfree(m);
     }
 #endif
-#if HAS_IMP_OSD_SetRgnAttr_ISP
+#if HAS_IMP_OSD_SetRgnAttr_ISP && !(defined(PLATFORM_T41) && !defined(APITEST_T40))   /* T41: case rgnisp (at_cases.c) */
     rep(FN(IMP_OSD_SetRgnAttr_ISP), 0, V_SKIP, "ISP-side OSD block, needs an IMPOSDIspDraw set-up of its own");
     rep(FN(IMP_OSD_GetRgnAttr_ISP), 0, V_SKIP, "see SetRgnAttr_ISP");
 #endif
