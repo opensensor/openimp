@@ -584,9 +584,9 @@ functions:
   ISP_Get/SetCsccrMode:
     group: color
     summary: "Reads or sets the mode of the chroma conversion stage (a T41 vendor call)."
-    returns: "Not applicable."
-    notes: "Not provided by OpenIMP on any SoC. The matrix lists it as a gap on T41."
-    soc: "Vendor T41 only; missing in OpenIMP."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    notes: "T41: the structure goes to the ISP module unchanged (tuning control 0x8000097, 12 bytes: mode and parameters). Return codes as the vendor library: -4087 for a NULL pointer, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 when the module refuses the control. The open T41 module answers EPERM to a control it does not route (see the matrix cell)."
+    soc: "T41."
   ISP_Tuning_Get/SetModule_Ratio:
     group: color
     summary: "Reads or sets how strongly individual ISP blocks work, as a ratio."
@@ -760,8 +760,8 @@ functions:
     summary: "Starts the sensor in night mode: call it after `IMP_ISP_Open` and before `IMP_ISP_AddSensor`, so the first frames already use the night settings."
     params:
       num: "Sensor number, below 4."
-    returns: "0 on success; -4 for a sensor number of 4 or more; -8 when the ISP device is not open; -1 when the driver call fails."
-    soc: "T40 only; missing on T41."
+    returns: "T40: 0 on success; -4 for a sensor number of 4 or more; -8 when the ISP device is not open; -1 when the driver call fails. T41: 0; -4084 for a sensor number of 2 or more; -4088 when the ISP device is not open; -4095 when the module refuses (ioctl 0xc004542e)."
+    soc: "T40 and T41."
   ISP_Tuning_Get/SetHVFLIP:
     group: flip
     summary: "Sets or reads the horizontal and vertical flip as one value (normal, horizontal, vertical, both)."
@@ -884,7 +884,7 @@ functions:
   ISP_WDR_OPEN:
     group: wdr
     summary: "Opens the WDR path (T40 and T41 form with a sensor number). For the linear running mode the sensor and input mode go to the driver; for the WDR running mode WDR is enabled in the driver."
-    returns: "0 on success, -8 for a NULL attribute or when the ISP is not open, -1 when the driver refuses, -9 for another running mode."
+    returns: "T40: 0 on success, -8 for a NULL attribute or when the ISP is not open, -1 when the driver refuses, -9 for another running mode. T41: 0; -4087 for a NULL attribute or an unknown running mode, -4084 for a sensor number of 2 or more, -4088 when the ISP is not open, -4090 when the module refuses (ioctl 0xc004548d, linear start mode)."
   ISP_Tuning_Get/SetAfHist:
     group: af
     summary: "Reads or sets the AF histogram parameters."
@@ -908,8 +908,8 @@ functions:
       num: "Video input (`IMPVI_MAIN`)."
       metric: "`IMPISPAFMetricsInfo`."
     returns: "The driver's result; -1 for a bad video input number or NULL."
-    notes: "Pointer pass-through: the block goes to the ISP driver unchanged and its layout is not interpreted by the library."
-    soc: "T40; missing on T41."
+    notes: "Pointer pass-through: the block goes to the ISP driver unchanged and its layout is not interpreted by the library. T41: control 0x8000034, 12 bytes, return codes -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    soc: "T40 and T41."
   ISP_Tuning_GetAfStatistics:
     group: af
     summary: "Reads the AF statistics."
@@ -917,8 +917,8 @@ functions:
       num: "Video input (`IMPVI_MAIN`)."
       info: "`IMPISPAFStatisInfo`."
     returns: "The driver's result; -1 for a bad video input number or NULL."
-    notes: "Pointer pass-through, as `GetAFMetricesInfo`."
-    soc: "T40; missing on T41."
+    notes: "Pointer pass-through: control 0x8000031, 0x1518 bytes. T41 return codes: -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    soc: "T40 and T41."
   ISP_Tuning_GetAfZone:
     group: af
     summary: Reads the AF value of each zone.
@@ -1212,13 +1212,15 @@ functions:
   ISP_LDC_Get/SetAttr:
     group: ldc
     summary: "Reads or sets the lens distortion correction attributes (a T41 vendor call)."
-    notes: "Not provided by OpenIMP on any SoC. The matrix lists it as a gap on T41."
-    soc: "Vendor T41 only; missing in OpenIMP."
+    notes: "T41: ioctl 0xc004547a (set) and 0xc004547b (get) with the public attribute. Whether the module serves them is shown by the matrix cell."
+    soc: "T41."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4095 module error."
   ISP_LDC_INIT:
     group: ldc
     summary: "Initialises the lens distortion correction (a T41 vendor call)."
-    notes: "Not provided by OpenIMP on any SoC. The matrix lists it as a gap on T41."
-    soc: "Vendor T41 only; missing in OpenIMP."
+    notes: "T41: the 3612-byte initialisation block goes to the ISP module (ioctl 0xc0045479). The vendor library keeps the block until the ISP is opened; OpenIMP needs the ISP open. Whether the module serves it is shown by the matrix cell."
+    soc: "T41."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4095 module error."
   ISP_Tuning_SetFixedContraster:
     group: color
     summary: "Hands an `IMPISPFixedContrastAttr` to the driver as the fixed-contrast control (T40 and T41 form with a sensor number)."
@@ -1248,7 +1250,7 @@ functions:
     group: ae
     summary: "Registers an application-supplied auto exposure algorithm as a table of callbacks. The function is copied and kept; it is handed to the driver the next time a sensor is enabled (and is re-registered at every enable)."
     returns: "0 on success, -1 for NULL or no memory."
-    notes: "Register before `IMP_ISP_EnableSensor`. `DisableSensor` unregisters the algorithm again, so register it once per run of the sensor."
+    notes: "Register before `IMP_ISP_EnableSensor`. `DisableSensor` unregisters the algorithm again, so register it once per run of the sensor. T41: not provided by the open stack: -1 with errno ENOTSUP (the open ISP module runs its own AE and has no event path for user algorithms)."
   ISP_SetAeAlgoFunc_close:
     group: sys
     summary: "Tells the driver to stop using the custom AE algorithm and clears the registration flag."
@@ -1263,7 +1265,7 @@ functions:
     group: awb
     summary: "Registers an application-supplied auto white balance algorithm as a table of callbacks; handled like `SetAeAlgoFunc`."
     returns: "0 on success, -1 for NULL or no memory."
-    notes: "Register before `IMP_ISP_EnableSensor`; `DisableSensor` unregisters it."
+    notes: "Register before `IMP_ISP_EnableSensor`; `DisableSensor` unregisters it. T41: not provided by the open stack: -1 with errno ENOTSUP (the open ISP module runs its own AWB)."
   ISP_SetAwbAlgoFunc_close:
     group: sys
     summary: "Tells the driver to stop using the custom AWB algorithm and clears the registration flag."
@@ -1300,11 +1302,12 @@ functions:
   ISP_SET_GPIO_INIT_OR_FREE:
     group: sys
     summary: "Hands a GPIO description (an int array) to the driver, which claims or releases the pin."
-    returns: "0 on success, -1 for NULL or when the ISP is not open, otherwise the driver result."
+    returns: "0 on success; T23/T40: -1 for NULL or when the ISP is not open, otherwise the driver result. T41: -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4090 when the module refuses (the vendor logs that and returns 0)."
+    notes: "T41: ioctl 0xc004548e with the 42-byte list of GPIO numbers (ended by 0xff) and levels."
   ISP_SET_GPIO_STA:
     group: sys
     summary: "Hands a GPIO description (an int array) to the driver, which sets the pin level."
-    returns: "0 on success, -1 for NULL or when the ISP is not open, otherwise the driver result."
+    returns: "0 on success; T23/T40: -1 for NULL or when the ISP is not open, otherwise the driver result. T41: as `SET_GPIO_INIT_OR_FREE` (ioctl 0xc004548f)."
   ISP_SetSwitchgpio:
     group: sys
     summary: "Selects the GPIO that switches between two sensors on a multi-camera board."
@@ -1334,3 +1337,51 @@ functions:
     summary: "Reads the NCU information block of the ISP driver into the buffer you pass."
     returns: "0 on success, non-zero for a NULL pointer or a driver error."
     soc: "Implemented on T23 only."
+  ISP_Get/SetInternalChnAttr:
+    group: sys
+    summary: "Reads or sets which internal channel each ISP output uses (the VIC DMA bypass channels)."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4095 module error."
+    notes: "ioctl 0xc004542f (set) and 0xc0045430 (get), 24 bytes (three channel type and virtual-channel pairs). Meant for the time between `IMP_ISP_Open` and `IMP_ISP_AddSensor`."
+    soc: "T41 only."
+  ISP_RAW_RwControl:
+    group: sys
+    summary: "Moves RAW frames into or out of the ISP through buffers and a frame-done callback."
+    returns: "-1 with errno ENOTSUP on every call."
+    notes: "The vendor library allocates rmem buffers and runs a frame-done thread on a tuning control (0x80000a7); the open T41 module has no RAW path."
+    soc: "T41 only."
+  ISP_SetVicDoneCbFunc:
+    group: sys
+    summary: "Registers a callback that runs on every VIC frame-done event."
+    returns: "-1 with errno ENOTSUP on every call."
+    notes: "The vendor library runs a callback thread fed by the ISP module (ioctl 0xc0045431); the open T41 module has no such event path."
+    soc: "T41 only."
+  ISP_Tuning_Get/SetFaceAeWeiget:
+    group: ae
+    summary: "Reads or sets the weights the AE gives to the face region (global weight, region weight, smoothing)."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    notes: "T41: the structure goes to the ISP module unchanged (tuning control 0x8000036, three 32-bit values). Return codes as the vendor library: -4087 for a NULL pointer, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 when the module refuses the control. The open T41 module answers EPERM to a control it does not route (see the matrix cell)."
+    soc: "T41 only."
+  ISP_Tuning_GetFaceAeLuma:
+    group: ae
+    summary: "Reads the luma the AE measured for the whole picture and for the face region."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    notes: "T41: the structure goes to the ISP module unchanged (tuning control 0x8000037, two 32-bit values). Return codes as the vendor library: -4087 for a NULL pointer, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 when the module refuses the control. The open T41 module answers EPERM to a control it does not route (see the matrix cell)."
+    soc: "T41 only."
+  ISP_Tuning_GetAEFlickerFlag:
+    group: ae
+    summary: "Reads the flicker state the AE detected."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    notes: "T41: the structure goes to the ISP module unchanged (tuning control 0x800003a, one integer). Return codes as the vendor library: -4087 for a NULL pointer, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 when the module refuses the control. The open T41 module answers EPERM to a control it does not route (see the matrix cell)."
+    soc: "T41 only."
+  ISP_Tuning_GetAeBv:
+    group: ae
+    summary: "Reads the brightness value (BV) of the scene as the AE sees it."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    notes: "T41: the structure goes to the ISP module unchanged (tuning control 0x80000b3, one integer). Return codes as the vendor library: -4087 for a NULL pointer, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 when the module refuses the control. The open T41 module answers EPERM to a control it does not route (see the matrix cell). The call exists in the vendor library 1.2.6 only."
+    soc: "T41 only."
+  ISP_Tuning_SetTmoFaceae:
+    group: ae
+    summary: "Sets up to six regions of the picture that the tone mapping brightens (centre, radius, threshold, slope)."
+    returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4091 tuning not enabled, -4090 module error."
+    notes: "T41: the structure goes to the ISP module unchanged (tuning control 0x8000062, 56 bytes). Return codes as the vendor library: -4087 for a NULL pointer, -4084 for a sensor number of 2 or more, -4091 when tuning is not enabled, -4090 when the module refuses the control. The open T41 module answers EPERM to a control it does not route (see the matrix cell)."
+    soc: "T41 only."

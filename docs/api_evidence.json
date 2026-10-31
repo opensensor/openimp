@@ -944,7 +944,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000097 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Get/SetDefaultBinPath": {
@@ -1058,7 +1064,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004542f / 0xc0045430 (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_Get/SetSensorRegister": {
@@ -1170,7 +1182,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004547a / 0xc004547b (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_LDC_INIT": {
@@ -1185,7 +1203,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc0045479 (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_Open": {
@@ -1277,7 +1301,14 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the vendor library allocates rmem buffers and runs a frame-done thread on tuning control 0x80000a7 to move RAW frames in and out of the ISP; the open T41 module has no such event or RAW path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_SET_GPIO_INIT_OR_FREE": {
@@ -1292,7 +1323,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548e (ENOTTY), so the call returns -4090"
    }
   },
   "ISP_SET_GPIO_STA": {
@@ -1307,7 +1344,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548f (ENOTTY), so the call returns -4090"
    }
   },
   "ISP_SetCameraInputMode": {
@@ -1445,7 +1488,14 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the vendor library runs a callback thread fed by the VIC frame-done event (ISP-device ioctl 0xc0045431); the open T41 module has no such event or RAW path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_StartNightMode": {
@@ -1460,7 +1510,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004542e (ENOTTY), so the call returns -4095"
    }
   },
   "ISP_StreamCheck": {
@@ -4346,7 +4402,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000062 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_SetVideoDrop": {
@@ -4600,7 +4662,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548d (ENOTTY), so the call returns -4090"
    }
   },
   "ISP_SetAeAlgoFunc": {
@@ -4615,7 +4683,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: needs a user-space callback thread fed by the ISP module (ioctl 0xc004541d); the open T41 module runs its own AE and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_SetAwbAlgoFunc": {
@@ -4630,7 +4705,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: needs a user-space callback thread fed by the ISP module (ioctl the AWB twin of 0xc004541d); the open T41 module runs its own AWB and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "action": {
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp"
    }
   },
   "ISP_Tuning_AE_Get/SetROI": {
@@ -4842,7 +4924,10 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "cache"
+    "T41": "rt"
+   },
+   "ref": {
+    "T41": "apitest 1027cov-T41 2026-10-27 .34: Get and same-value Set round trip PASS (control 0x8000028, routed by the open T41 module)"
    }
   },
   "ISP_Tuning_Get/SetAeExpList": {
@@ -5469,7 +5554,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000036 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_Get/SetFaceAwb": {
@@ -5568,7 +5659,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x800003a ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_GetAE_IT_MAX": {
@@ -5646,10 +5743,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "miss"
+    "T41": "err"
    },
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000034 ('not implemented'), so the call returns -4090"
+   },
+   "action": {
+    "T41": "implement"
    }
   },
   "ISP_Tuning_GetAWBCt": {
@@ -5711,7 +5812,14 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the call is in the vendor library 1.2.6 only (not in 1.2.5); control 0x80000b3, one integer",
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x80000b3 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_GetAeEvList": {
@@ -5902,10 +6010,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "miss"
+    "T41": "err"
    },
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000031 ('not implemented'), so the call returns -4090"
+   },
+   "action": {
+    "T41": "implement"
    }
   },
   "ISP_Tuning_GetAfZone": {
@@ -6091,7 +6203,13 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "action": {
+    "T41": "implement"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000037 ('not implemented'), so the call returns -4090"
    }
   },
   "ISP_Tuning_GetWB_GOL_Statis": {

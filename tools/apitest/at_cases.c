@@ -4417,9 +4417,139 @@ static void cs_framerel(void)
 static void cs_framerel(void) {}
 #endif
 
+/* T41 ISP calls without a streamer (#75/#76, src/t40/openimp_t41_isp_extra.c).  Safe part (always): getters, same-value writes, the error codes for a
+ * NULL pointer and sensor 2, and the four documented ENOTSUP calls.  Risky part (APITEST_RISKY=1, QEMU only: they reprogram the ISP back end or
+ * claim a GPIO): LDC attribute/initialisation, StartNightMode, WDR_OPEN, GPIO.  A control the ISP module does not route (EPERM/ENOTTY) is N/A. */
+#if defined(PLATFORM_T41) && !defined(APITEST_T40) && HAS_IMP_ISP_StartNightMode && HAS_IMP_ISP_SetCsccrMode && HAS_IMP_ISP_SET_GPIO_STA
+static int t41x_nomod(int r, int e)
+{
+    return (r == -4090 || r == -4095) && (e == EPERM || e == ENOTTY || e == EOPNOTSUPP || e == ENOSYS || e == EINVAL);
+}
+
+#define T41X_NA(fn, r, e) rep(FN(fn), r, V_NA, "the ISP module has no handler for this call (errno %d)", e)
+
+static void cs_t41isp(void)
+{
+    int r, e, e1, e2, risky = getenv("APITEST_RISKY") != NULL;
+
+    /* getters and same-value writes */
+    NEED(IMP_ISP_GetCsccrMode) NEED(IMP_ISP_SetCsccrMode) {
+        G(IMPISPCsccrModeAttr, c); G(IMPISPCsccrModeAttr, b);
+        errno = 0; r = IMP_ISP_GetCsccrMode(IMPVI_MAIN, c); e = errno; gchk(c);
+        if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_GetCsccrMode, r, e); T41X_NA(IMP_ISP_SetCsccrMode, r, e); }
+        else {
+            int r2, r3;
+            r2 = IMP_ISP_SetCsccrMode(IMPVI_MAIN, c); r3 = IMP_ISP_GetCsccrMode(IMPVI_MAIN, b); gchk(b);
+            rep(FN(IMP_ISP_GetCsccrMode), r, r == 0 ? V_PASS : V_FAIL, "mode %d", (int)c->mode);
+            rep(FN(IMP_ISP_SetCsccrMode), r2, (r2 == 0 && r3 == 0 && !memcmp(b, c, sizeof(*c)) && flow()) ? V_PASS : V_FAIL, "rt: same value written, read back equal, frames flow");
+        }
+        gfree(c); gfree(b);
+    }
+    NEED(IMP_ISP_Tuning_GetFaceAeLuma) {
+        G(IMPISPFaceAeLuma, v);
+        errno = 0; r = IMP_ISP_Tuning_GetFaceAeLuma(IMPVI_MAIN, v); e = errno; gchk(v);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetFaceAeLuma, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetFaceAeLuma), r, r == 0 ? V_PASS : V_FAIL, "global %u roi %u", v->global, v->roi);
+        gfree(v);
+    }
+    NEED(IMP_ISP_Tuning_GetAEFlickerFlag) {
+        G(IMPISPFlickerFlag, v);
+        errno = 0; r = IMP_ISP_Tuning_GetAEFlickerFlag(IMPVI_MAIN, v); e = errno; gchk(v);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAEFlickerFlag, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAEFlickerFlag), r, r == 0 ? V_PASS : V_FAIL, "flag %d", v->flag);
+        gfree(v);
+    }
+    NEED(IMP_ISP_Tuning_GetAeBv) {
+        int *v = gnew(4);
+        errno = 0; r = IMP_ISP_Tuning_GetAeBv(IMPVI_MAIN, v); e = errno; gchk(v);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAeBv, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAeBv), r, r == 0 ? V_PASS : V_FAIL, "bv %d", *v);
+        gfree(v);
+    }
+    NEED(IMP_ISP_Tuning_GetAFMetricesInfo) {
+        G(IMPISPAFMetricsInfo, m);
+        errno = 0; r = IMP_ISP_Tuning_GetAFMetricesInfo(IMPVI_MAIN, m); e = errno; gchk(m);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAFMetricesInfo, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAFMetricesInfo), r, r == 0 ? V_PASS : V_FAIL, "read");
+        gfree(m);
+    }
+    NEED(IMP_ISP_Tuning_GetAfStatistics) {
+        G(IMPISPAFStatisInfo, m);
+        errno = 0; r = IMP_ISP_Tuning_GetAfStatistics(IMPVI_MAIN, m); e = errno; gchk(m);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_Tuning_GetAfStatistics, r, e);
+        else rep(FN(IMP_ISP_Tuning_GetAfStatistics), r, r == 0 ? V_PASS : V_FAIL, "read (%zu bytes)", sizeof(*m));
+        gfree(m);
+    }
+    NEED(IMP_ISP_GetInternalChnAttr) NEED(IMP_ISP_SetInternalChnAttr) {
+        G(IMPISPInternalChnAttr, c); G(IMPISPInternalChnAttr, b);
+        errno = 0; r = IMP_ISP_GetInternalChnAttr(IMPVI_MAIN, c); e = errno; gchk(c);
+        if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_GetInternalChnAttr, r, e); T41X_NA(IMP_ISP_SetInternalChnAttr, r, e); }
+        else {
+            int r2 = -1, r3 = -1;
+            rep(FN(IMP_ISP_GetInternalChnAttr), r, r == 0 ? V_PASS : V_FAIL, "ch0 type %d ch1 type %d ch2 type %d", (int)c->ch[0].type, (int)c->ch[1].type, (int)c->ch[2].type);
+            if (risky) { r2 = IMP_ISP_SetInternalChnAttr(IMPVI_MAIN, c); r3 = IMP_ISP_GetInternalChnAttr(IMPVI_MAIN, b); gchk(b);
+                rep(FN(IMP_ISP_SetInternalChnAttr), r2, (r2 == 0 && r3 == 0 && !memcmp(b, c, sizeof(*c)) && flow()) ? V_PASS : V_FAIL, "rt: same value written, read back equal"); }
+            else rep(FN(IMP_ISP_SetInternalChnAttr), 0, V_SKIP, "reprograms the ISP output routing (APITEST_RISKY=1, QEMU)");
+        }
+        gfree(c); gfree(b);
+    }
+    NEED(IMP_ISP_LDC_GetAttr) {
+        G(IMPISPLDCAttr, l);
+        errno = 0; r = IMP_ISP_LDC_GetAttr(IMPVI_MAIN, l); e = errno; gchk(l);
+        if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_GetAttr, r, e);
+        else rep(FN(IMP_ISP_LDC_GetAttr), r, r == 0 ? V_PASS : V_FAIL, "read");
+        gfree(l);
+    }
+    if (risky) {
+        NEED(IMP_ISP_StartNightMode) { errno = 0; r = IMP_ISP_StartNightMode(IMPVI_MAIN); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_StartNightMode, r, e); else rep(FN(IMP_ISP_StartNightMode), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "night-start flag set after the sensor runs, frames flow"); }
+        NEED(IMP_ISP_LDC_SetAttr) { G(IMPISPLDCAttr, l); IMP_ISP_LDC_GetAttr(IMPVI_MAIN, l); errno = 0; r = IMP_ISP_LDC_SetAttr(IMPVI_MAIN, l); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_SetAttr, r, e); else rep(FN(IMP_ISP_LDC_SetAttr), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "same value written, frames flow"); gfree(l); }
+        NEED(IMP_ISP_LDC_INIT) { G(IMPISPLDCInitAttr, l); errno = 0; r = IMP_ISP_LDC_INIT(IMPVI_MAIN, l); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_INIT, r, e); else rep(FN(IMP_ISP_LDC_INIT), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "zero init block, frames flow"); gfree(l); }
+        NEED(IMP_ISP_WDR_OPEN) { IMPISPWdrOpenAttr w; memset(&w, 0, sizeof(w)); w.rmode = IMPISP_TYPE_RUN_LINEAR; errno = 0; r = IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_WDR_OPEN, r, e); else rep(FN(IMP_ISP_WDR_OPEN), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "linear start mode request, frames flow"); }
+        NEED(IMP_ISP_SET_GPIO_STA) NEED(IMP_ISP_SET_GPIO_INIT_OR_FREE) { G(IMPISPGPIO, g); g->gpio_num[0] = 0xff; errno = 0; r = IMP_ISP_SET_GPIO_INIT_OR_FREE(IMPVI_MAIN, g); e = errno;
+            if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_SET_GPIO_INIT_OR_FREE, r, e); T41X_NA(IMP_ISP_SET_GPIO_STA, r, e); }
+            else { int r2 = IMP_ISP_SET_GPIO_STA(IMPVI_MAIN, g);
+                rep(FN(IMP_ISP_SET_GPIO_INIT_OR_FREE), r, r == 0 ? V_PASS : V_FAIL, "empty GPIO list (0xff first)");
+                rep(FN(IMP_ISP_SET_GPIO_STA), r2, r2 == 0 ? V_PASS : V_FAIL, "empty GPIO list"); }
+            gfree(g); }
+    } else {
+        rep(FN(IMP_ISP_StartNightMode), 0, V_SKIP, "APITEST_RISKY=1 (QEMU)");
+        rep(FN(IMP_ISP_LDC_SetAttr), 0, V_SKIP, "reprograms the lens distortion stage (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_LDC_INIT), 0, V_SKIP, "reprograms the lens distortion stage (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_WDR_OPEN), 0, V_SKIP, "meant for the time before AddSensor (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_SET_GPIO_INIT_OR_FREE), 0, V_SKIP, "claims sensor GPIOs (APITEST_RISKY=1, QEMU)");
+        rep(FN(IMP_ISP_SET_GPIO_STA), 0, V_SKIP, "sets sensor GPIOs (APITEST_RISKY=1, QEMU)");
+    }
+    /* error codes: NULL pointer -4087, sensor 2 -4084 (vendor 0xfffff009 / 0xfffff00c); no hardware touched */
+    {
+        uint32_t *buf = gnew(0x1600);
+        int c1, c2, c3, c4, c5, c6, c7, c8;
+
+        c1 = IMP_ISP_Tuning_GetFaceAeLuma(IMPVI_MAIN, NULL); c2 = IMP_ISP_Tuning_GetFaceAeLuma((IMPVI_NUM)2, (void *)buf);
+        c3 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, NULL); c4 = IMP_ISP_Tuning_SetTmoFaceae((IMPVI_NUM)2, (void *)buf);
+        c5 = IMP_ISP_GetCsccrMode(IMPVI_MAIN, NULL); c6 = IMP_ISP_GetCsccrMode((IMPVI_NUM)2, (IMPISPCsccrModeAttr *)buf);
+        c7 = IMP_ISP_Tuning_GetAfStatistics(IMPVI_MAIN, NULL); c8 = IMP_ISP_Tuning_GetAfStatistics((IMPVI_NUM)2, (IMPISPAFStatisInfo *)buf);
+        gchk(buf);
+        rep(LBL("IMP_ISP t41 error codes"), 0, (c1 == -4087 && c2 == -4084 && c3 == -4087 && c4 == -4084 && c5 == -4087 && c6 == -4084 && c7 == -4087 && c8 == -4084) ? V_PASS : V_FAIL,
+            "NULL -> %d %d %d %d, sensor 2 -> %d %d %d %d (expect -4087 / -4084)", c1, c3, c5, c7, c2, c4, c6, c8);
+        gfree(buf);
+    }
+    /* documented ENOTSUP */
+    NEED(IMP_ISP_SetAeAlgoFunc) { errno = 0; r = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, NULL); e1 = errno; rep(FN(IMP_ISP_SetAeAlgoFunc), r, (r == -1 && e1 == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, e1); }
+    NEED(IMP_ISP_SetAwbAlgoFunc) { errno = 0; r = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, NULL); e2 = errno; rep(FN(IMP_ISP_SetAwbAlgoFunc), r, (r == -1 && e2 == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d", r, e2); }
+    NEED(IMP_ISP_SetVicDoneCbFunc) { errno = 0; r = IMP_ISP_SetVicDoneCbFunc(NULL); e = errno; rep(FN(IMP_ISP_SetVicDoneCbFunc), r, (r == -1 && e == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d", r, e); }
+    NEED(IMP_ISP_RAW_RwControl) { errno = 0; r = IMP_ISP_RAW_RwControl(IMPVI_MAIN, NULL); e = errno; rep(FN(IMP_ISP_RAW_RwControl), r, (r == -1 && e == ENOTSUP && flow()) ? V_PASS : V_FAIL, "ret %d errno %d, frames still flow", r, e); }
+}
+#else
+static void cs_t41isp(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4530,6 +4660,7 @@ void t_cases(void)
     if (cs_on("emu")) { cs_emu(); wdog("cases", 30); }
     if (cs_on("dec")) { cs_dec(); wdog("cases", 30); }
     if (cs_on("framerel")) { cs_framerel(); wdog("cases", 60); }
+    if (cs_on("t41isp")) { cs_t41isp(); wdog("cases", 90); }
     if (cs_on("rgnisp")) { cs_rgnisp(); wdog("cases", 90); }
     wdog("cases", 60);
 }
