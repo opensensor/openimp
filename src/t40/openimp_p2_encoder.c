@@ -6739,6 +6739,12 @@ int IMP_Encoder_GetFd(int channel)
 }
 
 #if defined(PLATFORM_T23)
+/* The stock module-level settings (IMP_Encoder_SetMultiSectionMode) are refused once EncoderInit has run. */
+int openimp_t23_p2_initialized(void)
+{
+    return p2_initialized;
+}
+
 /* T23 encoder extras (src/t23/openimp_t23_encoder.c) run `fn` on a view of
  * the channel with the channel lock held, so the codec cannot go away. */
 int openimp_t23_p2_call(int channel, OpenIMPT23P2Fn fn, void *arg)

@@ -36,7 +36,7 @@ groups:
     title: Logging
   - id: dec
     title: Decoder (T23)
-    intro: A hardware JPEG decoder on channel 0, implemented by OpenIMP on T23 only (the T40 and T41 vendor libraries export it too; OpenIMP does not). It decodes JPEG pictures into NV12, NV21 or YUV420P and runs in the helper process that also hosts the T23 H.264 encoder. The status row is marked as having a known defect because that helper is off by default since agg-37, so the decoder is not usable in a default T23 build.
+    intro: A JPEG decoder on channel 0, implemented by OpenIMP on T23 only (the T40 and T41 vendor libraries export it too; OpenIMP does not). It decodes JPEG pictures into NV12, NV21 or YUV420P. The vendor library decodes on the VPU; OpenIMP decodes in its own software decoder (baseline JPEG, gray or YCbCr, 4:4:4, 4:2:2, 4:4:0 or 4:2:0, restart intervals; progressive and arithmetic-coded files are refused) in the calling thread. A build with the OEM helper process (`OPENIMP_T23_HELIX_BRIDGE=1`) uses the helper's VPU decoder instead and falls back to the software decoder when the helper cannot be started. The picture is always 4:2:0 with the width and height of the file (no alignment padding), the colour planes taken straight from the file's Cb and Cr.
   - id: su
     title: System utilities (SU)
 functions:
@@ -214,15 +214,15 @@ functions:
     diff: The vendor library starts with no fields and prints everything it has; OpenIMP is quiet by default so a camera is not flooded.
   Decoder_CreateChn:
     group: dec
-    summary: Creates the decoder channel 0 and starts the decoding worker.
+    summary: Creates the decoder channel 0 (software decoder, or the OEM helper when built in).
     params:
       chn: Channel, only 0.
       attr: Decoder attribute; the type must be JPEG, the maximum size non-zero, the pixel format NV12, NV21 or YUV420P.
-    returns: -1 for another channel, another payload type or pixel format, a zero size, an existing channel or when the worker cannot be started.
+    returns: -1 for another channel, another payload type or pixel format, a zero size or an existing channel.
     soc: Implemented by OpenIMP on T23 only.
   Decoder_DestroyChn:
     group: dec
-    summary: Stops the worker and releases all frames.
+    summary: Destroys the channel (stops the helper when one is used) and releases all frames.
     returns: -1 for another channel or a channel that does not exist.
     soc: Implemented by OpenIMP on T23 only.
   Decoder_StartRecvPic:
@@ -237,11 +237,11 @@ functions:
     soc: Implemented by OpenIMP on T23 only.
   Decoder_SendStreamTimeout:
     group: dec
-    summary: Decodes one JPEG picture. It waits up to the timeout for a free picture buffer, decodes in the helper process and queues the picture.
+    summary: Decodes one JPEG picture. It waits up to the timeout for a free picture buffer, decodes and queues the picture.
     params:
       stream: JPEG data (`p_payload`, `i_payload`) and a timestamp that is passed on to the picture.
       timeout_ms: Maximum wait in milliseconds for a buffer and for the decode.
-    returns: -1 for another channel, an empty or NULL stream, no free buffer within the timeout, or a decode error.
+    returns: -1 for another channel, an empty or NULL stream, no free buffer within the timeout, a file that is not a baseline JPEG, damaged or truncated, or a picture larger than the channel's maximum size.
     notes: Number of pictures that can be held at once is the `nrKeepStream` of the channel attribute (at least 1). Give every picture back with `ReleaseFrame`.
     soc: Implemented by OpenIMP on T23 only.
   Decoder_PollingFrame:
