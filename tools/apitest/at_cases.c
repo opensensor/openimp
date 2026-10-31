@@ -131,6 +131,9 @@ static Fst settle_pic(int *settled)
 #define RTMSG(eff) ((eff) ? "" : "rt: ")
 
 static void *dsym(const char *n) { return dlsym(RTLD_DEFAULT, n); }
+/* T41: a tuning control the ISP module does not route comes back as -4090 with errno EPERM ("not implemented" in the module log); the cases
+ * report that as N/A with the control, not as a failure of the library. */
+#define DRV_NONE(r) ((r) == -4090 && errno == EPERM)
 
 #if !defined(PLATFORM_T41)
 # define NOT_T41(...) __VA_ARGS__
@@ -2717,6 +2720,12 @@ static void cs_faceaeweight(void)
         G(IMPISPFaceAeWeiget, o); G(IMPISPFaceAeWeiget, n); G(IMPISPFaceAeWeiget, g);
         int r0 = IMP_ISP_Tuning_GetFaceAeWeiget(IMPVI_MAIN, o), r1, r2, r3;
 
+        if (DRV_NONE(r0)) {
+            rep(FN(IMP_ISP_Tuning_GetFaceAeWeiget), r0, V_NA, "the ISP module has no handler for tuning control 0x8000036 (EPERM)");
+            rep(FN(IMP_ISP_Tuning_SetFaceAeWeiget), r0, V_NA, "see Get");
+            gfree(o); gfree(n); gfree(g);
+            return;
+        }
         gchk(o);
         *n = *o; n->global_weight = o->global_weight ^ 1; n->roi_weight = o->roi_weight ^ 2; n->smooth = o->smooth ^ 1;
         r1 = IMP_ISP_Tuning_SetFaceAeWeiget(IMPVI_MAIN, n);
@@ -2743,7 +2752,13 @@ static void cs_tmofaceae(void)
         base = fst(800);
         t->tmo_roinum = 1; t->tmo_xcent[0] = (uint16_t)(g_sw / 2); t->tmo_ycent[0] = (uint16_t)(g_sh / 2); t->tmo_distep[0] = (uint16_t)(g_sh / 3);
         t->tmo_uplumthr[0] = 128; t->tmo_upk[0] = 16;
-        r1 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, t); on = fst(1500);
+        r1 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, t);
+        if (DRV_NONE(r1)) {
+            rep(FN(IMP_ISP_Tuning_SetTmoFaceae), r1, V_NA, "the ISP module has no handler for tuning control 0x8000062 (EPERM)");
+            gfree(t);
+            return;
+        }
+        on = fst(1500);
         memset(t, 0, sizeof(*t));
         r2 = IMP_ISP_Tuning_SetTmoFaceae(IMPVI_MAIN, t); back = recover(base.y, &ms);
         {
@@ -2772,6 +2787,12 @@ static void cs_drawblock(void)
         a->cfg.wind.color.ayuv.y_value = base < 140 ? 235 : 16; a->cfg.wind.color.ayuv.u_value = 128; a->cfg.wind.color.ayuv.v_value = 128;
         a->cfg.wind.line_width = bw; a->cfg.wind.alpha = 7;
         r1 = IMP_ISP_Tuning_SetDrawBlock(IMPVI_MAIN, a);
+        if (DRV_NONE(r1)) {
+            rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1, V_NA, "the ISP module has no handler for tuning control 0x80000a0 (EPERM)");
+            rep(FN(IMP_ISP_Tuning_GetDrawBlock), r1, V_NA, "see Set");
+            gfree(a); gfree(g);
+            return;
+        }
         on = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
         memset(g, 0, sizeof(*g)); g->pinum = 0; g->type = IMP_ISP_DRAW_WIND;
         r2 = IMP_ISP_Tuning_GetDrawBlock(IMPVI_MAIN, g); gchk(g);
@@ -4349,9 +4370,56 @@ static void cs_rgnisp(void)
 static void cs_rgnisp(void) {}
 #endif
 
+/* IMP_Decoder_* (T40/T41): the vendor JPEG decoder is not in the T41 1.2.5/1.2.6 libimp and OpenIMP has no JPEG decoder on these SoCs; its eight exports
+ * answer -1 with errno ENOTSUP and touch nothing (the T23 build implements them with the Helix decoder, own cases there). */
+#if (defined(PLATFORM_T41) || defined(APITEST_T40)) && HAS_IMP_Decoder_CreateChn
+static void cs_dec(void)
+{
+    G(IMPDecoderCHNAttr, a); G(IMPDecoderStream, s); IMPFrameInfo *fr = NULL;
+    int r;
+
+#define DEC1(f, call) NEED(f) { errno = 0; r = call; rep(FN(f), r, (r == -1 && errno == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, errno); }
+    DEC1(IMP_Decoder_CreateChn, IMP_Decoder_CreateChn(0, a))
+    DEC1(IMP_Decoder_StartRecvPic, IMP_Decoder_StartRecvPic(0))
+    DEC1(IMP_Decoder_SendStreamTimeout, IMP_Decoder_SendStreamTimeout(0, s, 10))
+    DEC1(IMP_Decoder_PollingFrame, IMP_Decoder_PollingFrame(0, 10))
+    DEC1(IMP_Decoder_GetFrame, IMP_Decoder_GetFrame(0, &fr))
+    DEC1(IMP_Decoder_ReleaseFrame, IMP_Decoder_ReleaseFrame(0, fr))
+    DEC1(IMP_Decoder_StopRecvPic, IMP_Decoder_StopRecvPic(0))
+    NEED(IMP_Decoder_DestroyChn) { errno = 0; r = IMP_Decoder_DestroyChn(0); rep(FN(IMP_Decoder_DestroyChn), r, (r == -1 && errno == ENOTSUP && !gtouched(a) && !gtouched(s) && flow()) ? V_PASS : V_FAIL, "ret %d errno %d, arguments untouched, frames still flow", r, errno); }
+#undef DEC1
+    gchk(a); gchk(s); gfree(a); gfree(s);
+}
+#else
+static void cs_dec(void) {}
+#endif
+
+/* IMP_Encoder_SetFrameRelease (T41): stored ratio without any effect on the frame flow, vendor codes for a bad (0x80040001) or an uncreated (0x80040008) channel. */
+#if defined(PLATFORM_T41) && !defined(APITEST_T40)
+/* not declared in the T41 1.2.6 header, but exported by the T41 1.2.5 and 1.2.6 libimp */
+extern int IMP_Encoder_SetFrameRelease(int encChn, int num, int den) __attribute__((weak));
+static void cs_framerel(void)
+{
+    NEED(IMP_Encoder_SetFrameRelease) {
+        int e_idle = IMP_Encoder_SetFrameRelease(0, 1, 1), e_bad = IMP_Encoder_SetFrameRelease(8, 1, 1), r1 = -1, r2 = -1, n = 0;
+
+        if (enc_chain_up() == 0) {
+            r1 = IMP_Encoder_SetFrameRelease(0, 1, 2);
+            r2 = IMP_Encoder_SetFrameRelease(0, 1, 1);
+            n = enc_pull_h264(10);
+            enc_chain_down();
+        }
+        rep(FN(IMP_Encoder_SetFrameRelease), r1 | r2, (e_idle == (int)0x80040008 && e_bad == (int)0x80040001 && r1 == 0 && r2 == 0 && n >= 5) ? V_PASS : V_FAIL,
+            "uncreated channel %#x, channel 8 %#x, 1/2 and 1/1 on a running channel %d %d, %d frames still pulled", (unsigned)e_idle, (unsigned)e_bad, r1, r2, n);
+    }
+}
+#else
+static void cs_framerel(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4460,6 +4528,8 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("tisp2open_t40")) cs_tisp2open_t40(); wdog("cases", 60);
     if (cs_on("sensorattr_t40")) cs_sensorattr_t40(); wdog("cases", 30);
     if (cs_on("emu")) { cs_emu(); wdog("cases", 30); }
+    if (cs_on("dec")) { cs_dec(); wdog("cases", 30); }
+    if (cs_on("framerel")) { cs_framerel(); wdog("cases", 60); }
     if (cs_on("rgnisp")) { cs_rgnisp(); wdog("cases", 90); }
     wdog("cases", 60);
 }

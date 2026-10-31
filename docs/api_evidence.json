@@ -6313,7 +6313,15 @@
     "T32": "n.a.",
     "T33": "nob",
     "T40": "miss",
-    "T41": "miss"
+    "T41": "err"
+   },
+   "note": "T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
+   "action": {
+    "T40": "enotsup",
+    "T41": "enotsup"
+   },
+   "ref": {
+    "T41": "QEMU T41 2026-10-31 case dec 8/8"
    }
   },
   "Encoder_CreateChn": {
@@ -7103,12 +7111,16 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "dev",
-    "T41": "cache"
+    "T41": "dev"
    },
-   "note": "not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40: experimental, off unless `OPENIMP_T40_ROI=1`, code only, not device-tested; T41 (also `SetChnMapRoi`): cache, the windows/map are stored and the EP2 QP table is written (off unless `OPENIMP_T41_ROI=1`), but the T41 AVPU ignores the table (no effect on bit rate or picture in FixQP/CBR, docs/ROI.md); same valid-H.264 clamp as the Helix paths (docs/ROI.md)",
+   "note": "not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40: experimental, off unless `OPENIMP_T40_ROI=1`, code only, not device-tested; T41 (also `SetChnMapRoi`): cache, the windows/map are stored and the EP2 QP table is written (off unless `OPENIMP_T41_ROI=1`), works since 2026-10-18 (CBR/VBR) and 2026-10-24 (FixQP), docs/ROI.md; same valid-H.264 clamp as the Helix paths (docs/ROI.md)",
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
-   }
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)"
+   },
+   "better": [
+    "T41"
+   ]
   },
   "Encoder_Get/SetChnSeiAttr": {
    "area": "Encoder",
@@ -7122,8 +7134,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "host",
-    "T41": "miss"
-   }
+    "T41": "n.a."
+   },
+   "note": "T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41"
   },
   "Encoder_Get/SetFisheyeEnableStatus": {
    "area": "Encoder",
@@ -7137,9 +7150,9 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "cache",
-    "T41": "miss"
+    "T41": "n.a."
    },
-   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code"
+   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41"
   },
   "Encoder_Get/SetGDRCfg": {
    "area": "Encoder",
@@ -8285,8 +8298,9 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
-   }
+    "T41": "n.a."
+   },
+   "note": "T41: not in the T41 1.2.5 libimp nor in the 1.2.6 library; the T41 vendor name is IMP_Encoder_SetAvpuBsShare, which OpenIMP exports"
   },
   "Encoder_SetAvpuJpegQp": {
    "area": "Encoder",
@@ -8434,8 +8448,15 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "cache"
-   }
+    "T41": "dev"
+   },
+   "note": " | T41 (vendor libimp 1.2.6 disassembly + device tests): stores the 10 windows / the map, the encoder builds the QP table before the next picture; works under CBR, VBR and, beyond the vendor, under FixQP (docs/ROI.md, roitest on the T41 test cameras 2026-10-18 and 2026-10-24)",
+   "ref": {
+    "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)"
+   },
+   "better": [
+    "T41"
+   ]
   },
   "Encoder_SetChnMaxPictureSize": {
    "area": "Encoder",
@@ -8639,12 +8660,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "no-op",
-    "T41": "miss"
+    "T41": "qemu"
    },
-   "note": "T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched)",
+   "note": "T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) | T41 (vendor libimp 1.2.5 0x4b804, 1.2.6 0x4dd88): stores num/den under the channel mutex, 0x80040001 for a channel of 8 or more, 0x80040008 for a channel that was not created; OpenIMP matches that; no visible effect (same class a as T31/T40)",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T41": "QEMU T41 2026-10-31 case framerel"
    }
   },
   "Encoder_SetGOPSize": {

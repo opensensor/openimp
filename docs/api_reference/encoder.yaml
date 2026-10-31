@@ -234,7 +234,7 @@ functions:
   Encoder_SetFrameRelease:
     group: rc
     summary: "Stores a ratio (num/den of a frame interval) at which the vendor library hands the source frame back before the encoder has finished with it."
-    returns: "0 on success, -1 for an invalid or not created channel."
+    returns: "0 on success. T31 and T40: -1 for an invalid or not created channel. T41: 0x80040001 for a channel of 8 or more, 0x80040008 for a channel that was not created."
     notes: "OpenIMP always returns each capture frame as soon as the hardware encoder has consumed it, so the stored ratio has no effect."
     diff: "Stored only; the early release of the vendor library is not needed here."
     soc: T31, T40, T41
@@ -411,7 +411,7 @@ functions:
     returns: "0 on success, -1 for an invalid or not created channel, a JPEG channel, a NULL pointer, or a missing UUID or data pointer when the mode is not `NONE`."
     notes: "A `userDataSize` above 128 is cut to 128 in your structure (and logged). The mode `ALL` writes the SEI before every picture, `INTRA` and any other non-zero value before intra pictures only. OpenIMP copies the UUID and data, so your buffers can change afterwards. Get returns the stored attribute."
     diff: On IDR pictures of T40 the SEI may be left out, because the header area holds the parameter sets twice.
-    soc: T40, T41
+    soc: "T40 only; the T41 vendor library has no such call."
   Encoder_InsertUserData:
     group: h26x
     summary: Inserts user data into the stream before the next picture, as a user_data_unregistered SEI message (H.264 channels
@@ -601,6 +601,7 @@ functions:
     summary: "Stores a fisheye flag for a channel and returns it. The fisheye processing itself is not provided; the flag only lets the application read back what it set."
     returns: "0 on success, -1 for an invalid channel, a NULL pointer (Get), or (Set) a channel that has already been created."
     notes: "Set it before the channel is created."
+    soc: "T10 to T31 and T40; the T41 vendor library has no such call."
   Encoder_EnableAllNCUDenoise:
     group: misc
     summary: "NCU denoise exists on T30-class SoCs only; on T23 the call fails."

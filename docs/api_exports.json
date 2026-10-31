@@ -3546,6 +3546,7 @@
 "Encoder_SetChnResizeMode",
 "Encoder_SetChnRoiAttr",
 "Encoder_SetDefaultParam",
+"Encoder_SetFrameRelease",
 "Encoder_SetIvpuBsSize",
 "Encoder_SetJpegeQl",
 "Encoder_SetMaxStreamCnt",

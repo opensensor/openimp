@@ -359,8 +359,12 @@ typedef struct {
 #endif
 #if defined(PLATFORM_T40)
     int fisheye;                    /* IMP_Encoder_Set/GetFisheyeEnableStatus */
+#endif
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
     int release_num;                /* IMP_Encoder_SetFrameRelease */
     int release_den;
+#endif
+#if defined(PLATFORM_T40)
     IMPEncoderSeiAttr sei_attr;     /* IMP_Encoder_GetChnSeiAttr answer */
 #endif
     uint64_t next_frame_due_us;
@@ -4292,24 +4296,34 @@ int IMP_Encoder_GetChnSeiAttr(int channel, IMPEncoderSeiAttr *attr)
 }
 #endif
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
 /* Vendor T40 1.3.1 IMP_Encoder_SetFrameRelease (0x6d728): channel < 13 and
  * created (-1 otherwise), num/den stored in the channel record under the
  * channel mutex, 0.  The vendor's release helper hands the source frame
  * back num/den of a frame interval after queueing; OpenIMP returns every
  * capture frame as soon as the AVPU has consumed it (see T40_STATUS.md), so
- * the ratio is kept but changes nothing (same as the T31 build). */
+ * the ratio is kept but changes nothing (same as the T31 build).
+ * T41 (vendor libimp 1.2.5 0x4b804 and 1.2.6 0x4dd88): the same, with the T41
+ * channel check (below 8, else 0x80040001) and 0x80040008 for a channel
+ * that was not created. */
 int IMP_Encoder_SetFrameRelease(int channel, int num, int den)
 {
     P2EncoderChannel *ch;
 
+#if defined(PLATFORM_T41)
+#define P2_FR_BAD_CHN ((int)0x80040001)
+#define P2_FR_NO_CHN ((int)0x80040008)
+#else
+#define P2_FR_BAD_CHN (-1)
+#define P2_FR_NO_CHN (-1)
+#endif
     if (!p2_valid_channel(channel))
-        return -1;
+        return P2_FR_BAD_CHN;
     ch = &p2_channels[channel];
     pthread_mutex_lock(&ch->lock);
     if (!ch->created) {
         pthread_mutex_unlock(&ch->lock);
-        return -1;
+        return P2_FR_NO_CHN;
     }
     ch->release_num = num;
     ch->release_den = den;
