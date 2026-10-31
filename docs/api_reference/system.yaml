@@ -192,17 +192,20 @@ functions:
     decl: "void *IMP_Phys_to_Virt(uint32_t phys);"
     summary: "Converts a physical address inside an `IMP_Alloc` buffer to the virtual address (offsets inside the buffer work). Not in the public header."
     returns: "The address, NULL when it is not inside a live buffer."
+    diff: "T10, T20, T21: the vendor function forwards to the allocator, which converts any address inside its whole memory region linearly (0 outside it). OpenIMP converts inside live buffers only, so an address in the region but outside every buffer gives NULL (stricter)."
   Virt_to_Phys:
     group: pool
     decl: "uint32_t IMP_Virt_to_Phys(void *virt);"
     summary: "Converts a virtual address inside an `IMP_Alloc` buffer to the physical address. Not in the public header."
     returns: "The address, 0 when it is not inside a live buffer."
+    diff: "T10, T20, T21: the vendor function converts any address inside the allocator region (0 outside); OpenIMP only inside live buffers."
   Sp_Alloc:
     group: pool
-    decl: "uintptr_t IMP_Sp_Alloc(int size, char *tag);"
-    summary: "Allocates a physically contiguous buffer, like `IMP_Alloc`, and returns its virtual address. Not in the public header."
-    returns: "The virtual address, 0 on failure."
-    diff: "Open question on T31: the vendor function was disassembled and takes a descriptor pointer plus a second non-NULL argument and returns 0 or -1 (it fills the descriptor through the allocator's info call). The OpenIMP call form follows the T23 library. No streamer calls it; the T31 form is not tested on a camera."
+    decl: "uintptr_t IMP_Sp_Alloc(int size, char *tag);   /* T23 form, used on the other SoCs too */\nint IMP_Sp_Alloc(IMPDMABufferInfo *info, uintptr_t phys);   /* T10, T20, T21 */"
+    summary: "T23: allocates a physically contiguous buffer, like `IMP_Alloc`, and returns its virtual address. T10, T20 and T21: takes one more reference on a live buffer and fills the descriptor. Not in the public header."
+    returns: "T23: the virtual address, 0 on failure. T10, T20, T21: 0 and the descriptor filled; -1 for a NULL descriptor, a physical address of 0 or an address that is not a live buffer."
+    notes: "T10, T20, T21: `phys` is the physical address of a buffer from `IMP_Alloc` (exact start address, as the vendor allocator compares it). Every `Sp_Alloc` needs one more `IMP_Free`; the buffer is released by the last one. Disassembly of the T20/T10 3.12.0 and T21 1.0.33 libraries: the vendor function is the reference-count increment of the allocator (counter at +16 of the allocation record, initial value 1, `free` decrements and releases at 0)."
+    diff: "The T31 vendor function also takes a descriptor plus a second non-NULL argument and returns 0 or -1, so it very likely is the same reference call; the OpenIMP call form on T31 still follows the T23 library and is not tested on a T31 camera."
   Log_Get/Set_Option:
     group: log
     decl: "int IMP_Log_Get_Option(void);\nvoid IMP_Log_Set_Option(int option);"
@@ -219,22 +222,22 @@ functions:
       chn: Channel, only 0.
       attr: Decoder attribute; the type must be JPEG, the maximum size non-zero, the pixel format NV12, NV21 or YUV420P.
     returns: -1 for another channel, another payload type or pixel format, a zero size, an existing channel or when the worker cannot be started.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_DestroyChn:
     group: dec
     summary: Stops the worker and releases all frames.
     returns: -1 for another channel or a channel that does not exist.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_StartRecvPic:
     group: dec
     summary: Marks the channel as receiving.
     returns: -1 for another channel or a channel that does not exist.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_StopRecvPic:
     group: dec
     summary: Marks the channel as not receiving and wakes any waiting caller.
     returns: -1 for another channel or a channel that does not exist.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_SendStreamTimeout:
     group: dec
     summary: Decodes one JPEG picture. It waits up to the timeout for a free picture buffer, decodes in the helper process and queues the picture.
@@ -243,22 +246,22 @@ functions:
       timeout_ms: Maximum wait in milliseconds for a buffer and for the decode.
     returns: -1 for another channel, an empty or NULL stream, no free buffer within the timeout, or a decode error.
     notes: Number of pictures that can be held at once is the `nrKeepStream` of the channel attribute (at least 1). Give every picture back with `ReleaseFrame`.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_PollingFrame:
     group: dec
     summary: Waits until a decoded picture is ready.
     returns: 0 when ready; -1 on timeout, for another channel or when the channel does not exist.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_GetFrame:
     group: dec
     summary: Hands out the oldest decoded picture (a pointer to its frame info with address and size).
     returns: -1 when none is ready, for another channel, NULL or when the channel does not exist.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   Decoder_ReleaseFrame:
     group: dec
     summary: Gives a picture back so the buffer can be reused.
     returns: -1 for another channel, NULL, or a frame that was not handed out.
-    soc: Implemented by OpenIMP on T23 only.
+    soc: "Implemented by OpenIMP on T23. T10, T20 and T21 export the call as a stub that returns -1 with errno ENOTSUP (no JPEG decoder in OpenIMP there); T30 to T41 do not export it."
   SU_Base_Shutdown:
     group: su
     decl: "int SU_Base_Shutdown(void);"
