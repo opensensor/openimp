@@ -2451,7 +2451,11 @@ static void cs_alloc(void)
                 rep(LBL("IMP_PoolFree"), 0, V_PASS, "returned (void); the process continues");
             }
         } else { ALN("IMP_PoolAlloc"); ALN("IMP_PoolFree"); ALN("IMP_PoolVirt_to_Phys"); ALN("IMP_PoolPhys_to_Virt"); ALN("IMP_PoolFlushCache"); ALN("IMP_PoolAlloc_Dump"); }
-        if (mp_rel) mp_rel(9);
+        if (mp_rel) {
+            r = mp_rel(9);
+            ok = r == 0 && mp_get(9, mi) != 0 && mp_rel(9) == 0 && mp_rel(-1) == -1;
+            rep(LBL("IMP_MemPool_Release"), r, ok ? V_PASS : V_FAIL, "pool 9 released: lookup now fails, a second release 0, invalid id -1");
+        } else ALN("IMP_MemPool_Release");
     } else { ALN("IMP_MemPool_InitPool"); ALN("IMP_MemPool_GetById"); }
     gfree(d); gfree(d2); gfree(mi);
 }

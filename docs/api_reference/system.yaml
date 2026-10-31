@@ -141,6 +141,68 @@ functions:
     returns: "0 on success and for a pool that is not in use; -1 for an invalid id."
     notes: "Only on T21, T23, T30 and T31 (ids 0 to 15); it frees the DMA block. T40 and T41 release pools through `System_MemPoolFree`."
     soc: "T21, T23, T30 and T31."
+  PoolAlloc:
+    group: pool
+    decl: "uintptr_t IMP_PoolAlloc(int pool_id, void *info, intptr_t size, char *tag);"
+    summary: "Allocates a buffer from the pool `pool_id` made with `MemPool_InitPool`. Not in the public header."
+    returns: "Descriptor form (`info` is a descriptor): 0 and the virtual and physical address in the descriptor, -1 on failure. Size form: the virtual address, 0 on failure."
+    notes: "Free with `PoolFree`. The T31 vendor library takes the same four arguments and allocates through the pool object."
+  PoolFree:
+    group: pool
+    decl: "void IMP_PoolFree(void *ptr);"
+    summary: "Gives a pool buffer back. Not in the public header."
+    notes: "No return value."
+  PoolAlloc_Dump:
+    group: pool
+    decl: "int IMP_PoolAlloc_Dump(void);"
+    summary: "Prints the pools and the buffers allocated from them to the log. Debug aid."
+    returns: 0.
+  PoolAlloc_Set_Attr:
+    group: pool
+    decl: "int IMP_PoolAlloc_Set_Attr(uint32_t alignment, uint32_t cache_policy);"
+    summary: "Stores the alignment and cache policy for later pool allocations."
+    returns: 0.
+    diff: "The T31 vendor function is an empty stub that returns 0 and stores nothing. OpenIMP stores the values and `PoolAlloc_Get_Attr` reads them back; the allocator itself does not use them (extra, documented)."
+  PoolAlloc_Get_Attr:
+    group: pool
+    decl: "int IMP_PoolAlloc_Get_Attr(uint32_t *alignment, uint32_t *cache_policy);"
+    summary: "Reads back the values stored by `PoolAlloc_Set_Attr` (default 4096 and 0)."
+    returns: 0.
+    diff: "The T31 vendor function returns 0 and leaves both outputs untouched. OpenIMP fills them (extra, documented)."
+  PoolFlushCache:
+    group: pool
+    decl: "int IMP_PoolFlushCache(void *ptr, uint32_t size);"
+    summary: "Writes the data cache of a pool buffer back to memory."
+    returns: "0; -1 for a NULL pointer or a size of 0."
+    diff: "The T31 vendor function is an empty stub that returns 0. OpenIMP flushes the range through the memory driver (extra, documented)."
+  PoolPhys_to_Virt:
+    group: pool
+    decl: "void *IMP_PoolPhys_to_Virt(uint32_t phys);"
+    summary: "Converts a physical address inside a pool buffer to the virtual address."
+    returns: "The address, NULL when it is not inside a live buffer."
+    diff: "The T31 vendor function always returns 0. OpenIMP converts (extra, documented)."
+  PoolVirt_to_Phys:
+    group: pool
+    decl: "uint32_t IMP_PoolVirt_to_Phys(void *virt);"
+    summary: "Converts a virtual address inside a pool buffer to the physical address."
+    returns: "The address, 0 when it is not inside a live buffer."
+    diff: "The T31 vendor function always returns 0. OpenIMP converts (extra, documented)."
+  Phys_to_Virt:
+    group: pool
+    decl: "void *IMP_Phys_to_Virt(uint32_t phys);"
+    summary: "Converts a physical address inside an `IMP_Alloc` buffer to the virtual address (offsets inside the buffer work). Not in the public header."
+    returns: "The address, NULL when it is not inside a live buffer."
+  Virt_to_Phys:
+    group: pool
+    decl: "uint32_t IMP_Virt_to_Phys(void *virt);"
+    summary: "Converts a virtual address inside an `IMP_Alloc` buffer to the physical address. Not in the public header."
+    returns: "The address, 0 when it is not inside a live buffer."
+  Sp_Alloc:
+    group: pool
+    decl: "uintptr_t IMP_Sp_Alloc(int size, char *tag);"
+    summary: "Allocates a physically contiguous buffer, like `IMP_Alloc`, and returns its virtual address. Not in the public header."
+    returns: "The virtual address, 0 on failure."
+    diff: "Open question on T31: the vendor function was disassembled and takes a descriptor pointer plus a second non-NULL argument and returns 0 or -1 (it fills the descriptor through the allocator's info call). The OpenIMP call form follows the T23 library. No streamer calls it; the T31 form is not tested on a camera."
   Log_Get/Set_Option:
     group: log
     decl: "int IMP_Log_Get_Option(void);\nvoid IMP_Log_Set_Option(int option);"
