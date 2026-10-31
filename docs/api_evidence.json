@@ -9330,7 +9330,11 @@
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
-   }
+   },
+   "action": {
+    "T31": "n.a."
+   },
+   "note": "T31: not exported by the SDK 1.1.6 libimp (neither 4.7.2 nor 5.4.0 builds); only the 1.1.5-zrt display builds carry IMP_FB_*. The cameras have no display or framebuffer to test against (apitest/untestable.yaml: hardware). Decision: not implemented, nothing in the target libimp to match."
   },
   "FrameSource_ChnStatQuery": {
    "area": "FrameSource",
@@ -18546,13 +18550,16 @@
     "T21": "n.a.",
     "T23": "n.a.",
     "T30": "n.a.",
-    "T31": "?",
+    "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "auto": true
+   "ref": {
+    "T31": "apitest agg61 2026-10-31 .26"
+   },
+   "note": "T31 libimp 1.1.6 (disassembly): frees the encoder channel-to-pool table, the channel argument is unused, returns 0; OpenIMP drops every channel's pool binding the same way (GetPool reads -1 afterwards). apitest PASS on the device (set pool 2 on chn 7, ClearPoolId, GetPool -1); a pool is a name only in OpenIMP (one rmem arena), so there is no memory effect to check."
   },
   "Encoder_GetChnRfcDropFrameLines": {
    "area": "Encoder",
@@ -19170,13 +19177,16 @@
     "T21": "n.a.",
     "T23": "n.a.",
     "T30": "n.a.",
-    "T31": "?",
+    "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "auto": true
+   "ref": {
+    "T31": "apitest agg61 2026-10-31 .26"
+   },
+   "note": "T31 libimp 1.1.6 (disassembly): frees the FrameSource pool-id table, no argument, returns 0; OpenIMP resets every channel's pool id to -1 the same way. apitest PASS on the device (pool 2 set on ch3, ClearPoolId, every channel -1, old bindings restored, frames flow); a pool is a name only in OpenIMP, so there is no memory effect to check."
   },
   "FrameSource_CreateChn_Ext": {
    "area": "FrameSource",
@@ -19346,13 +19356,16 @@
     "T21": "n.a.",
     "T23": "n.a.",
     "T30": "n.a.",
-    "T31": "?",
+    "T31": "rt",
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "auto": true
+   "ref": {
+    "T31": "apitest rc3cov 2026-10-29 .26 (and .33) (refusal path only)"
+   },
+   "note": "T31 libimp 1.1.6 (disassembly): channel below 5; allowed only while the channel frame depth is 0 (stores bNoCopy != 0), otherwise logs and returns -1; OpenIMP matches this, any non-zero value counts as 1. Device (apitest, SetFrameDepth was 2 at that point): the refusal path and the invalid channel are proven; the success path (depth reset to 0, then set and clear) passes in the QEMU T31 only and has not run on a camera yet, and OpenIMP records the flag without a separate zero-copy frame path, so the cell stays an API round trip."
   },
   "FrameSource_SetIvdcMemLine": {
    "area": "FrameSource",

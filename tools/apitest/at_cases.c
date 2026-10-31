@@ -3473,15 +3473,24 @@ static void cs_fsset_t31(void)
         gfree(ca);
     }
 #if defined(PLATFORM_T31)
-    NEED(IMP_FrameSource_SetFrameDepthCopyType) NEED(IMP_FrameSource_GetFrameDepth) {
-        int d = -1, r1, r2, r3;
+    NEED(IMP_FrameSource_SetFrameDepthCopyType) NEED(IMP_FrameSource_GetFrameDepth) NEED(IMP_FrameSource_SetFrameDepth) {
+        /* stock: allowed only while the frame depth is 0, else -1. First with the depth as it is (refusal when it is set),
+         * then with the depth reset to 0 (success, any non-zero value counts as 1), then the depth is put back */
+        int d = -1, r1, r2, r3, ra, rb, rc = 0, dback = 0;
 
         IMP_FrameSource_GetFrameDepth(1, &d);
         r1 = IMP_FrameSource_SetFrameDepthCopyType(1, 1);
         r2 = IMP_FrameSource_SetFrameDepthCopyType(1, 0);
         r3 = IMP_FrameSource_SetFrameDepthCopyType(5, 0);
-        rep(FN(IMP_FrameSource_SetFrameDepthCopyType), r1 | r2, ((d == 0 ? (r1 == 0 && r2 == 0) : (r1 == -1 && r2 == -1)) && r3 == -1 && flow()) ? V_PASS : V_FAIL,
-            "rt: ch1 depth %d: nocopy -> %d, copy -> %d (stock: only before SetFrameDepth), ch5 %d", d, r1, r2, r3);
+        IMP_FrameSource_SetFrameDepth(1, 0);
+        ra = IMP_FrameSource_SetFrameDepthCopyType(1, 7);
+        rb = IMP_FrameSource_SetFrameDepthCopyType(1, 0);
+        if (d > 0) { IMP_FrameSource_SetFrameDepth(1, d); IMP_FrameSource_GetFrameDepth(1, &dback); rc = IMP_FrameSource_SetFrameDepthCopyType(1, 1); }
+        rep(FN(IMP_FrameSource_SetFrameDepthCopyType), r1 | r2 | ra | rb,
+            (((d == 0 || r1 == -1) && (d == 0 || r2 == -1) && (d != 0 || (r1 == 0 && r2 == 0)) && r3 == -1 &&
+              ra == 0 && rb == 0 && (d <= 0 || (dback == d && rc == -1)) && flow()) ? V_PASS : V_FAIL),
+            "rt: ch1 depth %d: nocopy -> %d, copy -> %d (stock: only while the depth is 0), ch5 %d; depth reset to 0: nocopy(7) -> %d, copy -> %d; depth back %d, nocopy -> %d",
+            d, r1, r2, r3, ra, rb, dback, rc);
     }
 #endif
 }
