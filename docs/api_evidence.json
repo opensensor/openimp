@@ -446,9 +446,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -538,9 +538,9 @@
    },
    "note": "audit: userspace implementation",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -615,9 +615,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -692,9 +692,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -769,9 +769,9 @@
    },
    "note": "audit: userspace implementation",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -846,9 +846,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -923,9 +923,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -1280,9 +1280,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -6424,9 +6424,9 @@
   "Decoder_*": {
    "area": "Encoder",
    "cells": {
-    "T10": "miss",
-    "T20": "miss",
-    "T21": "miss",
+    "T10": "err",
+    "T20": "err",
+    "T21": "err",
     "T23": "err",
     "T30": "miss",
     "T31": "n.a.",
@@ -6442,7 +6442,10 @@
    },
    "ref": {
     "T41": "QEMU T41 2026-10-31 case dec 8/8",
-    "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_Decoder_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_decoder.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #66)"
+    "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_Decoder_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_decoder.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #66)",
+    "T10": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)",
+    "T20": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)",
+    "T21": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)"
    }
   },
   "Encoder_CreateChn": {
@@ -6937,9 +6940,9 @@
   "Encoder_Get/SetChnCrop": {
    "area": "Encoder",
    "cells": {
-    "T10": "miss",
-    "T20": "miss",
-    "T21": "miss",
+    "T10": "qemu",
+    "T20": "qemu",
+    "T21": "qemu",
     "T23": "dev",
     "T30": "miss",
     "T31": "n.a.",
@@ -6950,7 +6953,10 @@
    },
    "note": "audit: userspace implementation; T10/T20/T21: the vendor libimp exports it without a header (i264e_set_param, x/y/w/h multiples of 16); OpenIMP does not (miss, found by `make export-check` 2026-10-11, a link shim is an open question)",
    "ref": {
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T10": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T20": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T21": "apitest t2xbl 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetChnDemask": {
@@ -9583,9 +9589,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -9679,9 +9685,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -9756,9 +9762,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -9833,9 +9839,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -10092,9 +10098,9 @@
    },
    "note": "T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11) T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -10244,9 +10250,9 @@
    },
    "note": "T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11) T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -17817,9 +17823,9 @@
    },
    "note": "audit: reaches the driver/kernel; userspace implementation",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -18162,9 +18168,9 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T10": "apitest rc3gaps2 2026-10-27 .31",
-    "T20": "apitest rc3gaps2 2026-10-27 .107",
-    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T10": "apitest t2xcov 2026-10-29 .31",
+    "T20": "apitest t2xcov 2026-10-29 .107",
+    "T21": "apitest t2xcov 2026-10-29 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg62 2026-10-31 .184",
@@ -19052,9 +19058,9 @@
   "Encoder_PadFrame": {
    "area": "Encoder",
    "cells": {
-    "T10": "miss",
-    "T20": "miss",
-    "T21": "miss",
+    "T10": "dev",
+    "T20": "dev",
+    "T21": "dev",
     "T23": "rt",
     "T30": "miss",
     "T31": "n.a.",
@@ -19065,7 +19071,10 @@
    },
    "auto": true,
    "ref": {
-    "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)",
+    "T21": "apitest t2xcov 2026-10-29 .24 (case padframe_t23: free mode encodes the pad frames, scene 8132 B, black pad frames 26 B; stale frames in time-stamp mode are refused and released)",
+    "T10": "apitest t2xcov 2026-10-29 .31 (case padframe_t23: free mode encodes the pad frames, scene 1032 B, black pad frames 51 B; stale frames in time-stamp mode are refused and released)",
+    "T20": "apitest t2xcov 2026-10-29 .107 (case padframe_t23: free mode encodes the pad frames, scene 3120 B, black pad frames 39 B; stale frames in time-stamp mode are refused and released)"
    }
   },
   "Encoder_RequestPskip": {
@@ -19167,9 +19176,9 @@
   "Encoder_SetChnRcTrigLevel": {
    "area": "Encoder",
    "cells": {
-    "T10": "?",
-    "T20": "?",
-    "T21": "miss",
+    "T10": "rt",
+    "T20": "rt",
+    "T21": "cache",
     "T23": "rt",
     "T30": "?",
     "T31": "n.a.",
@@ -19180,7 +19189,10 @@
    },
    "auto": true,
    "ref": {
-    "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)",
+    "T21": "apitest t2xcov 2026-10-29 .24 (return codes as stock: idle channel 0, channel 99 -1; the pair is kept, the T21 rate control has no trigger yet)",
+    "T10": "apitest t2xcov 2026-10-29 .31 (API round trip, no visible effect expected)",
+    "T20": "apitest t2xcov 2026-10-29 .107 (API round trip, no visible effect expected)"
    }
   },
   "Encoder_SetChnRfcDropFrameLines": {
@@ -19362,9 +19374,9 @@
   "Encoder_SetPadFrameAttr": {
    "area": "Encoder",
    "cells": {
-    "T10": "miss",
-    "T20": "miss",
-    "T21": "miss",
+    "T10": "dev",
+    "T20": "dev",
+    "T21": "dev",
     "T23": "rt",
     "T30": "miss",
     "T31": "n.a.",
@@ -19375,7 +19387,10 @@
    },
    "auto": true,
    "ref": {
-    "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)",
+    "T21": "apitest t2xcov 2026-10-29 .24 (case padframe_t23: free mode encodes the pad frames, scene 8132 B, black pad frames 26 B; stale frames in time-stamp mode are refused and released)",
+    "T10": "apitest t2xcov 2026-10-29 .31 (case padframe_t23: free mode encodes the pad frames, scene 1032 B, black pad frames 51 B; stale frames in time-stamp mode are refused and released)",
+    "T20": "apitest t2xcov 2026-10-29 .107 (case padframe_t23: free mode encodes the pad frames, scene 3120 B, black pad frames 39 B; stale frames in time-stamp mode are refused and released)"
    }
   },
   "Encoder_SetPskipCfg": {
@@ -20759,9 +20774,9 @@
   "Phys_to_Virt": {
    "area": "System",
    "cells": {
-    "T10": "?",
-    "T20": "?",
-    "T21": "?",
+    "T10": "qemu",
+    "T20": "qemu",
+    "T21": "qemu",
     "T23": "dev",
     "T30": "?",
     "T31": "dev",
@@ -20773,7 +20788,10 @@
    "auto": true,
    "ref": {
     "T31": "apitest agg61 2026-10-31 .26",
-    "T23": "apitest agg62 2026-10-31 .30"
+    "T23": "apitest agg62 2026-10-31 .30",
+    "T10": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T20": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T21": "apitest t2xbl 2026-10-31 QEMU (no camera)"
    }
   },
   "PoolAlloc": {
@@ -21394,9 +21412,9 @@
   "Sp_Alloc": {
    "area": "System",
    "cells": {
-    "T10": "?",
-    "T20": "?",
-    "T21": "?",
+    "T10": "qemu",
+    "T20": "qemu",
+    "T21": "qemu",
     "T23": "dev",
     "T30": "?",
     "T31": "dev",
@@ -21408,15 +21426,18 @@
    "auto": true,
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30",
-    "T31": "apitest agg61 2026-10-31 .26"
+    "T31": "apitest agg61 2026-10-31 .26",
+    "T10": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T20": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T21": "apitest t2xbl 2026-10-31 QEMU (no camera)"
    }
   },
   "Virt_to_Phys": {
    "area": "System",
    "cells": {
-    "T10": "?",
-    "T20": "?",
-    "T21": "?",
+    "T10": "qemu",
+    "T20": "qemu",
+    "T21": "qemu",
     "T23": "dev",
     "T30": "?",
     "T31": "dev",
@@ -21428,7 +21449,10 @@
    "auto": true,
    "ref": {
     "T31": "apitest agg61 2026-10-31 .26",
-    "T23": "apitest agg62 2026-10-31 .30"
+    "T23": "apitest agg62 2026-10-31 .30",
+    "T10": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T20": "apitest t2xbl 2026-10-31 QEMU (no camera)",
+    "T21": "apitest t2xbl 2026-10-31 QEMU (no camera)"
    }
   },
   "alloc_init": {

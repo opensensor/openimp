@@ -1,4 +1,5 @@
 /* apitest: Encoder area (H.264 / H.265 / JPEG) and the stream verifier */
+#include <dlfcn.h>
 #include "apitest.h"
 /* T20/T21: OpenIMP refuses (-1) settings its Helix/NVPU encoder cannot apply, instead of storing
  * them without effect (the vendor stores them): report that as N/A, not as a failed function. */
@@ -1026,6 +1027,44 @@ static void live_old(int chn, int codec)
             CHECK(IMP_Encoder_SetChnCrop, r2, r == 0 && !memcmp(g, g2, sizeof(*g)), "same cfg written back");
         }
         gfree(g); gfree(g2);
+    }
+# endif
+# if !HAS_IMP_Encoder_GetChnCrop && (defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21))
+    {   /* IMP_Encoder_Get/SetChnCrop: exported by the T10/T20/T21 libimp without a header, so resolved with dlsym.  The window (multiples of 16) is the visible
+         * rectangle of the stream (SPS frame cropping); the check reads the SPS size back from the stream */
+        typedef struct { unsigned char enable, pad[3]; uint32_t x, y, w, h; } CropCfg;
+        int (*cset)(int, const CropCfg *) = (int (*)(int, const CropCfg *))dlsym(dlopen(NULL, RTLD_NOW), "IMP_Encoder_SetChnCrop");
+        int (*cget)(int, CropCfg *) = (int (*)(int, CropCfg *))dlsym(dlopen(NULL, RTLD_NOW), "IMP_Encoder_GetChnCrop");
+
+        if (cset && cget && codec == CODEC_H264) {
+            CropCfg *g = (CropCfg *)gnew(sizeof(CropCfg)), *g2 = (CropCfg *)gnew(sizeof(CropCfg)), *b1 = (CropCfg *)gnew(sizeof(CropCfg));
+            SI si;
+            int k, rs, rg, bad1, bad2, bad3, bad4, w0, h0, on_ok, off_ok, s_w, s_h;
+
+            IMP_Encoder_RequestIDR(chn); pull(chn, codec, 40, 2, 0, &si, 3000); w0 = si.w; h0 = si.h;
+            g->enable = 1; g->x = 16; g->y = 16; g->w = 576; g->h = 320;
+            b1->enable = 1; b1->x = 8; b1->y = 0; b1->w = 576; b1->h = 320;
+            bad1 = cset(chn, b1);                                              /* not a multiple of 16 */
+            b1->x = 64; b1->w = 1600;
+            bad2 = cset(chn, b1);                                              /* outside the picture */
+            bad3 = cset(chn, NULL);
+            bad4 = cset(99, g);                                                /* invalid channel */
+            rs = cset(chn, g);
+            rg = cget(chn, g2);
+            for (k = 0; k < 6; k++) { IMP_Encoder_RequestIDR(chn); pull(chn, codec, 40, 2, 0, &si, 3000); if (si.w == 576 && si.h == 320) break; }
+            s_w = si.w; s_h = si.h;
+            on_ok = rs == 0 && rg == 0 && g2->enable && g2->x == 16 && g2->y == 16 && g2->w == 576 && g2->h == 320 && bad1 == -1 && bad2 == -1 && bad3 == -1 && bad4 == -1 && s_w == 576 && s_h == 320;
+            memset(g, 0, sizeof(*g));
+            rs = cset(chn, g);                                                 /* off */
+            for (k = 0; k < 6; k++) { IMP_Encoder_RequestIDR(chn); pull(chn, codec, 40, 2, 0, &si, 3000); if (si.w == w0 && si.h == h0) break; }
+            rg = cget(chn, g2);
+            off_ok = rs == 0 && rg == 0 && !g2->enable && si.w == w0 && si.h == h0;
+            rep(LBL("IMP_Encoder_SetChnCrop"), rs, (on_ok && off_ok) ? V_PASS : V_FAIL,
+                "crop 16,16 576x320: read back, SPS visible size %dx%d (was %dx%d); x=8 -> %d, outside the picture -> %d, NULL -> %d, chn 99 -> %d; crop off: enable %d, SPS size %dx%d",
+                s_w, s_h, w0, h0, bad1, bad2, bad3, bad4, g2->enable, si.w, si.h);
+            rep(LBL("IMP_Encoder_GetChnCrop"), rg, (on_ok && off_ok) ? V_PASS : V_FAIL, "window read back while on (%u,%u %ux%u) and off (enable %d)", 16u, 16u, 576u, 320u, g2->enable);
+            gfree(g); gfree(g2); gfree(b1);
+        } else if (!cset || !cget) { rep_na(LBL("IMP_Encoder_SetChnCrop")); rep_na(LBL("IMP_Encoder_GetChnCrop")); }
     }
 # endif
 # if HAS_IMP_Encoder_SetChnInitQP

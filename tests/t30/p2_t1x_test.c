@@ -109,6 +109,14 @@ int AL_Codec_Encode_SetRoi(void *c, uint32_t i, const uint8_t e[7])
 { (void)c; if (i >= 8u) return -1; roi_calls++; memcpy(roi_entry[i], e, 7); return 0; }
 int AL_Codec_Encode_SetChromaQpOffset(void *c, int o)
 { (void)c; chroma_calls++; chroma_value = o; return 0; }
+int IMP_Encoder_SetChnCrop(int encChn, const IMPEncoderCropCfg *cfg);
+int IMP_Encoder_GetChnCrop(int encChn, IMPEncoderCropCfg *cfg);
+static int crop_calls, crop_en;
+static uint32_t crop_v[4];
+int AL_Codec_Encode_SetCrop(void *c, int e, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{ (void)c; crop_calls++; crop_en = e; crop_v[0] = x; crop_v[1] = y; crop_v[2] = w; crop_v[3] = h; return 0; }
+int AL_Codec_Encode_GetCrop(void *c, int *e, uint32_t *x, uint32_t *y, uint32_t *w, uint32_t *h)
+{ (void)c; *e = crop_en; *x = crop_v[0]; *y = crop_v[1]; *w = crop_v[2]; *h = crop_v[3]; return 0; }
 static int trig_calls, trig_mode;
 static float trig_level;
 int AL_Codec_Encode_SetRcTrig(void *c, float l, int m)
@@ -150,6 +158,28 @@ int main(void)
     CHECK(IMP_Encoder_CreateChn(0, &attr) == 0);
     make_attr(&attr, 1);
     CHECK(IMP_Encoder_CreateChn(1, &attr) == 0);
+
+    /* IMP_Encoder_Get/SetChnCrop (vendor T21 1.0.33 / T20 3.12.0): multiples of 16 only (-1 also with enable 0), an uncreated channel
+     * answers 0 and does nothing, a created H.264 channel takes the window inside the picture to the encoder */
+    {
+        IMPEncoderCropCfg cc, rc;
+
+        memset(&cc, 0, sizeof(cc));
+        cc.enable = 1; cc.x = 16; cc.y = 16; cc.w = 576; cc.h = 320;
+        CHECK(IMP_Encoder_SetChnCrop(0, NULL) == -1 && IMP_Encoder_SetChnCrop(99, &cc) == -1);
+        cc.x = 8;
+        CHECK(IMP_Encoder_SetChnCrop(0, &cc) == -1);
+        cc.x = 16; cc.w = 1600;
+        CHECK(IMP_Encoder_SetChnCrop(0, &cc) == -1 && crop_calls == 0);
+        cc.w = 576;
+        CHECK(IMP_Encoder_SetChnCrop(4, &cc) == 0 && crop_calls == 0);                 /* never created: 0, nothing done */
+        memset(&rc, 0xff, sizeof(rc));
+        CHECK(IMP_Encoder_GetChnCrop(4, &rc) == 0 && !rc.enable && !rc.x && !rc.w);
+        CHECK(IMP_Encoder_SetChnCrop(0, &cc) == 0);
+        CHECK(crop_calls == 1 && crop_en == 1 && crop_v[0] == 16 && crop_v[1] == 16 && crop_v[2] == 576 && crop_v[3] == 320);
+        memset(&rc, 0, sizeof(rc));
+        CHECK(IMP_Encoder_GetChnCrop(0, &rc) == 0 && rc.enable && rc.x == 16 && rc.y == 16 && rc.w == 576 && rc.h == 320);
+    }
 
     /* CreateChn denoise (vendor T21 1.0.33): a disabled denoise has its type
      * cleared in the channel attribute; an enabled one keeps the caller's

@@ -40,6 +40,7 @@ typedef struct {
     uint32_t size;              /* 0x88: Buffer size */
     uint32_t flags;             /* 0x8c: Flags */
     uint32_t pool_id;           /* 0x90: Pool ID */
+    uint32_t extra_refs;        /* references taken with IMP_Sp_Alloc (T20/T21/T10); each IMP_Free drops one before the buffer goes */
 } DMABufferRecord;
 
 /* ioctl commands for memory allocation */
@@ -266,6 +267,13 @@ static DMABufferRecord *claim_buffer(uintptr_t addr)
                 break;
             }
         }
+    }
+    if (found && found->extra_refs > 0) {
+        /* Shared by IMP_Sp_Alloc: this free only drops one reference.  The marker
+         * tells IMP_Free that the buffer stays alive. */
+        found->extra_refs--;
+        pthread_mutex_unlock(&g_registry_mutex);
+        return (DMABufferRecord *)(uintptr_t)1;
     }
     if (found)
         g_buffer_registry[slot] = NULL;
@@ -866,6 +874,8 @@ int IMP_Free(uintptr_t phys_or_virt_addr) {
         return 0;
     }
 
+    if (buf == (DMABufferRecord *)(uintptr_t)1)
+        return 0;
     return dma_free_buffer(buf);
 }
 
@@ -1399,10 +1409,36 @@ typedef struct {
 static AllocAttr g_alloc_attr = {0x1000, 0}; /* Default: 4K alignment, cached */
 static AllocAttr g_pool_alloc_attr = {0x1000, 0};
 
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21)
+/* T10/T20/T21 vendor form (libimp 3.12.0 / 1.0.33, spAllocMem): the second argument is the PHYSICAL address of a live
+ * allocation.  The call takes one more reference on that buffer (the vendor counter at node +16), fills the descriptor and
+ * returns 0; -1 for an unknown address.  Every IMP_Sp_Alloc is paired with one more IMP_Free; the buffer is released by the
+ * last one. */
+int IMP_Sp_Alloc(IMPDMABufferInfo *info, uintptr_t phys_addr) {
+    DMABufferRecord *buf = NULL;
+    int i;
+
+    if (info == NULL || phys_addr == 0)
+        return -1;
+    pthread_mutex_lock(&g_registry_mutex);
+    for (i = 0; i < MAX_DMA_BUFFERS; i++) {
+        if (g_buffer_registry[i] != NULL && g_buffer_registry[i]->phys_addr == (uint32_t)phys_addr) {
+            buf = g_buffer_registry[i];
+            buf->extra_refs++;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_registry_mutex);
+    if (buf == NULL)
+        return -1;
+    fill_dma_info(info, buf);
+    return 0;
+}
+#else
 uintptr_t IMP_Sp_Alloc(int size, char *tag) {
     IMPDMABufferInfo info;
 
-    /* OEM: special-purpose allocation — same as IMP_Alloc but with specific flags.
+    /* T23 library form: special-purpose allocation, same as IMP_Alloc but with specific flags.
      * Routes through the same DMA allocator. */
     if (size <= 0)
         return 0;
@@ -1411,6 +1447,7 @@ uintptr_t IMP_Sp_Alloc(int size, char *tag) {
         return 0;
     return (uintptr_t)info.virt_addr;
 }
+#endif
 
 int IMP_Alloc_Set_Attr(uint32_t alignment, uint32_t cache_policy) {
     g_alloc_attr.alignment = (alignment > 0) ? alignment : 0x1000;

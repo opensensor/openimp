@@ -15,7 +15,7 @@ entries:
     category: sound
     reason: "T10/T20 legacy IMP_Audio_Play/Record/codec helpers: play or record through the board audio path (no sound tests)"
   - match: ["IMP_Decoder_*"]
-    socs: [T10, T20, T21, T23, T30, T31]
+    socs: [T23, T30, T31]
     category: own-topology
     reason: "hardware decoder channel needs a bitstream source and its own frame sink (no case yet for decode)"
   - match: ["IMP_FB_*"]

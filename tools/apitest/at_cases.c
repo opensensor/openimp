@@ -2367,7 +2367,11 @@ static void cs_alloc(void)
 {
     uintptr_t (*a_alloc)(void *, intptr_t, char *) = (uintptr_t (*)(void *, intptr_t, char *))dsym("IMP_Alloc");
     int (*a_free)(uintptr_t) = (int (*)(uintptr_t))dsym("IMP_Free");
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
+    int (*a_sp)(void *, uintptr_t) = (int (*)(void *, uintptr_t))dsym("IMP_Sp_Alloc");    /* vendor form: (descriptor, physical address of a live buffer) = one more reference */
+#else
     uintptr_t (*a_sp)(int, char *) = (uintptr_t (*)(int, char *))dsym("IMP_Sp_Alloc");
+#endif
     void *(*p2v)(uint32_t) = (void *(*)(uint32_t))dsym("IMP_Phys_to_Virt");
     uint32_t (*v2p)(void *) = (uint32_t (*)(void *))dsym("IMP_Virt_to_Phys");
     int (*flush)(void *, uint32_t) = (int (*)(void *, uint32_t))dsym("IMP_FlushCache");
@@ -2422,12 +2426,34 @@ static void cs_alloc(void)
             rep(LBL("IMP_Free"), r, r == 0 ? V_PASS : V_FAIL, "freed (ret %ld)", r);
         } else if (v) a_free(v);
     } else { ALN("IMP_Alloc"); ALN("IMP_Free"); ALN("IMP_Virt_to_Phys"); ALN("IMP_Phys_to_Virt"); ALN("IMP_FlushCache"); ALN("IMP_Alloc_Dump"); ALN("IMP_Alloc_Dump_To_File"); }
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
+    if (a_sp && a_alloc && a_free) {
+        at_dmainfo *d3 = (at_dmainfo *)gnew(sizeof(at_dmainfo));
+        uintptr_t st = a_alloc(d, 4096, "apitest-sp"), v = (uintptr_t)d->virt;
+        int s1 = -9, s1b = -9, s2 = -9, f1 = -9, f2 = -9, f3 = -9, bad0 = -9, bad1 = -9;
+        if (st == 0 && v && d->phys) {
+            s1 = a_sp(d3, d->phys);                      /* second reference to the same buffer (count 2) */
+            f1 = a_free(d->phys);                        /* drops one reference (count 1), the buffer stays */
+            memset((void *)v, 0x5a, 4096);               /* still mapped */
+            s1b = a_sp(d3, d->phys);                     /* still known: a reference again (count 2) */
+            f2 = a_free(d->phys);                        /* count 1 */
+            f3 = a_free(d->phys);                        /* last reference: released */
+            s2 = a_sp(d3, d->phys);                      /* gone now: refused */
+            bad0 = a_sp(NULL, d->phys); bad1 = a_sp(d3, 0);
+        }
+        ok = s1 == 0 && s1b == 0 && d3->phys == d->phys && d3->virt == d->virt && f1 == 0 && f2 == 0 && f3 == 0 && s2 == -1 && bad0 == -1 && bad1 == -1;
+        rep(LBL("IMP_Sp_Alloc"), s1, ok ? V_PASS : V_FAIL, "second reference on phys 0x%x: ret %d, descriptor equal %d; first free keeps the buffer (reference again: %d), last free releases it (stale address: %d); NULL descriptor %d, phys 0 %d; frees %d %d %d",
+            d->phys, s1, d3->phys == d->phys, s1b, s2, bad0, bad1, f1, f2, f3);
+        gfree(d3);
+    } else ALN("IMP_Sp_Alloc");
+#else
     if (a_sp && a_free) {
         uintptr_t v = a_sp(4096, "apitest");
         if (v) memset((void *)v, 0x5a, 4096);
         r = v ? a_free(v) : -1;
         rep(LBL("IMP_Sp_Alloc"), r, (v != 0 && r == 0) ? V_PASS : V_FAIL, "4096 bytes at %p written and freed", (void *)v);
     } else ALN("IMP_Sp_Alloc");
+#endif
     /* --- pools */
     if (pset && pget) {
         uint32_t a0 = 0, c0 = 0;
@@ -4887,9 +4913,41 @@ static void cs_wbalgo_t23(void) {}
 #endif
 
 
+/* ------------------------------------------------------------------------------- IMP_Decoder on T10/T20/T21
+ * OpenIMP has no JPEG decoder on these SoCs: the eight exports answer -1 with errno ENOTSUP (documented stub), so an application sees the
+ * missing feature at CreateChn.  The case checks exactly that, through dlsym (the vendor header is not part of the build). */
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
+static void cs_decoder_t2x(void)
+{
+    static const char *nm[] = { "IMP_Decoder_CreateChn", "IMP_Decoder_DestroyChn", "IMP_Decoder_StartRecvPic", "IMP_Decoder_StopRecvPic",
+                                "IMP_Decoder_SendStreamTimeout", "IMP_Decoder_PollingFrame", "IMP_Decoder_GetFrame", "IMP_Decoder_ReleaseFrame" };
+    static const char *lbl[8];
+    typedef long (*fn_t)(long, long, long);
+    unsigned i;
+    long r[8];
+    int en[8];
+    void *buf = gnew(64);
+
+    lbl[0] = LBL("IMP_Decoder_CreateChn"); lbl[1] = LBL("IMP_Decoder_DestroyChn"); lbl[2] = LBL("IMP_Decoder_StartRecvPic"); lbl[3] = LBL("IMP_Decoder_StopRecvPic");
+    lbl[4] = LBL("IMP_Decoder_SendStreamTimeout"); lbl[5] = LBL("IMP_Decoder_PollingFrame"); lbl[6] = LBL("IMP_Decoder_GetFrame"); lbl[7] = LBL("IMP_Decoder_ReleaseFrame");
+    for (i = 0; i < 8; i++) {
+        fn_t f = (fn_t)dsym(nm[i]);
+
+        if (!f) { rep_na(lbl[i]); continue; }
+        errno = 0;
+        r[i] = f(0, (long)buf, 100);
+        en[i] = errno;
+        rep(lbl[i], r[i], (r[i] == -1 && en[i] == ENOTSUP) ? V_PASS : V_FAIL, "stub by design: returns %ld errno %d (ENOTSUP %d); no JPEG decoder in OpenIMP on this SoC", r[i], en[i], ENOTSUP);
+    }
+    gfree(buf);
+}
+#else
+static void cs_decoder_t2x(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4961,6 +5019,7 @@ void t_cases(void)
     if (cs_on("sensorflip")) cs_sensorflip(); wdog("cases", 90);
     if (cs_on("aestrategy")) cs_aestrategy(); wdog("cases", 90);
     if (cs_on("alloc")) cs_alloc();       wdog("cases", 60);
+    if (cs_on("decoder_t2x")) cs_decoder_t2x(); wdog("cases", 60);
     if (cs_on("isposdapi")) cs_isposdapi(); wdog("cases", 90);
     if (cs_on("aeevlist")) cs_aeevlist();  wdog("cases", 60);
     if (cs_on("faceaeweight")) cs_faceaeweight(); wdog("cases", 60);

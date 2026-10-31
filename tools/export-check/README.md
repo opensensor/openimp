@@ -14,3 +14,9 @@ code paths of another SoC (`name  # reason`). SoCs without a built library are s
 T10 uses the T20 build (`build/t20/libimp.so`) when `build/t10` does not exist.
 
 `make release-check` (tools/release-check.sh) builds every SoC and runs this check with `EXPORT_CHECK_STRICT=1`; see BUILD.md.
+
+Exception (T10, T20): the lists follow the 3.12.0 libimp, the one the cameras run. Eight names that only the older 3.9.0 libimp exports
+(`IMP_Encoder_Get/SetChnH264Demask`, `Get/SetChnH264Denoise`, `Get/SetChnH264FrmUsedMode`, `Get/SetChnRcAttr`; 3.12.0 renamed the first three to
+`ChnDemask`, `ChnDenoise` and `ChnFrmUsedMode` and dropped the RcAttr pair; the 3.9.0 channel-attribute structures differ, so a 3.9.0 program does
+not run on OpenIMP anyway) are not listed.
+
