@@ -13445,7 +13445,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
     "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)"
@@ -13997,7 +13997,7 @@
    },
    "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test)",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -15356,7 +15356,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -15419,7 +15419,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -15556,7 +15556,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -15672,7 +15672,7 @@
    },
    "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -15805,7 +15805,7 @@
    },
    "note": "audit: userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
@@ -15923,7 +15923,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16005,7 +16005,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16068,7 +16068,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16131,7 +16131,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
    }
@@ -16359,7 +16359,7 @@
    },
    "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
    "ref": {
-    "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
+    "T40": "apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
    }
   },
