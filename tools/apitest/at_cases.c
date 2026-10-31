@@ -4254,9 +4254,36 @@ static void cs_padframe_t23(void)
 static void cs_padframe_t23(void) {}
 #endif
 
+
+
+
+
+
+#if defined(PLATFORM_T23)
+/* ISP_Tuning_SetWB_ALGO (#10, control 0x800000c): no getter.  Stock 1.3.0 passes the algorithm number through (num < 4 checked per sensor);
+ * the open driver stores 0..2 and always returns 0 (no picture effect, class d, documented), so the case checks the return codes and that
+ * the picture and the frame flow are untouched, then restores 0. */
+static void cs_wbalgo_t23(void)
+{
+    int (*set)(int) = (int (*)(int))dsym("IMP_ISP_Tuning_SetWB_ALGO");
+
+    if (set) {
+        Fst base = fst(800), after;
+        int r0 = set(1), r1 = set(2), r2 = set(0), ms = 0;
+
+        after = recover(base.y, &ms);
+        rep(LBL("IMP_ISP_Tuning_SetWB_ALGO"), r0 | r1 | r2, (r0 == 0 && r1 == 0 && r2 == 0 && ms >= 0 && flow()) ? V_PASS : V_FAIL,
+            "rt: algo 1 / 2 / 0 -> %d %d %d (no getter; no picture effect expected), Y %.1f -> %.1f, frames flow", r0, r1, r2, base.y, after.y);
+    } else rep_na(LBL("IMP_ISP_Tuning_SetWB_ALGO"));
+}
+#else
+static void cs_wbalgo_t23(void) {}
+#endif
+
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "wbalgo_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4359,6 +4386,7 @@ void t_cases(void)
     if (cs_on("enchelp_t23")) cs_enchelp_t23(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("t140c")) cs_t140c(); wdog("cases", 120);
     if (cs_on("padframe_t23")) cs_padframe_t23(); wdog("cases", 120);
+    if (cs_on("wbalgo_t23")) cs_wbalgo_t23(); wdog("cases", 90);
     if (getenv("APITEST_CASES") && cs_on("framedrop_t40")) cs_framedrop_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("ratiohang_t40")) cs_ratiohang_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("awbctstart_t40")) cs_awbctstart_t40(); wdog("cases", 60);

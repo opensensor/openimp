@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-10-31, T23 backlog (#9 to #13, branch claude/t23-backlog)
+
+- **#10 AE / AWB / AF (`ISP_Tuning_SetWB_ALGO`, T23):** the libimp side was checked against the 1.3.0 disassembly (algorithm number passed to control `0x800000c`, sensor number below 4); the open driver stores 0 to 2 and has no picture effect (documented class d). New apitest case `wbalgo_t23` (algorithm 1, 2, 0 return 0, picture and frame flow unchanged): QEMU T23 PASS; the camera run is missing, so the matrix cell stays.
+
 ## 2026-10-31, T31 System backlog (#30, branch claude/t31-backlog-sys)
 
 - **Pool and address helpers (14 functions of #30):** the T31 vendor library was disassembled. `PoolAlloc_Get_Attr`, `PoolAlloc_Set_Attr`, `PoolFlushCache`, `PoolPhys_to_Virt` and `PoolVirt_to_Phys` are empty stubs there (return 0, nothing stored or converted); OpenIMP implements them (extra, documented in the API reference). `IMP_Sp_Alloc` has a different call form on the T31 vendor library than the one OpenIMP uses (open question, no streamer calls it). The other functions take the vendor arguments.
