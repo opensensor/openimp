@@ -19483,7 +19483,7 @@
     "T41": "n.a."
    },
    "auto": true,
-   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_ISPOSD_Alloc(4096) returns a writable address whose physical address IMP_Virt_to_Phys knows; stock returns the descriptor's virtual address or 0 when IMP_Alloc fails (same). QEMU T23 PASS; camera run missing."
+   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_ISPOSD_Alloc(4096) returns a writable address whose physical address IMP_Virt_to_Phys knows; stock returns the descriptor's virtual address or 0 when IMP_Alloc fails (same). QEMU T23 PASS; camera run missing. Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #13): see #12: case osdalloc_t23 QEMU T23 PASS; camera run missing."
   },
   "ISP_AddSensor_Free": {
    "area": "ISP tuning",
@@ -20512,7 +20512,8 @@
    "auto": true,
    "ref": {
     "T31": "apitest agg61 2026-10-31 .26"
-   }
+   },
+   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #13): alloc case QEMU T23 PASS (phys+100 maps back to virt+100); stock 1.3.0 forwards to a pointer in the allocator table (0 when it is unset), OpenIMP converts inside its own arena; camera run missing."
   },
   "PoolAlloc": {
    "area": "System",
@@ -21159,7 +21160,8 @@
    "auto": true,
    "ref": {
     "T31": "apitest agg61 2026-10-31 .26"
-   }
+   },
+   "note": "Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #13): alloc case QEMU T23 PASS (virt+100 -> phys+100); camera run missing."
   },
   "alloc_init": {
    "area": "System",

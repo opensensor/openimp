@@ -2219,13 +2219,13 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 <details><summary>Notes and references (68)</summary>
 
-- `ISPOSD_Alloc`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_ISPOSD_Alloc(4096) returns a writable address whose physical address IMP_Virt_to_Phys knows; stock returns the descriptor's virtual address or 0 when IMP_Alloc fails (same). QEMU T23 PASS; camera run missing.
+- `ISPOSD_Alloc`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #12): case osdalloc_t23: IMP_ISPOSD_Alloc(4096) returns a writable address whose physical address IMP_Virt_to_Phys knows; stock returns the descriptor's virtual address or 0 when IMP_Alloc fails (same). QEMU T23 PASS; camera run missing. Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #13): see #12: case osdalloc_t23 QEMU T23 PASS; camera run missing.
 - `Log_Get_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `Log_Set_Option`: T40: apitest agg47-cases 2026-10-26 .184. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest agg47-cases 2026-10-26 .31. T20: apitest agg47-cases 2026-10-26 .107. T21: apitest agg47-cases 2026-10-26 .24. T23: apitest agg47-cases 2026-10-26 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26.
 - `MemPool_GetById`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
 - `MemPool_InitPool`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
 - `MemPool_Release`: T31: apitest agg61 2026-10-31 .26.
-- `Phys_to_Virt`: T31: apitest agg61 2026-10-31 .26.
+- `Phys_to_Virt`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #13): alloc case QEMU T23 PASS (phys+100 maps back to virt+100); stock 1.3.0 forwards to a pointer in the allocator table (0 when it is unset), OpenIMP converts inside its own arena; camera run missing. T31: apitest agg61 2026-10-31 .26.
 - `PoolAlloc`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
 - `PoolAlloc_Dump`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
 - `PoolAlloc_Get_Attr`: T23: apitest apitest-cov 2026-10-27 .30. T31: apitest agg61 2026-10-31 .26.
@@ -2286,7 +2286,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `System_RebaseTimeStamp`: audit: userspace implementation T10: apitest rc3gaps2 2026-10-27 .31. T20: apitest rc3gaps2 2026-10-27 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest rc3gaps2 2026-10-27 .30. T31: apitest rc3gaps2 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest rc3gaps2 2026-10-27 .34.
 - `System_UnBind`: audit: userspace implementation T10: apitest agg47 2026-10-26 .31. T20: apitest agg47 2026-10-26 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest agg47 2026-10-26 .30. T31: apitest rc3gaps2 2026-10-27 .26. T40: apitest agg59 2026-10-31 .184. T41: apitest rc3gaps2 2026-10-27 .34.
 - `System_WriteReg32`: audit: reaches the driver/kernel T10: apitest rc3gaps2 2026-10-27 .31. T20: apitest rc3gaps2 2026-10-27 .107. T21: apitest rc3gaps2 2026-10-27 .24. T23: apitest rc3gaps2 2026-10-27 .30. T31: apitest rc3gaps2 2026-10-27 .26. T41: apitest rc3gaps2 2026-10-27 .34. T40: apitest agg59 2026-10-31 .184.
-- `Virt_to_Phys`: T31: apitest agg61 2026-10-31 .26.
+- `Virt_to_Phys`: Backlog pass 2026-10-31 (OpenIMP claude/t23-backlog, #13): alloc case QEMU T23 PASS (virt+100 -> phys+100); camera run missing. T31: apitest agg61 2026-10-31 .26.
 
 </details>
 
