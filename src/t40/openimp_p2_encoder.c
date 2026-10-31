@@ -3407,6 +3407,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #if defined(PLATFORM_T23) || defined(PLATFORM_T21)
     P2PadNode pad;
     int pad_sel = 0;
+    int pad_pending = 0;
 #endif
     uint64_t now_us;
     uint64_t frame_deadline_us;
@@ -3728,7 +3729,9 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #if defined(PLATFORM_T23) || defined(PLATFORM_T21)
     if (pad_sel > 0) {
         process_result = AL_Codec_Encode_Process(ch->codec, pad.frame, pad.frame);
-        p2_pad_release(&pad);
+        /* the hardware still reads the pad buffer: hand it back at the
+         * completion point like the captured frame (review H2) */
+        pad_pending = 1;
     } else
 #endif
     process_result = AL_Codec_Encode_Process(ch->codec, frame, frame);
@@ -3805,6 +3808,12 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         frame != &ch->synthetic_frame &&
         p2_release_source_frame(ch->source_channel, frame) == 0)
         frame = NULL;
+#if defined(PLATFORM_T23) || defined(PLATFORM_T21)
+    if (pad_pending) {
+        p2_pad_release(&pad);
+        pad_pending = 0;
+    }
+#endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if (ch->codec_type == IMP_ENC_TYPE_AVC && t23_avc_trace_count <= 16u)
         p2_trace("openimp/P2: capture released frame=%u remaining=%p\n",
@@ -3867,6 +3876,10 @@ done:
         AL_Codec_Encode_ReleaseStream(ch->codec, stream, user);
     if (frame && frame != &ch->synthetic_frame)
         p2_release_source_frame(ch->source_channel, frame);
+#if defined(PLATFORM_T23) || defined(PLATFORM_T21)
+    if (pad_pending)
+        p2_pad_release(&pad);
+#endif
     if (core_locked)
         pthread_mutex_unlock(&p2_core_lock);
     openimp_profile_end(OPENIMP_PROFILE_ENCODER_POLL, poll_profile);
