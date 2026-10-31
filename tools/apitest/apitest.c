@@ -336,6 +336,9 @@ int main(int argc, char **argv)
     rep(FN(IMP_ISP_Open), ret, ret < 0 ? V_FAIL : V_PASS, "");
     if (ret >= 0) t_binpath_pre();
     if (ret >= 0) { ret = IMP_ISP_AddSensor(IMPVI_MAIN, &g_sensor); RET0(IMP_ISP_AddSensor, ret, "sensor %s", g_sensor.name); }
+#ifdef APITEST_T40
+    if (ret >= 0) algo_pre_t40();          /* custom AE/AWB records (case customalgo_t40): the vendor starts them at EnableSensor */
+#endif
     if (ret >= 0) { ret = IMP_ISP_EnableSensor(IMPVI_MAIN, &g_sensor); RET0(IMP_ISP_EnableSensor, ret, ""); }
 #else
     ret = IMP_ISP_Open();
@@ -396,6 +399,9 @@ int main(int argc, char **argv)
     rep_area("teardown");
     t_fs_post();
     t_system_exit(0);
+#ifdef APITEST_T40
+    algo_post_t40();
+#endif
 
 summary:
     for (i = 0; i < g_nfn; i++) { if (g_fn[i].tested) tested++; else na_only++; }

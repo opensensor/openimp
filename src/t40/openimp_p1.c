@@ -787,6 +787,12 @@ int IMP_ISP_DelSensor(IMPVI_NUM num, IMPSensorInfo *info)
     return result;
 }
 
+#if defined(PLATFORM_T40)
+/* custom AE/AWB callbacks (openimp_p1_algo.c) */
+extern void OpenIMP_P1_AlgoStart(int fd, int num);
+extern void OpenIMP_P1_AlgoStop(int fd, int num);
+#endif
+
 int IMP_ISP_EnableSensor(IMPVI_NUM num, IMPSensorInfo *info)
 {
     struct tisp_initarg input;
@@ -804,6 +810,10 @@ int IMP_ISP_EnableSensor(IMPVI_NUM num, IMPSensorInfo *info)
         unlock_p1();
         return 0;
     }
+#if defined(PLATFORM_T40)
+    /* vendor: pending SetAeAlgoFunc/SetAwbAlgoFunc records are registered here */
+    OpenIMP_P1_AlgoStart(p1.isp_fd, (int)num);
+#endif
     input.enable = 1;
     input.vinum = num;
     result = record_ioctl(p1.isp_fd, TISP_VIDIOC_G_INPUT, &input);
@@ -837,6 +847,9 @@ int IMP_ISP_DisableSensor(IMPVI_NUM num)
     }
     input.enable = 0;
     input.vinum = num;
+#if defined(PLATFORM_T40)
+    OpenIMP_P1_AlgoStop(p1.isp_fd, (int)num);
+#endif
     result = record_ioctl(p1.isp_fd, TISP_VIDIOC_DISABLE_SENSOR, &input);
     if (result == 0)
         result = record_ioctl(p1.isp_fd, TISP_VIDIOC_STOP_SENSOR, &input);

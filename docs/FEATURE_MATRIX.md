@@ -1027,7 +1027,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 <details><summary><b>T40</b>: 29 functions</summary>
 
-- **AE / AWB / AF:** implement (2): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`
+- **AE / AWB / AF:** documented ENOTSUP (2): `ISP_SetAeAlgoFunc`, `ISP_SetAwbAlgoFunc`
 - **Encoder (and decoder):** implement (1): `Encoder_Get/SetFisheyeEnableStatus`
 - **System / sysutils / log:** implement (26): `SU_ADC_DisableChn`, `SU_ADC_EnableChn`, `SU_ADC_Exit`, `SU_ADC_GetChnValue`, `SU_ADC_Init`, `SU_Base_DisableAlarm`, `SU_Base_EnableAlarm`, `SU_Base_Get/SetAlarm`, `SU_Base_Get/SetTime`, `SU_Base_PollingAlarm`, `SU_Base_Reboot`, `SU_Base_Suspend`, `SU_CIPHER_ConfigHandle`, `SU_CIPHER_CreateHandle`, `SU_CIPHER_Decrypt`, `SU_CIPHER_DES_Exit`, `SU_CIPHER_DES_Init`, `SU_CIPHER_DES_Test`, `SU_CIPHER_DestroyHandle`, `SU_CIPHER_Encrypt`, `SU_CIPHER_Exit`, `SU_CIPHER_Init`, `SU_Key_DisableEvent`, `SU_Key_EnableEvent`, `SU_Key_ReadEvent`, `SU_LED_Command`
 
@@ -1341,8 +1341,8 @@ Completeness list, separate from the streamer priorities: every vendor function 
 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T32 | T33 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `ISP_SetAeAlgoFunc` | · | · | · | 🔧a | · | 🔧a | 📋 | 📋 | ❌ | ❌ | – |
-| `ISP_SetAwbAlgoFunc` | · | · | · | 🔧a | · | 🔧a | 📋 | 📋 | ❌ | ❌ | – |
+| `ISP_SetAeAlgoFunc` | · | · | · | 🔧a | · | 🔧a | 📋 | 📋 | ❌e | ❌ | – |
+| `ISP_SetAwbAlgoFunc` | · | · | · | 🔧a | · | 🔧a | 📋 | 📋 | ❌e | ❌ | – |
 | `ISP_Tuning_AE_Get/SetROI` | ✅rt | ✅ | ✅ | ✅ | ? | ✅ | · | · | · | · | p† r† |
 | `ISP_Tuning_Awb_Get/SetCwfShift` | ✅rt | ✅rt | · | · | 🔧h | · | · | · | · | · | – |
 | `ISP_Tuning_Awb_Get/SetRgbCoefft` | ✅ | ✅ | ✅ | ✅ | ? | ✅ | · | · | ✅ | ✅ | r† |
@@ -1414,8 +1414,10 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `ISP_Tuning_SetMultiSensorAWBEffect` | · | · | · | · | · | · | 📋 | 📋 | · | · | – |
 | `ISP_Tuning_SetWB_ALGO` | · | · | · | ❌e | · | ✅ | · | · | · | · | – |
 
-<details><summary>Notes and references (53)</summary>
+<details><summary>Notes and references (55)</summary>
 
+- `ISP_SetAeAlgoFunc`: T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because against the open-tx-isp driver the AWB close oopses the kernel (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no statistics reached handle() in QEMU. T40: apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (do not run before the driver fix).
+- `ISP_SetAwbAlgoFunc`: T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because against the open-tx-isp driver the AWB close oopses the kernel (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no statistics reached handle() in QEMU. T40: apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (do not run before the driver fix).
 - `ISP_Tuning_AE_Get/SetROI`: T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; used by: T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor† T10: apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected).
 - `ISP_Tuning_Awb_Get/SetCwfShift`: T10+T20: newly exported (agg-25); T30 1.0.5: tuning control 0x8000001 (rgain << 16 | bgain), as T20; host test with a fake ioctl T10: apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected). T20: apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected).
 - `ISP_Tuning_Awb_Get/SetRgbCoefft`: T23: stock handlers routed (open-tx-isp agg-25), no device test; T41: driver claude/t41-connect (agg-25); host tests 58/58 T40: gate1026 .184 2026-10-26 (open-tx-isp 2acd1afa, OpenIMP d2b40b9c): 100x, 0 oops, apitest PASS. T41: apitest next+ko/libimp swap 2026-10-27 .34. T10: apitest rc3-cases 2026-10-26 .31.

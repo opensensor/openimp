@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <errno.h>
 #include "apitest.h"
 
 typedef struct { double y, u, v, c, h, sd; int ok; } Fst;
@@ -4131,12 +4132,84 @@ static void cs_sensorattr_t40(void)
             sa.hts, sa.vts, sa.fps, sa.fps >> 16, sa.fps & 0xffff, sa.width, sa.height, g_sw, g_sh, rf, n, d, (n << 16) | d);
     }
 }
+
+/* customalgo_t40 (#65): IMP_ISP_SetAeAlgoFunc / IMP_ISP_SetAwbAlgoFunc.  The vendor registers the callback records when the sensor is enabled
+ * (a record set later only counts at the next EnableSensor), so the records are installed by algo_pre_t40() before IMP_ISP_EnableSensor in the
+ * main flow (when this case is selected); the case then checks open / handle / notify and algo_post_t40() the close after DisableSensor.
+ * The callbacks only count and answer "no change" (change = 0), so the picture is not touched. */
+static volatile int g_ae_open, g_ae_close, g_ae_handle, g_ae_notify, g_awb_open, g_awb_close, g_awb_handle;
+static volatile uint32_t g_ae_initmax, g_ae_info_time;
+static int g_algo_reg_ae = -99, g_algo_reg_awb = -99, g_algo_gate_rc = -99, g_algo_gate_errno;
+static int ae_cb_open(void *p, IMPISPAeInitAttr *a) { (void)p; g_ae_initmax = a->AeMaxIntegrationTime; g_ae_open++; return 0; }
+static void ae_cb_close(void *p) { (void)p; g_ae_close++; }
+static void ae_cb_handle(void *p, const IMPISPAeInfo *i, IMPISPAeAttr *a) { (void)p; g_ae_info_time = i->AeIntegrationTime; memset(a, 0, sizeof(*a)); g_ae_handle++; }
+static int ae_cb_notify(void *p, IMPISPAeNotify n, void *d) { (void)p; (void)d; if (n == IMPISP_AE_NOTIFY_FPS_CHANGE) g_ae_notify++; return 0; }
+static int awb_cb_open(void *p, IMPISPAwbInitAttr *a) { (void)p; (void)a; g_awb_open++; return 0; }
+static void awb_cb_close(void *p) { (void)p; g_awb_close++; }
+static void awb_cb_handle(void *p, const IMPISPAwbInfo *i, IMPISPAwbAttr *a) { (void)p; (void)i; memset(a, 0, sizeof(*a)); g_awb_handle++; }
+static int awb_cb_notify(void *p, IMPISPAwbNotify n, void *d) { (void)p; (void)n; (void)d; return 0; }
+
+void algo_pre_t40(void)
+{
+    static IMPISPAeAlgoFunc ae = { NULL, ae_cb_open, ae_cb_close, ae_cb_handle, ae_cb_notify };
+    static IMPISPAwbAlgoFunc awb = { NULL, awb_cb_open, awb_cb_close, awb_cb_handle, awb_cb_notify };
+
+    if (!getenv("APITEST_CASES") || !strstr(getenv("APITEST_CASES"), "customalgo_t40"))
+        return;
+    if (IMP_ISP_SetAeAlgoFunc) {                  /* default: switched off, -1 / ENOTSUP (nothing is registered) */
+        errno = 0; g_algo_gate_rc = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, &ae); g_algo_gate_errno = errno;
+    }
+    setenv("OPENIMP_ISP_ALGO_FUNC", "1", 1);      /* off by default in libimp: the open driver's AWB close oopses (see openimp_p1_algo.c) */
+    if (IMP_ISP_SetAeAlgoFunc) g_algo_reg_ae = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, &ae);
+    if (IMP_ISP_SetAwbAlgoFunc) g_algo_reg_awb = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, &awb);
+}
+
+void algo_post_t40(void)
+{
+    if (g_algo_reg_ae == -99 && g_algo_reg_awb == -99)
+        return;
+    rep(LBL("customalgo_close_t40"), 0, (g_ae_close == 1 && g_awb_close == 1) ? V_PASS : V_FAIL,
+        "after DisableSensor: AE close called %d, AWB close called %d (want 1 and 1), handle calls AE %d AWB %d", g_ae_close, g_awb_close, g_ae_handle, g_awb_handle);
+}
+
+static void cs_customalgo_t40(void)
+{
+    int i, n0, n1;
+    uint32_t sn = 15, sd = 1;
+
+    if (g_algo_reg_ae == -99 && g_algo_reg_awb == -99) {
+        rep(LBL("customalgo_t40"), 0, V_SKIP, "records are installed before EnableSensor: select this case with APITEST_CASES=customalgo_t40");
+        return;
+    }
+    rep(LBL("customalgo_gate_t40"), g_algo_gate_rc, (g_algo_gate_rc == -1 && g_algo_gate_errno == ENOTSUP) ? V_PASS : V_FAIL,
+        "without OPENIMP_ISP_ALGO_FUNC=1 SetAeAlgoFunc answers -1 / ENOTSUP (got %d, errno %d)", g_algo_gate_rc, g_algo_gate_errno);
+    for (i = 0; i < 40 && (g_ae_handle < 5 || g_awb_handle < 5); i++) usleep(100000);
+    n0 = g_ae_handle; usleep(1000000); n1 = g_ae_handle;
+    NEED(IMP_ISP_SetAeAlgoFunc) {
+        rep(FN(IMP_ISP_SetAeAlgoFunc), g_algo_reg_ae, (g_algo_reg_ae == 0 && g_ae_open == 1 && g_ae_initmax > 0 && g_ae_handle >= 5 && n1 > n0 && flow()) ? V_PASS : V_FAIL,
+            "registered before EnableSensor: ret %d, open called %d (init max integration time %u), handle called %d times (%d more in 1 s), the driver delivered ae info (integration time %u), frames flow",
+            g_algo_reg_ae, g_ae_open, g_ae_initmax, g_ae_handle, n1 - n0, g_ae_info_time);
+    }
+    NEED(IMP_ISP_SetAwbAlgoFunc) {
+        rep(FN(IMP_ISP_SetAwbAlgoFunc), g_algo_reg_awb, (g_algo_reg_awb == 0 && g_awb_open == 1 && g_awb_handle >= 5 && flow()) ? V_PASS : V_FAIL,
+            "registered before EnableSensor: ret %d, open called %d, handle called %d times, frames flow", g_algo_reg_awb, g_awb_open, g_awb_handle);
+    }
+    NEED(IMP_ISP_Tuning_SetSensorFPS) {
+        int r = IMP_ISP_Tuning_SetSensorFPS(IMPVI_MAIN, &sn, &sd);
+
+        rep(LBL("customalgo_notify_t40"), r, (r == 0 && g_ae_notify >= 1) ? V_PASS : V_FAIL,
+            "SetSensorFPS 15/1 -> the active AE library got IMPISP_AE_NOTIFY_FPS_CHANGE %d time(s) (vendor: notify(priv, 0, NULL) after a successful set)", g_ae_notify);
+    }
+}
 #else
 static void cs_t140c(void) {}
 static void cs_awbctstart_t40(void) {}
 static void cs_framedrop_t40(void) {}
 static void cs_ratiohang_t40(void) {}
 static void cs_sensorattr_t40(void) {}
+static void cs_customalgo_t40(void) {}
+void algo_pre_t40(void) {}
+void algo_post_t40(void) {}
 #endif
 
 /* T23 pad frames (stock IMP_Encoder_SetPadFrameAttr / IMP_Encoder_PadFrame): H.264 on FS ch1 (group 1 / chn 1); a feeder thread hands in
@@ -4259,7 +4332,7 @@ static void cs_padframe_t23(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "customalgo_t40" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -4367,5 +4440,6 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("awbctstart_t40")) cs_awbctstart_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("tisp2open_t40")) cs_tisp2open_t40(); wdog("cases", 60);
     if (cs_on("sensorattr_t40")) cs_sensorattr_t40(); wdog("cases", 30);
+    if (cs_on("customalgo_t40")) cs_customalgo_t40(); wdog("cases", 60);
     wdog("cases", 60);
 }

@@ -145,6 +145,8 @@ void t_ivs(void);
 void t_audio(void);
 void t_isp(void);
 void t_cases(void);
+void algo_pre_t40(void);
+void algo_post_t40(void);
 void t_dmic(void);        /* IMP_DMIC_* round trips (at_cases.c); area "dmic" runs it without the ISP, case "dmic" inside area cases */
 void t_binpath_pre(void);  /* IMP_ISP_Set/GetDefaultBinPath, between ISP_Open and AddSensor (T41 family) */
 void cases_list(void);     /* names of the cases of area "cases" */

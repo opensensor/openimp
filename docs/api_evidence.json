@@ -4608,8 +4608,12 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "err",
     "T41": "miss"
+   },
+   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because against the open-tx-isp driver the AWB close oopses the kernel (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no statistics reached handle() in QEMU.",
+   "ref": {
+    "T40": "apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (do not run before the driver fix)"
    }
   },
   "ISP_SetAwbAlgoFunc": {
@@ -4623,8 +4627,12 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "miss",
+    "T40": "err",
     "T41": "miss"
+   },
+   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because against the open-tx-isp driver the AWB close oopses the kernel (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no statistics reached handle() in QEMU.",
+   "ref": {
+    "T40": "apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (do not run before the driver fix)"
    }
   },
   "ISP_Tuning_AE_Get/SetROI": {
