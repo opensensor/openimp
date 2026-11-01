@@ -20,6 +20,7 @@ No T30 camera: static audit of the vendor T30 1.0.5 libimp (disassembly) against
 - **Audio backlog (#26):** `AI_Enable/DisableAec`, `AO_Enable/Disable/EnableChn/DisableChn`, `Get/SetPubAttr`, `Get/SetVol`, `Get/SetGain`, `SendFrame`, `ClearChnBuf`, `FlushChnBuf` pass in QEMU T30 with audio.ko (AO muted, silence, no speaker in the model). Cells qemu; no codec or microphone hardware was exercised.
 - **System / sysutils / log (#21):** `System_Init/Exit/Bind/UnBind/GetVersion/GetCPUInfo/GetTimeStamp/RebaseTimeStamp/ReadReg32/WriteReg32/GetBindbyDest` and `SU_Base_GetVersion` pass in QEMU T30 (`ReadReg32`/`WriteReg32` round trip on the UART scratch register). `System_GetVersion` returns a neutral OpenIMP string by design. The `SU_*` functions are the unchanged vendor libsysutils 1.0.5 (OpenIMP ships no `SU_` code for T30).
 - **OSD (#18):** all 14 functions pass the apitest in QEMU T30 (group/region create, attribute get/set, show, update data, timestamp attribute, pool size, start/stop); the OSD is a userspace implementation shared with T21/T31. The picture effect is not checked (no frames to the encoder in the model). `osd_attach_test_t30` covers `AttachToGroup`.
+- **IVS (#19):** all 17 functions pass the apitest in QEMU T30 and the new host test `ivs_framework_test_t30` (the T31 IVS framework and motion interface built for T30; 500 frames back to back, no drops). Detection quality on a real scene is not covered.
 
 
 ## 2026-10-31, T41 backlog (#75-#80, branch claude/t41-backlog)

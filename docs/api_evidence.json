@@ -12268,7 +12268,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12307,7 +12307,7 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (skip 5 ref 1 sad 0 sense 3 -> 0x77ebb1a0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12315,7 +12315,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_CreateChn": {
@@ -12325,7 +12326,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12374,7 +12375,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (chn 0 with the move interface).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12382,7 +12383,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_CreateGroup": {
@@ -12392,7 +12394,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12441,7 +12443,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation; all: two IVS groups as every vendor libimp (CreateGroup checks group < 2); group 1 move/base-move device-tested on T20/T21",
+   "note": "audit: userspace implementation; all: two IVS groups as every vendor libimp (CreateGroup checks group < 2); group 1 move/base-move device-tested on T20/T21. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (group 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12449,7 +12451,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_CreateMoveInterface": {
@@ -12459,7 +12462,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12508,7 +12511,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (1 ROI 640x360, sense 4, skip 5 -> 0x77ebd7d8).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12516,7 +12519,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_DestroyBaseMoveInterface": {
@@ -12526,7 +12530,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12565,7 +12569,7 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (void function).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12573,7 +12577,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_DestroyChn": {
@@ -12583,7 +12588,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12642,7 +12647,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (chn 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12650,7 +12655,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_DestroyGroup": {
@@ -12660,7 +12666,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12719,7 +12725,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (group 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12727,7 +12733,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_DestroyMoveInterface": {
@@ -12737,7 +12744,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12796,7 +12803,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (void function).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12804,7 +12811,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_Get/SetParam": {
@@ -12814,7 +12822,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12863,7 +12871,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (IVS_GetParam: ret=0 sense 4 roiCnt 1 skip 5; IVS_SetParam: ret=0 sense 2, read back 2).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12871,7 +12879,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_GetResult": {
@@ -12881,7 +12890,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12930,7 +12939,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (retRoi[0] = 0 (scene static: 0 expected unless something moves)).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -12938,7 +12947,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_PollingResult": {
@@ -12948,7 +12958,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -12997,7 +13007,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (chn 0 timeout 3000 ms).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13005,7 +13015,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_RegisterChn": {
@@ -13015,7 +13026,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13064,7 +13075,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (group 0 chn 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13072,7 +13083,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_ReleaseData": {
@@ -13082,7 +13094,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13121,7 +13133,7 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (processAsync got 5 frames, released each with IMP_IVS_ReleaseData(frame->virAddr): 5 calls, 0 returned non-zer).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13129,7 +13141,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_ReleaseResult": {
@@ -13139,7 +13152,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13188,7 +13201,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS.",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13196,7 +13209,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_StartRecvPic": {
@@ -13206,7 +13220,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13255,7 +13269,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (chn 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13263,7 +13277,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_StopRecvPic": {
@@ -13273,7 +13288,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13332,7 +13347,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (chn 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13340,7 +13355,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "IVS_UnRegisterChn": {
@@ -13350,7 +13366,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13409,7 +13425,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #19): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (chn 0).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -13417,7 +13433,8 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "ADEC_ReleaseDecoder": {
