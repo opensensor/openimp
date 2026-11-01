@@ -27,7 +27,7 @@
 #include "openimp_testpattern_rt.h"
 /* T31: frame-ready events of the encoder pull path; T23 shares that VBM
  * block (IVS capture, idle drain) since claude/t23-stub-fixes. */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
 #include "openimp_ready_event.h"
 #endif
 
@@ -1879,7 +1879,7 @@ static int vbm_pull_idle(int chn)
     return vbm_now_ms() - last >= VBM_PULL_IDLE_MS;
 }
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
 /*
  * Frame-ready events. The encoder pulls frames with VBMGetFrame, which never
  * blocks; it used to sleep 1 ms between attempts, so every captured frame
@@ -2365,7 +2365,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
     pool->queue_count++;
     pthread_mutex_unlock(&pool->queue_mutex);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23) || defined(PLATFORM_T21)
     vbm_ready_notify(chn);
 #endif
 
@@ -2731,7 +2731,7 @@ static int vbm_release_frame(int chn, void *frame) {
     pool->queue_count++;
 
     pthread_mutex_unlock(&pool->queue_mutex);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23) || defined(PLATFORM_T21)
     /* Software fallback queue: also readable by VBMGetFrame. */
     vbm_ready_notify(chn);
 #endif

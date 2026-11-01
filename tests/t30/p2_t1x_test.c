@@ -77,8 +77,8 @@ int AL_Codec_Encode_GetStream(void *c, void **s, void **u) { (void)c; (void)s; (
 int AL_Codec_Encode_ReleaseStream(void *c, void *s, void *u) { (void)c; (void)s; (void)u; return 0; }
 int AL_Codec_Encode_JpegSkipped(void *c) { (void)c; return 0; }
 int VBMGetFrame(int chn, void **frame) { (void)chn; (void)frame; return -1; }
-#if defined(PLATFORM_T20)
-/* T10/T20 encoder waits on the VBM ready event (#151); no frame ever comes */
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21)
+/* T10/T20/T21 encoder waits on the VBM ready event (#151); no frame ever comes */
 unsigned int VBMReadySequence(int chn) { (void)chn; return 0; }
 int VBMWaitReady(int chn, unsigned int seq, uint32_t us)
 {
