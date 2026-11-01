@@ -14,6 +14,7 @@
  */
 #define _GNU_SOURCE
 #include <stdint.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,17 @@ int AL_Codec_Encode_GetStream(void *c, void **s, void **u) { (void)c; (void)s; (
 int AL_Codec_Encode_ReleaseStream(void *c, void *s, void *u) { (void)c; (void)s; (void)u; return 0; }
 int AL_Codec_Encode_JpegSkipped(void *c) { (void)c; return 0; }
 int VBMGetFrame(int chn, void **frame) { (void)chn; (void)frame; return -1; }
+#if defined(PLATFORM_T20)
+/* T10/T20 encoder waits on the VBM ready event (#151); no frame ever comes */
+unsigned int VBMReadySequence(int chn) { (void)chn; return 0; }
+int VBMWaitReady(int chn, unsigned int seq, uint32_t us)
+{
+    (void)chn; (void)seq; (void)us;
+    usleep(1000);
+    return -1;
+}
+void VBMWakeReaders(int chn) { (void)chn; }
+#endif
 int AL_Codec_Encode_InsertUserData(void *c, const void *d, unsigned int s, unsigned int n, unsigned int m)
 { (void)c; (void)d; (void)s; (void)n; (void)m; return 0; }
 int AL_Codec_Encode_SetJpegSkip(void *c, int a) { (void)c; (void)a; return 0; }

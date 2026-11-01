@@ -128,7 +128,7 @@ int VBMDelayGetTimedFrame(int chn, int64_t target, int block,
 /* Return ready frames to the driver while no reader pulls the channel. */
 int VBMRecycleIdleFrames(int chn);
 #endif
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T20)
 /* Frame-ready events for a pull reader (the encoder's PollingStream):
  * read the sequence before VBMGetFrame and, when that found nothing, wait
  * for it to move instead of polling. Returns 0 when it moved (a frame was

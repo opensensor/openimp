@@ -68,6 +68,12 @@
 #include <imp/imp_encoder.h>
 #include <imp/imp_system.h>
 
+#if defined(PLATFORM_T20)
+/* T10/T20: the capture worker wakes on the driver's frame event (select on
+ * the frame channel); the encoder sleeps on the VBM ready event (#151). */
+#include "kernel_interface.h"
+#define P2_FRAME_WAIT_SLICE_US 20000u
+#endif
 #if defined(PLATFORM_T31)
 #include "t40/t31_stream_layout.h"
 #include "t40/t31_eval_info.h"
@@ -2855,7 +2861,7 @@ int IMP_Encoder_StopRecvPic(int channel)
     ch->output_timestamp_us = 0;
     ch->jpeg_frame_requested = 0;
     pthread_cond_broadcast(&ch->jpeg_frame_ready);
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20)
     /* A PollingStream waiting for a capture frame leaves now, as it did
      * within 1 ms when it polled. */
     if (ch->source_channel >= 0)
@@ -3417,7 +3423,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #else
         frame_deadline_us = p2_monotonic_us() + timeout_us;
 #endif
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20)
         /* Sleep until the capture worker publishes a frame instead of
          * polling every millisecond. The sequence is read before each
          * attempt, so a frame published in between ends the wait at once.
@@ -3432,12 +3438,16 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
              * T31 waits up to 2 s like libimp, this loop has its own
              * deadline and StopRecvPic check */
             if (VBMGetFrame(ch->source_channel, &frame) == 0) {
+#if defined(PLATFORM_T31)
                 /* DiscardInitialFrame: the frame is dropped before encoding */
                 if (!p2_discard_take(ch->group))
                     break;
                 p2_release_source_frame(ch->source_channel, frame);
                 frame = NULL;
                 continue;
+#else
+                break;
+#endif
             }
             /* StopRecvPic ends the wait: UnRegisterChn waits for us. */
             now_us = p2_monotonic_us();
