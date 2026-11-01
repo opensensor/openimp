@@ -2219,7 +2219,7 @@ static void cs_stalesnap(void) {}
 /* ---- dmic: IMP_DMIC_* at API level (T31/T40/T41).  Round trips and argument validation need no DMIC hardware;
  * the stream functions are exercised for real only when Enable succeeds (a DMIC board), otherwise they must
  * fail cleanly (-1, no hang) like the vendor library without the device.  Nothing is played; capture only. */
-#if defined(HAS_IMP_DMIC_SetUserInfo) && defined(HAS_IMP_DMIC_Enable) && defined(HAS_IMP_DMIC_PollingFrame)
+#if defined(HAS_IMP_DMIC_SetUserInfo) && defined(HAS_IMP_DMIC_Enable) && defined(HAS_IMP_DMIC_PollingFrame) && defined(HAS_IMP_DMIC_DisableAec)
 #define DM_REP(f, r, ok, ...) do { char dm_[200]; snprintf(dm_, sizeof dm_, __VA_ARGS__); \
     rep(FN(f), (long)(r), (ok) ? V_PASS : V_FAIL, "rt: API round trip, no DMIC hardware on the test board; %s", dm_); } while (0)
 

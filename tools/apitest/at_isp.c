@@ -38,7 +38,7 @@ void t_isp(void)
         gfree(reg); gfree(v);
     }
 #elif !defined(PLATFORM_T41)
-    NEED(IMP_ISP_GetSensorRegister) {
+    NEED(IMP_ISP_GetSensorRegister) if (skipfn("IMP_ISP_GetSensorRegister")) rep(FN(IMP_ISP_GetSensorRegister), 0, V_SKIP, "APITEST_SKIPFN: oopses the driver"); else {
         G(uint32_t, v);
         r = IMP_ISP_GetSensorRegister(0x0, v); gchk(v);
         RET0(IMP_ISP_GetSensorRegister, r, "reg 0x0 = 0x%x", *v);
