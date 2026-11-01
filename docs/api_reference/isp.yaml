@@ -1169,15 +1169,20 @@ functions:
     soc: T41.
   ISP_Tuning_SetISPBypass:
     group: ldc
-    summary: 'Switches the ISP bypass. On T10, T20, T21, T23 and T31 `ENABLE` (full ISP, the state after `EnableSensor`) does nothing and `DISABLE` (the real bypass) is refused.'
+    summary: 'Switches the ISP bypass. T10 and T20 pass the mode to the driver (`ENABLE` = processed pipeline, `DISABLE` = raw bypass); on T21, T23 and T31 `ENABLE` (full ISP, the state after `EnableSensor`) does nothing and `DISABLE` is refused.'
     params:
       enable: '`IMPISP_TUNING_OPS_MODE_ENABLE` or `_DISABLE`.'
-    returns: '0 for `ENABLE`; -1 for `DISABLE`. T40: 0 on success, -1 for a video input other than `IMPVI_MAIN` or NULL.'
-    notes: 'T10, T20, T21, T23 and T31: `ENABLE` is what a streamer calls at start-up; it is a no-op returning 0 and the running
-      pipeline keeps streaming. `DISABLE` (the real bypass) is refused with -1 and nothing is touched, like the vendor T21
-      library; on the open drivers a bypassed pipeline delivers no frames (issues 119 and 126; a working real bypass is issue
-      129). T40 only stores the flag in the library and sends nothing to the driver. Not in the T41 library under this name
-      (see `ISP_Get/SetISPBypass`).'
+    returns: 'T10 and T20: 0 when the driver took the value, -1 on failure or without a tuning session. T21, T23, T31: 0 for `ENABLE`; -1 for `DISABLE`. T40: 0 on success, -1 for a video input other than `IMPVI_MAIN` or NULL.'
+    notes: 'T10 and T20 (one vendor binary for both): one tuning control (0x98e907) with the mode, like the vendor library. The
+      driver switches the ISP core registers: `DISABLE` sets the raw bypass (the picture of a running channel turns dark and
+      flat, a camera test measured SSIM 0.37 against the processed picture) and the frame channels then offer only the raw
+      format; `ENABLE` restores the processed pipeline (SSIM 0.98 against the picture before). A FrameSource created while
+      the bypass is on has to ask for the raw format; OpenIMP does not build that raw capture channel yet, so use the call
+      only at run time and end with `ENABLE` (issue 129). T21, T23 and T31: `ENABLE` is what a streamer calls at start-up; it
+      is a no-op returning 0 and the running pipeline keeps streaming. `DISABLE` (the real bypass) is refused with -1 and
+      nothing is touched, like the vendor T21 library; the open drivers have no bypass graph (issues 119 and 126; a working
+      real bypass is issue 129). T40 only stores the flag in the library and sends nothing to the driver. Not in the T41
+      library under this name (see `ISP_Get/SetISPBypass`).'
   ISP_Tuning_GetISPBypass:
     group: ldc
     summary: 'T40: reads the bypass flag stored by `SetISPBypass` (0 before the first Set).'

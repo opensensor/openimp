@@ -2083,10 +2083,26 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
     kmsg_trace("libimp/ISP: SetISPBypass enter enable=%d isp=%p fd=%d tuning_fd=%d\n",
                enable, (void *)isp, isp->fd, isp->tuning_fd);
 
+#if defined(PLATFORM_T20)
+    /* T10/T20 (one binary in the OEM 3.9.0 and 3.12.0 libraries, IMP_ISP_Tuning_
+     * SetISPBypass at 0x5a334): a single S_CTRL id 0x98e907 with the mode on
+     * the tuning fd, no link rebuild; 0 on success, -1 (logged) on failure or
+     * without a tuning session.  The driver (apical_isp_bypass_s_control)
+     * switches the ISP core: ENABLE = processed pipeline, DISABLE = raw bypass
+     * (frame channels then offer only the raw format). */
+    if (tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable) != 0) {
+        kmsg_trace("libimp/ISP: SetISPBypass T20 S_CTRL failed value=%d errno=%d\n",
+                   enable, errno);
+        return -1;
+    }
+    kmsg_trace("libimp/ISP: SetISPBypass T20 S_CTRL ok value=%d\n", enable);
+    return 0;
+#endif
+
     /* OEM semantics of the ISP bypass control (T31 apical_isp_core_ops_s_ctrl
      * 0x8000164): ENABLE (1) = full ISP pipeline, any other value = the real
      * bypass.  ENABLE is the state after EnableSensor and what prudynt sets at
-     * startup (isp_bypass=true): nothing to do.  The OEM T10/T23/T31 library
+     * startup (isp_bypass=true): nothing to do.  The OEM T23/T31 library
      * tears the link graph down and rebuilds it around the control even then,
      * which stopped the frame channels of a running pipeline for good (issue
      * 119; T23 returned -1, issue 126).

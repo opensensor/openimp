@@ -8,15 +8,28 @@ PROJECT_DIR := ../..
 BUILD := $(PROJECT_DIR)/build/tests
 OBJ := $(BUILD)/t20-abi-test.o
 
-.PHONY: check clean
+BYPASS_TEST := $(BUILD)/t20-bypass-test
+
+.PHONY: check clean bypass-check
 
 ifeq ($(shell command -v $(T20_CC) 2>/dev/null),)
-check:
+check: bypass-check
 	@echo "t20_abi_test: skipped ($(T20_CC) not found; set T20_CC to a 32-bit compiler)"
 else
-check: $(OBJ)
+check: $(OBJ) bypass-check
 	@echo t20_abi_test: ok
 endif
+
+# host test of IMP_ISP_Tuning_SetISPBypass (isp_tseries.c with the 32-bit ABI asserts off, fake ioctl)
+bypass-check: $(BYPASS_TEST)
+	$(BYPASS_TEST)
+
+$(BYPASS_TEST): bypass_test.c $(PROJECT_DIR)/src/isp/isp_tseries.c
+	@mkdir -p $(BUILD)
+	$(CC) -std=gnu11 -O2 -Wall -Wextra -Werror -Wno-unused-function -fno-pie -no-pie \
+		"-D_Static_assert(a,b)=" -DPLATFORM_T20 -DPLATFORM_T21 -I$(PROJECT_DIR)/src -I$(PROJECT_DIR)/include \
+		bypass_test.c $(PROJECT_DIR)/src/isp/isp_tseries.c \
+		-Wl,--wrap=ioctl,--unresolved-symbols=ignore-all -lpthread -o $@
 
 $(OBJ): t20_abi_test.c $(PROJECT_DIR)/include/imp/imp_encoder.h \
 		$(PROJECT_DIR)/include/imp/imp_isp.h
@@ -24,4 +37,4 @@ $(OBJ): t20_abi_test.c $(PROJECT_DIR)/include/imp/imp_encoder.h \
 	$(T20_CC) $(CFLAGS) -c -DPLATFORM_T20 -DPLATFORM_T21 -I$(PROJECT_DIR)/include -o $@ t20_abi_test.c
 
 clean:
-	$(RM) $(OBJ)
+	$(RM) $(OBJ) $(BYPASS_TEST)
