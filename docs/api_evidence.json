@@ -1068,14 +1068,15 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
+    "T41": "rt"
    },
    "action": {
     "T41": "implement"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004542f / 0xc0045430 (ENOTTY), so the call returns -4095"
-   }
+    "T41": "apitest agg5y 2026-11-01 .34 (open-tx-isp next a84b6be2, isp area, no APITEST_RISKY): Get ch0/1/2 types 0/1/2; Set with the same values returns 0 and reads back equal, frames flow; open-tx-isp #181"
+   },
+   "note": "T41: Set accepts types 0..2 (no effect, as on stock); types 3..5 answer EOPNOTSUPP because the open VIC frame-channel path has no internal inputs"
   },
   "ISP_Get/SetSensorRegister": {
    "area": "ISP tuning",
@@ -5789,15 +5790,16 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "err"
+    "T41": "dev"
    },
    "ref": {
     "T40": "apitest agg65k 2026-11-01 .184",
-    "T41": "apitest agg5u 2026-11-01 .34: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM (-4090): the AF statistics path is not ported there (open-tx-isp #179, a separate stability item: AF block stays off)"
+    "T41": "apitest agg5v 2026-11-01 .34 (open-tx-isp next ac1913e3, module loaded with t41_af=1): PASS, 30 min soak with a read every 10 s (180/180 ret 0, metric follows the scene), 6 reload cycles, 0 oopses; open-tx-isp #179"
    },
    "action": {
     "T41": "implement"
-   }
+   },
+   "note": "T41: served only when open-tx-isp is loaded with t41_af=1 (default 0: AF block off, call answers EPERM / -4090, apitest N/A)"
   },
   "ISP_Tuning_GetAWBCt": {
    "area": "AE / AWB / AF",
@@ -6053,15 +6055,16 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "err"
+    "T41": "dev"
    },
    "ref": {
     "T40": "apitest agg65k 2026-11-01 .184",
-    "T41": "apitest agg5u 2026-11-01 .34: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM (-4090): the AF statistics path is not ported there (open-tx-isp #179, a separate stability item: AF block stays off)"
+    "T41": "apitest agg5v 2026-11-01 .34 (open-tx-isp next ac1913e3, module loaded with t41_af=1): PASS, 30 min soak with a read every 10 s (180/180 ret 0, metric follows the scene), 6 reload cycles, 0 oopses; open-tx-isp #179"
    },
    "action": {
     "T41": "implement"
-   }
+   },
+   "note": "T41: served only when open-tx-isp is loaded with t41_af=1 (default 0: AF block off, call answers EPERM / -4090, apitest N/A)"
   },
   "ISP_Tuning_GetAfZone": {
    "area": "AE / AWB / AF",
@@ -6474,7 +6477,7 @@
     "T32": "n.a.",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
+    "T41": "n.a."
    },
    "note": "T40: declared in imp_decoder.h, exported by no vendor library; OpenIMP exports the names as -1/ENOTSUP from the shared T40/T41 code, so nothing is missing. | T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
    "action": {
@@ -6482,7 +6485,7 @@
     "T41": "enotsup"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case dec 8/8",
+    "T41": "apitest agg5y 2026-11-01 .34 (open-tx-isp next a84b6be2 + OpenIMP next 246bf938, full-order cases run): 8/8 PASS, every call -1/ENOTSUP, arguments untouched, frames still flow",
     "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_Decoder_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_decoder.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #66)",
     "T10": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)",
     "T20": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)",
@@ -8862,13 +8865,13 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "no-op",
-    "T41": "qemu"
+    "T41": "dev"
    },
    "note": "T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) | T41 (vendor libimp 1.2.5 0x4b804, 1.2.6 0x4dd88): stores num/den under the channel mutex, 0x80040001 for a channel of 8 or more, 0x80040008 for a channel that was not created; OpenIMP matches that; no visible effect (same class a as T31/T40)",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "QEMU T41 2026-10-31 case framerel"
+    "T41": "apitest agg5y 2026-11-01 .34 (open-tx-isp next a84b6be2 + OpenIMP next 246bf938, full-order cases run): case framerel PASS (0x80040008 uncreated, 0x80040001 channel 8, 1/2 and 1/1 on a running channel ret 0, 10 frames still pulled)"
    }
   },
   "Encoder_SetGOPSize": {
@@ -9548,7 +9551,7 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "miss"
+    "T41": "n.a."
    },
    "note": "T40: declared in imp_emu_framesource.h, exported by no vendor library; OpenIMP exports the names as -1/ENOTSUP from the shared T40/T41 code, so nothing is missing. | T41: not exported by the T41 1.2.5 libimp (nm); the vendor name set comes from older builds (imp_emu_framesource.h, a file-fed test channel). OpenIMP exports all five names and answers -1/ENOTSUP without any state change; IMP_FrameSource_ExternInject_* is the supported way to feed frames. apitest case emu: 5/5 PASS in QEMU T41 (T40 shares the code, not run)",
    "action": {
@@ -9556,7 +9559,8 @@
     "T41": "enotsup"
    },
    "ref": {
-    "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_EmuFrameSource_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_emu_framesource.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #67)"
+    "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_EmuFrameSource_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_emu_framesource.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #67)",
+    "T41": "apitest agg5y 2026-11-01 .34 (open-tx-isp next a84b6be2 + OpenIMP next 246bf938, full-order cases run): case emu 5/5 PASS, every call -1/ENOTSUP, attribute untouched, frames still flow"
    }
   },
   "FB_*": {
@@ -21180,14 +21184,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "aud"
+    "T41": "dev"
    },
-   "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*'",
+   "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*' | T41: needs the SADC kernel drivers; the standard image has no /dev/ingenic_adc_aux_N nodes (N/A there)",
    "action": {
     "T41": "n.a."
    },
    "ref": {
-    "T41": "disassembly of libsysutils 1.2.5 and apitest su area, QEMU T41 2026-10-31 (N/A: no node)",
+    "T41": "apitest agg5w 2026-11-01 .34 on a TEST image (kernel with CONFIG_MFD_INGENIC_SADC_V13/_AUX, not in any firmware PR): SU_ADC_Init/EnableChn/GetChnValue/DisableChn/Exit PASS, 6 reload cycles clean",
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)"
    },
    "auto": true
