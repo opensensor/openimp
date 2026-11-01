@@ -4345,8 +4345,8 @@ static void cs_customalgo_t40(void)
     for (i = 0; i < 40 && (g_ae_handle < 5 || g_awb_handle < 5); i++) usleep(100000);
     n0 = g_ae_handle; usleep(1000000); n1 = g_ae_handle;
     NEED(IMP_ISP_SetAeAlgoFunc) {
-        rep(FN(IMP_ISP_SetAeAlgoFunc), g_algo_reg_ae, (g_algo_reg_ae == 0 && g_ae_open == 1 && g_ae_initmax > 0 && g_ae_handle >= 5 && n1 > n0 && flow()) ? V_PASS : V_FAIL,
-            "registered before EnableSensor: ret %d, open called %d (init max integration time %u), handle called %d times (%d more in 1 s), the driver delivered ae info (integration time %u), frames flow",
+        rep(FN(IMP_ISP_SetAeAlgoFunc), g_algo_reg_ae, (g_algo_reg_ae == 0 && g_ae_open == 1 && g_ae_handle >= 5 && n1 > n0 && flow()) ? V_PASS : V_FAIL,
+            "registered before EnableSensor: ret %d, open called %d (init max integration time %u: the limits are only known after the first stream, 0 on a freshly loaded module), handle called %d times (%d more in 1 s), the driver delivered ae info (integration time %u), frames flow",
             g_algo_reg_ae, g_ae_open, g_ae_initmax, g_ae_handle, n1 - n0, g_ae_info_time);
     }
     NEED(IMP_ISP_SetAwbAlgoFunc) {
