@@ -2365,7 +2365,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     pool->queue_tail = (pool->queue_tail + 1) % pool->frame_count;
     pool->queue_count++;
     pthread_mutex_unlock(&pool->queue_mutex);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T20)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23)
     vbm_ready_notify(chn);
 #endif
 
@@ -2731,7 +2731,7 @@ static int vbm_release_frame(int chn, void *frame) {
     pool->queue_count++;
 
     pthread_mutex_unlock(&pool->queue_mutex);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T20)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23)
     /* Software fallback queue: also readable by VBMGetFrame. */
     vbm_ready_notify(chn);
 #endif

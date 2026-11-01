@@ -68,8 +68,8 @@
 #include <imp/imp_encoder.h>
 #include <imp/imp_system.h>
 
-#if defined(PLATFORM_T20)
-/* T10/T20: the capture worker wakes on the driver's frame event (select on
+#if defined(PLATFORM_T20) || defined(PLATFORM_T23)
+/* T10/T20/T23: the capture worker wakes on the driver's frame event (select on
  * the frame channel); the encoder sleeps on the VBM ready event (#151). */
 #include "kernel_interface.h"
 #define P2_FRAME_WAIT_SLICE_US 20000u
@@ -2861,7 +2861,7 @@ int IMP_Encoder_StopRecvPic(int channel)
     ch->output_timestamp_us = 0;
     ch->jpeg_frame_requested = 0;
     pthread_cond_broadcast(&ch->jpeg_frame_ready);
-#if defined(PLATFORM_T31) || defined(PLATFORM_T20)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23)
     /* A PollingStream waiting for a capture frame leaves now, as it did
      * within 1 ms when it polled. */
     if (ch->source_channel >= 0)
@@ -3423,7 +3423,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #else
         frame_deadline_us = p2_monotonic_us() + timeout_us;
 #endif
-#if defined(PLATFORM_T31) || defined(PLATFORM_T20)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T23)
         /* Sleep until the capture worker publishes a frame instead of
          * polling every millisecond. The sequence is read before each
          * attempt, so a frame published in between ends the wait at once.
