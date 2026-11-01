@@ -6549,10 +6549,11 @@ int IMP_Encoder_GetH264TransCfg(int channel,
 int IMP_Encoder_SetH265TransCfg(int channel,
                                const IMPEncoderH265TransCfg *config)
 {
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
     /* Vendor T21 libimp (1.0.33, disassembled): channel number and pointer
      * are checked, nothing else happens (no range check, nothing stored);
-     * T21 has no HEVC encoder */
+     * T21 has no HEVC encoder.  T30 1.0.5 (0xc5688): the same for every
+     * channel that is not an H.265 channel, and OpenIMP's T30 has none */
     if (!p2_valid_channel(channel) || !config)
         return -1;
     return 0;
@@ -6579,8 +6580,9 @@ int IMP_Encoder_SetH265TransCfg(int channel,
 int IMP_Encoder_GetH265TransCfg(int channel,
                                IMPEncoderH265TransCfg *config)
 {
-#if defined(PLATFORM_T21)
-    /* Vendor T21: clears the 8 bytes and returns 0 */
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+    /* Vendor T21: clears the 8 bytes and returns 0; T30 1.0.5 (0xc585c)
+     * does that for every channel below 6 that is not an H.265 channel */
     if (!p2_valid_channel(channel) || !config)
         return -1;
     memset(config, 0, sizeof(*config));

@@ -130,6 +130,25 @@ int main(void)
         CHECK(IMP_Encoder_SetChnHSkip(2, &hs) == -1);        /* above the maximum */
         CHECK(IMP_Encoder_SetChnHSkip(2, NULL) == -1);
     }
+#if defined(PLATFORM_T30) || defined(PLATFORM_T21)
+    {
+        /* Set/GetH265TransCfg: T21 1.0.33 and T30 1.0.5 (0xc5688/0xc585c)
+         * check channel and pointer; nothing is stored (no HEVC encoder),
+         * the getter clears the struct */
+        IMPEncoderH265TransCfg tc, tg;
+
+        memset(&tc, 0, sizeof(tc));
+        tc.chroma_cr_qp_offset = 40;           /* no range check */
+        tc.chroma_cb_qp_offset = -40;
+        CHECK(IMP_Encoder_SetH265TransCfg(2, &tc) == 0);
+        CHECK(IMP_Encoder_SetH265TransCfg(2, NULL) == -1);
+        CHECK(IMP_Encoder_SetH265TransCfg(-1, &tc) == -1);
+        memset(&tg, 0x5a, sizeof(tg));
+        CHECK(IMP_Encoder_GetH265TransCfg(2, &tg) == 0);
+        CHECK(tg.chroma_cr_qp_offset == 0 && tg.chroma_cb_qp_offset == 0);
+        CHECK(IMP_Encoder_GetH265TransCfg(2, NULL) == -1);
+    }
+#endif
 #if defined(PLATFORM_T30) && !defined(PLATFORM_T21)
     /* --- SetPoolSize, SetChnRcTrigLevel (T30 only) ----------------------- */
     CHECK(IMP_Encoder_SetPoolSize(0) == -1);

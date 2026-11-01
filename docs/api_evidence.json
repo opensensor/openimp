@@ -6450,7 +6450,7 @@
     "T40": "miss",
     "T41": "err"
    },
-   "note": "T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
+   "note": "T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp; NOT exported by OpenIMP's T30 build. The vendor 1.0.5 exports the eight Decoder functions; OpenIMP's T30 build exports none (T23 has a software JPEG decoder, T41 refuses; not ported to T30).",
    "action": {
     "T40": "enotsup",
     "T41": "enotsup"
@@ -6841,17 +6841,18 @@
     "T20": "cache",
     "T21": "dev",
     "T23": "dev",
-    "T30": "cache",
+    "T30": "err",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test",
+   "note": "T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (Encoder_GetChangeRef: ret=-1 ChangeRef = 0; Encoder_SetChangeRef: ret=0 ChangeRef set 1, read back 0). Documented T30 limitation: the value is not read back by the Helix encoder path (apitest expects the T20 stored value).",
    "ref": {
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): Encoder_GetChangeRef: ret=-1 ChangeRef = 0; Encoder_SetChangeRef: ret=0 ChangeRef set 1, read back 0"
    }
   },
   "Encoder_Get/SetChnAttrRcMode": {
@@ -6928,7 +6929,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -6940,12 +6941,13 @@
      "r†"
     ]
    },
-   "note": "T10+T20+T21: codes grey pictures (agg-25)",
+   "note": "T10+T20+T21: codes grey pictures (agg-25). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetChnColor2Grey: ret=0 initial 0; Encoder_SetChnColor2Grey: ret=0 enable, read back 1).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetChnCrop": {
@@ -6962,7 +6964,7 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: userspace implementation; T10/T20/T21: the vendor libimp exports it without a header (i264e_set_param, x/y/w/h multiples of 16); OpenIMP does not (miss, found by `make export-check` 2026-10-11, a link shim is an open question)",
+   "note": "audit: userspace implementation; T10/T20/T21: the vendor libimp exports it without a header (i264e_set_param, x/y/w/h multiples of 16); OpenIMP does not (miss, found by `make export-check` 2026-10-11, a link shim is an open question). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp; NOT exported by OpenIMP's T30 build. Vendor-exported, not exported by OpenIMP's T30 build (known gap since 2026-10-10: needs a T30 device).",
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30"
    }
@@ -6990,7 +6992,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7002,12 +7004,13 @@
      "r†"
     ]
    },
-   "note": "T21: done as the vendor: libimp 1.0.33 clears the denoise type at init (channel_i264e_encoder_init picks encoder mode 4 from get_cpu_id() 11..14, i264e_validate_parameters keeps denoise only for mode 1), so on the vendor T21 dnType reads back 0 and the encoder runs one Helix job per picture; dnType >= 3 with enable set at CreateChn is -1; IQp/PQp are kept. OpenIMP T21 does the same (2026-10-10: PC420 vendor stack vs open stack, readback equal, size and fps equal, ffmpeg decode clean). T10/T20 (vendor 3.12.0 has no such gate): type, IQp and PQp stored and read back as the vendor (2026-10-10: the T20 build also defines PLATFORM_T21 and read dnType back as 0 like T21; fixed, host test `p2_t1x_test_t20`; apitest roundtrip PASS on T20), not applied; the vendor encodes every frame twice with attrDenoise.enable set at CreateChn and dnType 1/2, a first pass at slice QP dnIQp (I) / dnPQp (P; type 2 forces slice type I) before the normal pass (i264e_reconfig_dn_set, i264e_slice_write). Not built: the pass-1 job needs a trace on a T20 camera, stability first T21: done as the vendor: libimp 1.0.33 clears the denoise type at init (channel_i264e_encoder_init picks encoder mode 4 from get_cpu_id() 11..14, i264e_validate_parameters keeps denoise only for mode 1), so on the vendor T21 dnType reads back 0 and the encoder runs one Helix job per picture; dnType >= 3 with enable set at CreateChn is -1; IQp/PQp are kept. OpenIMP T21 does the same (2026-10-10: PC420 vendor stack vs open stack, readback equal, size and fps equal, ffmpeg decode clean). T10/T20 (vendor 3.12.0 has no such gate): type, IQp and PQp stored and read back as the vendor (2026-10-10: the T20 build also defines PLATFORM_T21 and read dnType back as 0 like T21; fixed, host test `p2_t1x_test_t20`; apitest roundtrip PASS on T20), not applied; the vendor encodes every frame twice with attrDenoise.enable set at CreateChn and dnType 1/2, a first pass at slice QP dnIQp (I) / dnPQp (P; type 2 forces slice type I) before the normal pass (i264e_reconfig_dn_set, i264e_slice_write). Not built: the pass-1 job needs a trace on a T20 camera, stability first",
+   "note": "T21: done as the vendor: libimp 1.0.33 clears the denoise type at init (channel_i264e_encoder_init picks encoder mode 4 from get_cpu_id() 11..14, i264e_validate_parameters keeps denoise only for mode 1), so on the vendor T21 dnType reads back 0 and the encoder runs one Helix job per picture; dnType >= 3 with enable set at CreateChn is -1; IQp/PQp are kept. OpenIMP T21 does the same (2026-10-10: PC420 vendor stack vs open stack, readback equal, size and fps equal, ffmpeg decode clean). T10/T20 (vendor 3.12.0 has no such gate): type, IQp and PQp stored and read back as the vendor (2026-10-10: the T20 build also defines PLATFORM_T21 and read dnType back as 0 like T21; fixed, host test `p2_t1x_test_t20`; apitest roundtrip PASS on T20), not applied; the vendor encodes every frame twice with attrDenoise.enable set at CreateChn and dnType 1/2, a first pass at slice QP dnIQp (I) / dnPQp (P; type 2 forces slice type I) before the normal pass (i264e_reconfig_dn_set, i264e_slice_write). Not built: the pass-1 job needs a trace on a T20 camera, stability first T21: done as the vendor: libimp 1.0.33 clears the denoise type at init (channel_i264e_encoder_init picks encoder mode 4 from get_cpu_id() 11..14, i264e_validate_parameters keeps denoise only for mode 1), so on the vendor T21 dnType reads back 0 and the encoder runs one Helix job per picture; dnType >= 3 with enable set at CreateChn is -1; IQp/PQp are kept. OpenIMP T21 does the same (2026-10-10: PC420 vendor stack vs open stack, readback equal, size and fps equal, ffmpeg decode clean). T10/T20 (vendor 3.12.0 has no such gate): type, IQp and PQp stored and read back as the vendor (2026-10-10: the T20 build also defines PLATFORM_T21 and read dnType back as 0 like T21; fixed, host test `p2_t1x_test_t20`; apitest roundtrip PASS on T20), not applied; the vendor encodes every frame twice with attrDenoise.enable set at CreateChn and dnType 1/2, a first pass at slice QP dnIQp (I) / dnPQp (P; type 2 forces slice type I) before the normal pass (i264e_reconfig_dn_set, i264e_slice_write). Not built: the pass-1 job needs a trace on a T20 camera, stability first. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetChnDenoise: ret=0 initial en 0 type 0 0/0; Encoder_SetChnDenoise: ret=0 en type 1 IQp 2 PQp 3, read).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetChnFrmRate": {
@@ -7182,7 +7185,7 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20 3.12.0 (0x49dc8/0x4a078): needs a created channel, skipType up to maxHSkipType, six words stored (apitest PASS on T10, T20); unlike T21 the IDR period is not applied (the OEM pushes it to i264e param 9; class c); T30 1.0.5: the six words are stored, also for an idle channel, which reads back as zeros as in the vendor (up to maxHSkipType, 0 until CreateChn); unlike T21 the IDR period is not handed to the encoder on T30 (the CreateChn path does not do it either), so it stays a cache until a T30 device run; host test; T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1); T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1) T10/T20 3.12.0 (0x49dc8/0x4a078): needs a created channel, skipType up to maxHSkipType, six words stored (apitest PASS on T10, T20); unlike T21 the IDR period is not applied (the OEM pushes it to i264e param 9; class c); T30 1.0.5: the six words are stored, also for an idle channel, which reads back as zeros as in the vendor (up to maxHSkipType, 0 until CreateChn); unlike T21 the IDR period is not handed to the encoder on T30 (the CreateChn path does not do it either), so it stays a cache until a T30 device run; host test; T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1); T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1)",
+   "note": "T10/T20 3.12.0 (0x49dc8/0x4a078): needs a created channel, skipType up to maxHSkipType, six words stored (apitest PASS on T10, T20); unlike T21 the IDR period is not applied (the OEM pushes it to i264e param 9; class c); T30 1.0.5: the six words are stored, also for an idle channel, which reads back as zeros as in the vendor (up to maxHSkipType, 0 until CreateChn); unlike T21 the IDR period is not handed to the encoder on T30 (the CreateChn path does not do it either), so it stays a cache until a T30 device run; host test; T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1); T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1) T10/T20 3.12.0 (0x49dc8/0x4a078): needs a created channel, skipType up to maxHSkipType, six words stored (apitest PASS on T10, T20); unlike T21 the IDR period is not applied (the OEM pushes it to i264e param 9; class c); T30 1.0.5: the six words are stored, also for an idle channel, which reads back as zeros as in the vendor (up to maxHSkipType, 0 until CreateChn); unlike T21 the IDR period is not handed to the encoder on T30 (the CreateChn path does not do it either), so it stays a cache until a T30 device run; host test; T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1); T21 (2026-10-10, host test; T21 1.0.33 0x478f0/0x47ba0): an idle (not yet created) channel is accepted as the vendor does, SetChnHSkip stores the six words without the maxHSkipType check and without reaching the encoder, GetChnHSkip answers all zero with 0 (both used to be -1). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetChnHSkip: ret=0 type 0 m 29 n 1 maxSameScene 0; Encoder_SetChnHSkip: ret=0 same attr (type 0 m 29 n).",
    "ref": {
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30"
@@ -7195,7 +7198,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "err",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7207,7 +7210,7 @@
      "r†"
     ]
    },
-   "note": "T10: EFE ROI registers per the OEM slice init, device-tested 2026-10-09; T20: dev (apitest PASS; H.264 check: QP51 region blocky, QP15 fine); T21: the vendor 1.0.33 never programs IMP ROIs; OpenIMP applies them by default (beyond vendor), device-tested; T23: the native Helix encoder programs the regions like T21 (the vendor 1.3.0 writes the same registers), device-tested 2026-10-10, QP map and VA-API/strict ffmpeg clean; from agg-34 all Helix paths keep the stream valid H.264: deltas -25..+25, spread at most 25, absolute QPs in `[max_qp - 25, min_qp + 25]` (`Helix_H264_RoiSanitize`); before, a relative -26 or an absolute QP more than 25 from the macroblock QP gave broken pictures in hardware decoders (VA-API, VLC, browsers); details: docs/ROI.md",
+   "note": "T10: EFE ROI registers per the OEM slice init, device-tested 2026-10-09; T20: dev (apitest PASS; H.264 check: QP51 region blocky, QP15 fine); T21: the vendor 1.0.33 never programs IMP ROIs; OpenIMP applies them by default (beyond vendor), device-tested; T23: the native Helix encoder programs the regions like T21 (the vendor 1.3.0 writes the same registers), device-tested 2026-10-10, QP map and VA-API/strict ffmpeg clean; from agg-34 all Helix paths keep the stream valid H.264: deltas -25..+25, spread at most 25, absolute QPs in `[max_qp - 25, min_qp + 25]` (`Helix_H264_RoiSanitize`); before, a relative -26 or an absolute QP more than 25 from the macroblock QP gave broken pictures in hardware decoders (VA-API, VLC, browsers); details: docs/ROI.md. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (Encoder_GetChnROI: ret=0 enabled 0; Encoder_SetChnROI: ret=-1 roi 0 (64,64)-(319,255) dQP -4, read back en 0 (0,0)-(0,0) qp 0). Documented T30 limitation: an enabled region is refused (-1) because the command list's ROI registers are not known (src/t40/openimp_p2_encoder.c); the vendor 1.0.5 (0xc1ec0) hands the table to the closed i264e.",
    "better": [
     "T21"
    ],
@@ -7215,7 +7218,8 @@
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): Encoder_GetChnROI: ret=0 enabled 0; Encoder_SetChnROI: ret=-1 roi 0 (64,64)-(319,255) dQP -4, read back en 0 (0,0)-(0,0) qp 0"
    }
   },
   "Encoder_Get/SetChnRcAttr": {
@@ -7287,7 +7291,7 @@
     "T40": "cache",
     "T41": "n.a."
    },
-   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41"
+   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PART (Encoder_SetFisheyeEnableStatus: ret=-1 stock refuses it on a created channel: ret -1). Flag stored; the fisheye effect sits in the closed vendor encoder."
   },
   "Encoder_Get/SetGDRCfg": {
    "area": "Encoder",
@@ -7315,7 +7319,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7327,11 +7331,12 @@
      "r†"
     ]
    },
-   "note": "T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested",
+   "note": "T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetH264TransCfg: ret=0 chroma_qp_index_offset 0; Encoder_SetH264TransCfg: ret=0 same cfg written back,).",
    "ref": {
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetH265TransCfg": {
@@ -7341,7 +7346,7 @@
     "T20": "n.a.",
     "T21": "no-op",
     "T23": "no-op",
-    "T30": "?",
+    "T30": "host",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7353,7 +7358,7 @@
      "r†"
     ]
    },
-   "note": "T21+T23: checked and dropped like the vendor libimp, Get returns zeros (T23 vendor 1.3.0: channel below 9 and non-NULL return 0, nothing stored, Get zero-fills the 8 bytes; matched 2026-10-10, device-tested on a T23 camera)"
+   "note": "T21+T23: checked and dropped like the vendor libimp, Get returns zeros (T23 vendor 1.3.0: channel below 9 and non-NULL return 0, nothing stored, Get zero-fills the 8 bytes; matched 2026-10-10, device-tested on a T23 camera). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. ALIGNED with the vendor: 1.0.5 (0xc5688/0xc585c) only checks channel and pointer and does nothing for a channel that is not H.265 (the Get clears the struct); OpenIMP stored the values and range-checked them. Host test p2_gap_test_t30. T30 has no H.265 encoder here."
   },
   "Encoder_Get/SetJpegeQl": {
    "area": "Encoder",
@@ -7362,20 +7367,21 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "dev"
    },
-   "note": "T10+T20+T21: reaches the running codec live (host test; apitest 2026-10-06: marker check and live change PASS on T20/T21); T41: live and at CreateChn (host)",
+   "note": "T10+T20+T21: reaches the running codec live (host test; apitest 2026-10-06: marker check and live change PASS on T20/T21); T41: live and at CreateChn (host). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetJpegeQl: ret=0 initial user_ql_en 0 table[0] 0 [64] 0; Encoder_SetJpegeQl: ret=0 table all 2, read ).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetMaxStreamCnt": {
@@ -7442,7 +7448,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7454,12 +7460,13 @@
      "r†"
     ]
    },
-   "note": "T10 (2026-10-10, from the disassembly notes in docs/T20_RC.md, not device-tested): the vendor library is the T20 build, but its T10 rate controller has no macroblock part, so the call is stored and read back and changes nothing, as in OpenIMP (src/rc_t10; matched, no-op); T20: switches the macroblock QP table (agg-25) T10 (2026-10-10, from the disassembly notes in docs/T20_RC.md, not device-tested): the vendor library is the T20 build, but its T10 rate controller has no macroblock part, so the call is stored and read back and changes nothing, as in OpenIMP (src/rc_t10; matched, no-op); T20: switches the macroblock QP table (agg-25)",
+   "note": "T10 (2026-10-10, from the disassembly notes in docs/T20_RC.md, not device-tested): the vendor library is the T20 build, but its T10 rate controller has no macroblock part, so the call is stored and read back and changes nothing, as in OpenIMP (src/rc_t10; matched, no-op); T20: switches the macroblock QP table (agg-25) T10 (2026-10-10, from the disassembly notes in docs/T20_RC.md, not device-tested): the vendor library is the T20 build, but its T10 rate controller has no macroblock part, so the call is stored and read back and changes nothing, as in OpenIMP (src/rc_t10; matched, no-op); T20: switches the macroblock QP table (agg-25). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetMbRC: ret=0 MbRC = 1; Encoder_SetMbRC: ret=0 MbRC set 1, read back 1).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetPool": {
@@ -7511,7 +7518,7 @@
     "T20": "n.a.",
     "T21": "no-op",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7523,10 +7530,11 @@
      "r†"
     ]
    },
-   "note": "T21: kept without range check as the vendor libimp (nothing reads it there); apitest roundtrip PASS; real QPG after the release",
+   "note": "T21: kept without range check as the vendor libimp (nothing reads it there); apitest roundtrip PASS; real QPG after the release. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetQpgMode: ret=0 initial 0; Encoder_SetQpgMode: ret=0 CRP (1), read back 1).",
    "ref": {
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_Get/SetStreamBufSize": {
@@ -7557,7 +7565,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "err",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -7569,12 +7577,13 @@
      "r†"
     ]
    },
-   "note": "T10+T20: reaches the rate control (T20 apitest PASS); T21: mode DISCARD refused (the Helix eprc has no frame discard), the software modes follow after the release",
+   "note": "T10+T20: reaches the rate control (T20 apitest PASS); T21: mode DISCARD refused (the Helix eprc has no frame discard), the software modes follow after the release. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (Encoder_GetSuperFrameCfg: ret=0 initial mode 0 I 0 P 0; Encoder_SetSuperFrameCfg: ret=-1 mode 1 I 400000 P 200000, read back mode 0 I 0 P 0 prio 0). Documented T30 limitation: modes other than NONE are refused (-1), the T31-style GOP rate control has no super-frame re-encode; the vendor 1.0.5 (0xc4c60) passes the thresholds to i264e parameter 13.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T23": "apitest agg47 2026-10-26 .30",
-    "T21": "apitest rc3gaps2 2026-10-27 .24"
+    "T21": "apitest rc3gaps2 2026-10-27 .24",
+    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): Encoder_GetSuperFrameCfg: ret=0 initial mode 0 I 0 P 0; Encoder_SetSuperFrameCfg: ret=-1 mode 1 I 400000 P 200000, read back mode 0 I 0 P 0 prio 0"
    }
   },
   "Encoder_Get/Setframelossthd": {
@@ -7973,19 +7982,20 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: userspace implementation; T20/T21/T23: emits a user_data_unregistered SEI (OEM UUID) in front of the next picture, found in the next 30 frames (apitest PASS); T10 shares the T20 build, not re-tested",
+   "note": "audit: userspace implementation; T20/T21/T23: emits a user_data_unregistered SEI (OEM UUID) in front of the next picture, found in the next 30 frames (apitest PASS); T10 shares the T20 build, not re-tested. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (\"apitest-user-data\": found in the next 30 frames (SEI)).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3gaps2 2026-10-27 .24",
-    "T23": "apitest agg47 2026-10-26 .30"
+    "T23": "apitest agg47 2026-10-26 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Encoder_PollingModuleStream": {
@@ -8547,7 +8557,7 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20/T21: returns 0, stores the flag of a created channel (the vendor pushes it to i264e param 10, read only by the HSkip code; class c); apitest PASS on T10, T20, T21; T30 1.0.5: the flag is kept for a created channel, 0 for an idle one (as T21); host test T10/T20/T21: returns 0, stores the flag of a created channel (the vendor pushes it to i264e param 10, read only by the HSkip code; class c); apitest PASS on T10, T20, T21; T30 1.0.5: the flag is kept for a created channel, 0 for an idle one (as T21); host test",
+   "note": "T10/T20/T21: returns 0, stores the flag of a created channel (the vendor pushes it to i264e param 10, read only by the HSkip code; class c); apitest PASS on T10, T20, T21; T30 1.0.5: the flag is kept for a created channel, 0 for an idle one (as T21); host test T10/T20/T21: returns 0, stores the flag of a created channel (the vendor pushes it to i264e param 10, read only by the HSkip code; class c); apitest PASS on T10, T20, T21; T30 1.0.5: the flag is kept for a created channel, 0 for an idle one (as T21); host test. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (off (no getter)).",
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30"
    }
@@ -8738,7 +8748,7 @@
     "T40": "dev",
     "T41": "dev"
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run. MISMATCH (minor): the vendor 1.0.5 (0xc44c8) accepts any value (non-zero = on) for channel < 6; OpenIMP returns -1 for values other than 0 and 1.",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
@@ -19070,7 +19080,8 @@
    "auto": true,
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)"
-   }
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp; NOT exported by OpenIMP's T30 build. Vendor-exported (6 channels, same queue design as T21), not exported by OpenIMP's T30 build; the pad-frame code of the P2 encoder is compiled for T21/T23 only and the T30 frame record layout is unchecked."
   },
   "Encoder_RequestPskip": {
    "area": "Encoder",
@@ -19185,7 +19196,8 @@
    "auto": true,
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)"
-   }
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run (no apitest case for T30). Vendor 1.0.5 (0xc1994) passes the pair to i264e parameter 4 for an H.264 channel; OpenIMP stores/forwards it in the T30 build."
   },
   "Encoder_SetChnRfcDropFrameLines": {
    "area": "Encoder",
@@ -19380,7 +19392,8 @@
    "auto": true,
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)"
-   }
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp; NOT exported by OpenIMP's T30 build. Vendor-exported (6 channels, 32-byte attribute), not exported by OpenIMP's T30 build (see PadFrame)."
   },
   "Encoder_SetPskipCfg": {
    "area": "Encoder",
