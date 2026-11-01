@@ -113,10 +113,12 @@ int picture_main(int argc, char **argv) { (void)argc; (void)argv; fprintf(stderr
 # define H_AWBCT 1
 # define H_HVFLIPE 1
 # define H_BLC 1
+#elif defined(PLATFORM_T30)
+# define SOC "T30"      /* no picture cases: the apitest areas and cases build for T30, imgfx has no T30 list yet */
 #elif defined(PLATFORM_T41)
 # define SOC "T41"
 #else
-# error "define PLATFORM_T10|T20|T21|T23|T31|T41"
+# error "define PLATFORM_T10|T20|T21|T23|T30|T31|T41"
 #endif
 
 #ifdef PLATFORM_T41
