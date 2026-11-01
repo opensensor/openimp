@@ -233,6 +233,31 @@ int main(void)
         CHECK(IMP_ISP_Tuning_AE_SetROI(roi) == -1);
         isp.tuning_state = 2;
     }
+    {
+        /* SetISPProcess / SetFWFreeze (T30 1.0.5 0xdb8f8 / 0xdba84): the mode
+         * is the S_CTRL value of 0x8000164 / 0x8000165; a mode equal to the
+         * cached one (0 after EnableTuning) is answered without a driver
+         * call.  SetShading (0xdb9b0): S_CTRL 0x8000166, no cache. */
+        int before = s_calls;
+
+        CHECK(IMP_ISP_Tuning_SetISPProcess((void *)(intptr_t)0) == 0 && s_calls == before);
+        CHECK(IMP_ISP_Tuning_SetISPProcess((void *)(intptr_t)1) == 0 &&
+              s_calls == before + 1 && last_id == 0x8000164 && last_val == 1);
+        CHECK(IMP_ISP_Tuning_SetISPProcess((void *)(intptr_t)1) == 0 && s_calls == before + 1);
+        CHECK(IMP_ISP_Tuning_SetISPProcess((void *)(intptr_t)0) == 0 &&
+              s_calls == before + 2 && last_id == 0x8000164 && last_val == 0);
+        CHECK(IMP_ISP_Tuning_SetFWFreeze(0) == 0 && s_calls == before + 2);
+        CHECK(IMP_ISP_Tuning_SetFWFreeze(1) == 0 &&
+              s_calls == before + 3 && last_id == 0x8000165 && last_val == 1);
+        CHECK(IMP_ISP_Tuning_SetShading((void *)(intptr_t)3) == 0 &&
+              s_calls == before + 4 && last_id == 0x8000166 && last_val == 3);
+        isp.tuning_state = 1;
+        CHECK(IMP_ISP_Tuning_SetISPProcess((void *)(intptr_t)1) == -1);
+        CHECK(IMP_ISP_Tuning_SetFWFreeze(1) == -1);
+        CHECK(IMP_ISP_Tuning_SetFWFreeze(0) == -1);
+        CHECK(IMP_ISP_Tuning_SetShading((void *)(intptr_t)1) == -1);
+        isp.tuning_state = 2;
+    }
 #endif
     if (failures) {
         fprintf(stderr, "isp_gap_test: %d failure(s)\n", failures);

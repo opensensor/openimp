@@ -13,6 +13,8 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 No T30 camera: static audit of the vendor T30 1.0.5 libimp (disassembly) against OpenIMP, plus an API run in the QEMU T30 machine (sc4236 model, open-tx-isp tx-isp-t30 + audio.ko, 2026-10-31/11-01; apitest areas and 56 cases, a few extra runs). Cells move only to `qemu` (API round trip in QEMU), `err` (the call fails in QEMU), `aud` (static) or `host`; no camera evidence, so no streamer-function cell is `dev` and no issue of the list is closed.
 
 - **ISP / AE (#23):** `IMP_ISP_Tuning_AE_Get/SetROI` sent control 0x8000035 through a pointer, which the T30 driver refuses; the vendor 1.0.5 (0xd9688/0xd978c) sends 0x8000024 with the four ROI bytes by value and rejects a box with b[3] >= b[1] or b[2] >= b[0]. Fixed, host test `isp_gap_test_t30`. QEMU T30: Set reaches the driver, Get returns -1 (the open T30 driver has no get case for 0x8000024, an open-tx-isp gap): cell err. `ISP_Tuning_SetExpr`: pointer and control equal to the vendor, not run (cell aud).
+- **ISP (#22):** `SetISPProcess` took a pointer on the tuning ioctl (mode 0 was refused as NULL) and `SetFWFreeze` used the tuning ioctl; the vendor 1.0.5 (0xdb8f8/0xdba84) sends the mode as the S_CTRL value of 0x8000164/0x8000165 and answers an unchanged mode from a cache, and `SetShading` (0xdb9b0) sends 0x8000166 the same way. Fixed for T30 (host test `isp_gap_test_t30`); QEMU T30: `SetISPProcess` reaches the driver (cell qemu), `SetFWFreeze` is rejected by the driver (cell err). `GetSceneMode`: refused by design (err). `SetISPLDC` stays missing (vendor-exported); `SetTemperDnsCtl` stays cache.
+
 
 ## 2026-10-31, T41 backlog (#75-#80, branch claude/t41-backlog)
 

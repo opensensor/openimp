@@ -3393,18 +3393,19 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "err",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: reaches the driver/kernel",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (mode 0, readback of the 3 modes set WRONG). OpenIMP refuses with -1 (by design); the vendor sends V4L2 0x9a091a (G_CTRL), which the lifted T30 driver does not handle.",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
-    "T21": "apitest rc3-cases 2026-10-27 .24"
+    "T21": "apitest rc3-cases 2026-10-27 .24",
+    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 mode 0, readback of the 3 modes set WRONG"
    }
   },
   "ISP_Tuning_GetSensorAttr": {
@@ -3833,18 +3834,19 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "err",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: reaches the driver/kernel",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (rt: freeze on/off, frames flow (1/1), Y 136.9 -> 136.8 frozen). FIXED transport: now S_CTRL 0x8000165 with the mode as value and the vendor's cache (0xdba84), was the tuning ioctl. Host test isp_gap_test_t30. QEMU: the driver rejects the control ('tuning set id=08000165 failed ret=-1').",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
-    "T21": "apitest agg47-cases 2026-10-26 .24 (API round trip, no visible effect expected)"
+    "T21": "apitest agg47-cases 2026-10-26 .24 (API round trip, no visible effect expected)",
+    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 rt: freeze on/off, frames flow (1/1), Y 136.9 -> 136.8 frozen"
    }
   },
   "ISP_Tuning_SetFixedContraster": {
@@ -3932,7 +3934,8 @@
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
-   }
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp; NOT exported by OpenIMP's T30 build. Vendor-exported, not implemented in OpenIMP's T30 build (needs the LDC table handling of the vendor library and an LDC-capable driver; nothing to test without a T30 device)."
   },
   "ISP_Tuning_SetISPProcess": {
    "area": "ISP tuning",
@@ -3948,7 +3951,7 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: reaches the driver/kernel",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: ENABLE (= normal processing, the driver's state) written, frames flow (1); DISABLE (= ISP bypass) not run:). FIXED: mode now travels as the S_CTRL value of 0x8000164 with the vendor's cache (0xdb8f8), was a pointer on the tuning ioctl (mode 0 was refused as a NULL pointer). Host test isp_gap_test_t30; ENABLE reaches the driver in QEMU. DISABLE (bypass) is not run: it tears the pipeline down.",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
@@ -4332,7 +4335,7 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10+T20: newly exported (agg-25); T30 1.0.5 (the vendor sends the temper type through control 0x8000167 and ignores night mode): stored in the same cache as the T30 SetTemperDnsAttr, no driver control; host test",
+   "note": "T10+T20: newly exported (agg-25); T30 1.0.5 (the vendor sends the temper type through control 0x8000167 and ignores night mode): stored in the same cache as the T30 SetTemperDnsAttr, no driver control; host test. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: current type 1 written, frames flow). Stored with SetTemperDnsAttr's cache; the vendor sends the temper type through 0x8000082/0x8000167. The call round-trips in QEMU.",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected)",

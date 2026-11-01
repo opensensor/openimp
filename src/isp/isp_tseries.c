@@ -3504,6 +3504,10 @@ int IMP_ISP_Tuning_WaitFrame(IMPISPWaitFrameAttr *attr)
         return result;
     }
 #else
+    /* T30 1.0.5 (0xdb570) sends the same {1, 0x8000162, &info} block as T20/T21.
+     * Not done on purpose: the open T30 driver does not serve that control
+     * (QEMU: -1), so the call would turn a harmless 0 into a -1 for every
+     * caller; it returns 0 at once, as before (T30 cell: stub). */
     return 0;
 #endif
 }
@@ -4168,9 +4172,9 @@ int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
 
 int IMP_ISP_Tuning_SetShading(void *attr)
 {
-#if defined(PLATFORM_T21) || defined(PLATFORM_T31) /* T21 and T20, T31 */
-    /* T21 1.0.33 / T20 3.12.0 / T31 1.1.6 (0x92020) pass the argument as the
-     * S_CTRL value (shading enable, control 0x8000166). */
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T31) /* T21 and T20, T30, T31 */
+    /* T21 1.0.33 / T20 3.12.0 / T30 1.0.5 (0xdb9b0) / T31 1.1.6 (0x92020) pass
+     * the argument as the S_CTRL value (shading enable, control 0x8000166). */
     return tseries_v4l2_set(TISP_CID_SHADING, (int32_t)(intptr_t)attr);
 #else
     return tseries_tuning_set_ptr(TISP_CID_SHADING, attr);
@@ -4241,9 +4245,40 @@ int IMP_ISP_Tuning_GetMask(void *attr)
 #endif
 }
 
+#if defined(PLATFORM_T30)
+/* T30 1.0.5 SetISPProcess (0xdb8f8) / SetFWFreeze (0xdba84): the mode goes
+ * as the S_CTRL value of control 0x8000164 / 0x8000165.  The vendor keeps the
+ * last accepted mode in its tuning block (+0x3c / +0x40, zero when tuning
+ * starts) and answers 0 without a driver call when the mode is unchanged;
+ * both need tuning running (-1 otherwise). */
+static int tseries_t30_process_cached, tseries_t30_freeze_cached;
+
+static int tseries_t30_cached_ctrl(int32_t id, int *cache, int mode)
+{
+    int result;
+
+    if (*cache == mode) {
+        ISPDevice *isp;
+
+        if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+            return -1;
+        }
+        return 0;
+    }
+    result = tseries_v4l2_set(id, mode);
+    if (result == 0) {
+        *cache = mode;
+    }
+    return result;
+}
+#endif
+
 int IMP_ISP_Tuning_SetISPProcess(void *attr)
 {
-#if defined(PLATFORM_T21) /* T21 and T20 */
+#if defined(PLATFORM_T30)
+    return tseries_t30_cached_ctrl(TISP_CID_ISP_PROCESS, &tseries_t30_process_cached,
+                                   (int)(intptr_t)attr);
+#elif defined(PLATFORM_T21) /* T21 and T20 */
     /* T21 1.0.33 / T20 3.12.0 pass the argument as the S_CTRL value. */
     return tseries_v4l2_set(TISP_CID_ISP_PROCESS, (int32_t)(intptr_t)attr);
 #else
@@ -4253,7 +4288,9 @@ int IMP_ISP_Tuning_SetISPProcess(void *attr)
 
 int IMP_ISP_Tuning_SetFWFreeze(int enable)
 {
-#if defined(PLATFORM_T21) /* T21 and T20 */
+#if defined(PLATFORM_T30)
+    return tseries_t30_cached_ctrl(TISP_CID_FW_FREEZE, &tseries_t30_freeze_cached, enable);
+#elif defined(PLATFORM_T21) /* T21 and T20 */
     return tseries_v4l2_set(TISP_CID_FW_FREEZE, enable);
 #else
     return tseries_tuning_set_val(TISP_CID_FW_FREEZE, enable);
@@ -5259,6 +5296,10 @@ int IMP_ISP_EnableTuning(void)
         return -1;
     }
     if (isp->tuning != NULL) return 0;  /* already enabled */
+#if defined(PLATFORM_T30)
+    tseries_t30_process_cached = 0;     /* the vendor tuning block starts zeroed */
+    tseries_t30_freeze_cached = 0;
+#endif
 
     /* Build "/dev/isp-m0" path at +0x78.
      * Stock binary uses open flags 0x80002 (O_RDWR | O_CLOEXEC), but the
