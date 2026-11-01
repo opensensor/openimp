@@ -17018,14 +17018,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_ADC_EnableChn": {
    "area": "System",
@@ -17034,14 +17037,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_ADC_Exit": {
    "area": "System",
@@ -17050,14 +17056,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_ADC_GetChnValue": {
    "area": "System",
@@ -17066,14 +17075,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_DisableAlarm": {
    "area": "System",
@@ -17082,14 +17094,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_EnableAlarm": {
    "area": "System",
@@ -17098,14 +17113,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (an enabled RTC alarm can wake the camera); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_Get/SetAlarm": {
    "area": "System",
@@ -17114,14 +17132,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_Get/SetTime": {
    "area": "System",
@@ -17130,14 +17151,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_GetDevID": {
    "area": "System",
@@ -17146,14 +17170,14 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "dev"
    },
-   "note": "audit: sysfs/ioctl/syscall path",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): PASS (device values not published).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -17161,7 +17185,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "SU_Base_GetModelNumber": {
@@ -17171,14 +17196,14 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "dev"
    },
-   "note": "audit: sysfs/ioctl/syscall path",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): PASS (device values not published).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -17186,7 +17211,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "SU_Base_GetVersion": {
@@ -17264,14 +17290,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node)"
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until the alarm fires); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_Raw2SUTime": {
    "area": "System",
@@ -17280,14 +17309,14 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "dev"
    },
-   "note": "audit: sysfs/ioctl/syscall path",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): PASS (device values not published).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -17295,7 +17324,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "SU_Base_Reboot": {
@@ -17305,14 +17335,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (reboots the machine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Base_SUTime2Raw": {
    "area": "System",
@@ -17321,14 +17354,14 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "dev"
    },
-   "note": "audit: sysfs/ioctl/syscall path",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): PASS (device values not published).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -17336,7 +17369,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "SU_Base_SetWkupMode": {
@@ -17384,14 +17418,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (suspends the machine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Battery_GetCapacity": {
    "area": "System",
@@ -17400,14 +17437,14 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "n.a.",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Not exported by the T30 1.0.5 vendor libsysutils (declared in the SDK header only). QEMU T30 (sc4236 model, no camera): NA (device values not published). Declared in the SDK header only; the 1.0.5 vendor libsysutils does not export it."
   },
   "SU_Battery_GetEvent": {
    "area": "System",
@@ -17416,14 +17453,14 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "n.a.",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Not exported by the T30 1.0.5 vendor libsysutils (declared in the SDK header only). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Declared in the SDK header only; the 1.0.5 vendor libsysutils does not export it."
   },
   "SU_Battery_GetStatus": {
    "area": "System",
@@ -17432,14 +17469,14 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "n.a.",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Not exported by the T30 1.0.5 vendor libsysutils (declared in the SDK header only). QEMU T30 (sc4236 model, no camera): NA (device values not published). Declared in the SDK header only; the 1.0.5 vendor libsysutils does not export it."
   },
   "SU_Battery_GetVoltageUV": {
    "area": "System",
@@ -17448,14 +17485,14 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "n.a.",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board"
+   "note": "T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) T10 (4 builds, 3.9.0/3.12.0), T20 (4 builds, 3.9.0/3.12.0), T21 (4 builds, 1.0.33), T23 (8 builds) and T31 (28 builds): declared in the SDK header, exported by no vendor libsysutils (nm of every build); a vendor-stack application cannot link it either; OpenIMP/libsysutils match that (no battery driver on these SoCs) | T41 (SDK 1.2.5 libsysutils and the neo-sysutils of the board, nm): declared in the SDK header, exported by no libsysutils; a vendor-stack application cannot link it either; no battery driver on the board. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Not exported by the T30 1.0.5 vendor libsysutils (declared in the SDK header only). QEMU T30 (sc4236 model, no camera): NA (device values not published). Declared in the SDK header only; the 1.0.5 vendor libsysutils does not export it."
   },
   "SU_CIPHER_ConfigHandle": {
    "area": "System",
@@ -17464,14 +17501,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_CIPHER_CreateHandle": {
    "area": "System",
@@ -17480,14 +17520,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_CIPHER_DES_Exit": {
    "area": "System",
@@ -17544,14 +17587,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_CIPHER_DestroyHandle": {
    "area": "System",
@@ -17560,14 +17606,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_CIPHER_Encrypt": {
    "area": "System",
@@ -17576,14 +17625,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_CIPHER_Exit": {
    "area": "System",
@@ -17592,14 +17644,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_CIPHER_Init": {
    "area": "System",
@@ -17608,14 +17663,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (hardware AES/DES engine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Key_CloseEvent": {
    "area": "System",
@@ -17624,21 +17682,22 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): PASS (device values not published).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "SU_Key_DisableEvent": {
@@ -17648,14 +17707,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (masks a hardware key); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Key_EnableEvent": {
    "area": "System",
@@ -17664,14 +17726,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (masks a hardware key); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_Key_OpenEvent": {
    "area": "System",
@@ -17680,21 +17745,22 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): PASS (device values not published).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest agg59 2026-10-31 .184",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "SU_Key_ReadEvent": {
@@ -17704,14 +17770,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until a key is pressed); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "SU_LED_Command": {
    "area": "System",
@@ -17720,14 +17789,17 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
     "T40": "?",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path"
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (drives the board LED); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "System_Bind": {
    "area": "System",
@@ -20833,7 +20905,7 @@
     "T20": "?",
     "T21": "?",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -20843,8 +20915,10 @@
    "auto": true,
    "ref": {
     "T31": "apitest agg61 2026-10-31 .26",
-    "T23": "apitest agg62 2026-10-31 .30"
-   }
+    "T23": "apitest agg62 2026-10-31 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (phys+100 -> 0x760b6064 (expected 0x760b6064))."
   },
   "PoolAlloc": {
    "area": "System",
@@ -21468,7 +21542,7 @@
     "T20": "?",
     "T21": "?",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -21478,8 +21552,10 @@
    "auto": true,
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30",
-    "T31": "apitest agg61 2026-10-31 .26"
-   }
+    "T31": "apitest agg61 2026-10-31 .26",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (4096 bytes at 0x760b6000 written and freed)."
   },
   "Virt_to_Phys": {
    "area": "System",
@@ -21488,7 +21564,7 @@
     "T20": "?",
     "T21": "?",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -21498,8 +21574,10 @@
    "auto": true,
    "ref": {
     "T31": "apitest agg61 2026-10-31 .26",
-    "T23": "apitest agg62 2026-10-31 .30"
-   }
+    "T23": "apitest agg62 2026-10-31 .30",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (virt+100 -> 0x77d0064 (descriptor phys+100 = 0x77d0064))."
   },
   "alloc_init": {
    "area": "System",
