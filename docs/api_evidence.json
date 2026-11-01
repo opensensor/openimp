@@ -951,13 +951,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "rt"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000097 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): Get mode 0; Set same value read back equal, frames flow (control 0x8000097, served by the open T41 module since #171)"
    }
   },
   "ISP_Get/SetDefaultBinPath": {
@@ -2138,14 +2135,11 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
+    "T41": "dev"
    },
    "note": "T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged). T23: 0x8000180 on the stock mscaler draw table (open-tx-isp claude/gaps-t23-t31-drv, class c; emulator-identical to the stock handlers including the stock Get slip of colour byte 23; a draw block above 5 is refused, beyond stock); host build only, device test pending; the stored block has no image effect yet (the MSCA update that programs it is not run, as for the mask blocks); Not in agg-36: the open-tx-isp branch claude/gaps-t23-t31-drv is held back until its T23 SwitchBin is reworked (review: memcpy over live banks), so the agg-36 driver still behaves as before (cell unchanged).",
-   "action": {
-    "T41": "implement"
-   },
    "ref": {
-    "T41": "QEMU T41 2026-10-31: OpenIMP pass-through (control 0x80000a0, 32 bytes, vendor 1.2.5 disassembly) returns -4090; the open-tx-isp T41 module logs \"tuning control 0x80000a0 not implemented\" (EPERM). Needs a module route to tisp_s/g_draw_block_attr"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): 24 px window frame at (720,405): top edge luma 165.3 -> 0.0 drawn, back to 165.3 disabled; Get reads the block back; frames flow (control 0x80000a0, #171)"
    }
   },
   "ISP_Tuning_Get/SetFrontCrop": {
@@ -4440,13 +4434,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "rt"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000062 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): set/clear of one brighten region, frames flow; registers 0x1e040..0x1e07c read back equal with a diagnostic ko (open-tx-isp #180); no visible luma change for the apitest request (the weighting acts on face regions only)"
    }
   },
   "ISP_Tuning_SetVideoDrop": {
@@ -5603,13 +5594,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "rt"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000036 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): changed global/roi/smooth weights read back, initial values restored, frames flow (control 0x8000036)"
    }
   },
   "ISP_Tuning_Get/SetFaceAwb": {
@@ -5711,13 +5699,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "dev"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x800003a ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): flag read (control 0x800003a)"
    }
   },
   "ISP_Tuning_GetAE_IT_MAX": {
@@ -5799,7 +5784,7 @@
    },
    "ref": {
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000034 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM (-4090): the AF statistics path is not ported there (open-tx-isp #179, a separate stability item: AF block stays off)"
    },
    "action": {
     "T41": "implement"
@@ -5864,14 +5849,11 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "err"
+    "T41": "dev"
    },
    "note": "T41: the call is in the vendor library 1.2.6 only (not in 1.2.5); control 0x80000b3, one integer",
-   "action": {
-    "T41": "implement"
-   },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x80000b3 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): bv read (control 0x80000b3, libimp 1.2.6 only)"
    }
   },
   "ISP_Tuning_GetAeEvList": {
@@ -6066,7 +6048,7 @@
    },
    "ref": {
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000031 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM (-4090): the AF statistics path is not ported there (open-tx-isp #179, a separate stability item: AF block stays off)"
    },
    "action": {
     "T41": "implement"
@@ -6256,13 +6238,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "dev"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp: OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module answers EPERM to tuning control 0x8000037 ('not implemented'), so the call returns -4090"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): global 68 roi 83 (control 0x8000037)"
    }
   },
   "ISP_Tuning_GetWB_GOL_Statis": {
@@ -11579,14 +11558,11 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "err"
+    "T41": "dev"
    },
    "ref": {
     "T23": "picture type works (apitest isposd .30, #127); line/rect/cover draw blocks are stored only, no MSCA draw path yet",
-    "T41": "QEMU T41 2026-10-31: vendor codes and the cover type (MaskBlock) work, the line/rect type and Get need DrawBlock (module route 0x80000a0 missing, EPERM)"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): line/rect type draws (top edge luma 173.8 -> 0.0, back to 173.8), Get reads the draw block back, cover block 64x64 reads back, vendor error codes for NULL/picture/sensor 2"
    }
   },
   "OSD_GetRegionLuma": {
