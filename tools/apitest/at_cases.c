@@ -1488,6 +1488,44 @@ static void cs_wdr_t41(void)
 static void cs_wdr_t41(void) {}
 #endif
 
+/* Explicit only (APITEST_CASES=wdrtoggle_t41): a REAL WDR switch, not the same-value round trip of wdr_t41: the opposite of the current mode is
+ * written and read back with frames flowing, then the original mode is restored and read back (T41; #189 tisp_s_wdr_en). */
+#if defined(PLATFORM_T41) && HAS_IMP_ISP_WDR_ENABLE && HAS_IMP_ISP_WDR_ENABLE_GET
+static void cs_wdrtoggle_t41(void)
+{
+    NEED(IMP_ISP_WDR_ENABLE_GET) NEED(IMP_ISP_WDR_ENABLE) {
+        IMPISPTuningOpsMode o = IMPISP_TUNING_OPS_MODE_DISABLE, t, g1 = o, g2 = o;
+        int r0 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &o), r1, r2, r3, r4, f1, f2;
+
+        t = (o == IMPISP_TUNING_OPS_MODE_ENABLE) ? IMPISP_TUNING_OPS_MODE_DISABLE : IMPISP_TUNING_OPS_MODE_ENABLE;
+        r1 = IMP_ISP_WDR_ENABLE(IMPVI_MAIN, &t); usleep(1500000); r2 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &g1); f1 = flow();
+        r3 = IMP_ISP_WDR_ENABLE(IMPVI_MAIN, &o); usleep(1500000); r4 = IMP_ISP_WDR_ENABLE_GET(IMPVI_MAIN, &g2); f2 = flow();
+        rep(LBL("IMP_ISP_WDR_ENABLE toggle"), r1 | r3, (r0 == 0 && r1 == 0 && r2 == 0 && r3 == 0 && r4 == 0 && g1 == t && g2 == o && f1 && f2) ? V_PASS : V_FAIL,
+            "start %d -> %d (ret %d, read back %d, frames flow %d) -> restored %d (ret %d, read back %d, frames flow %d)", (int)o, (int)t, r1, (int)g1, f1, (int)o, r3, (int)g2, f2);
+    }
+}
+#else
+static void cs_wdrtoggle_t41(void) {}
+#endif
+
+/* Explicit only (APITEST_CASES=fscycle): FrameSource disable/enable cycles of both channels (APITEST_FSCYCLES, default 13), a frame check after each
+ * (VIC channel streamon/streamoff/qbuf and the slot init run on every cycle; #189 vic_frame_channel_*, vic_core_ops_init). Leaves both channels enabled. */
+static void cs_fscycle(void)
+{
+    int n = getenv("APITEST_FSCYCLES") ? atoi(getenv("APITEST_FSCYCLES")) : 13, i, bad = 0, rc = 0;
+
+    if (n < 1) n = 1;
+    for (i = 0; i < n; i++) {
+        int r = IMP_FrameSource_DisableChn(1);
+        r |= IMP_FrameSource_DisableChn(0);
+        r |= IMP_FrameSource_EnableChn(0);
+        r |= IMP_FrameSource_EnableChn(1);
+        usleep(600000);
+        if (r != 0 || !flow()) { bad++; rc = r ? r : rc; }
+    }
+    rep(LBL("FrameSource disable/enable cycles"), rc, bad == 0 ? V_PASS : V_FAIL, "%d cycles of ch1+ch0 disable/enable, frame check after each: %d ok, %d bad", n, n - bad, bad);
+}
+
 #if defined(APITEST_T40) && HAS_IMP_ISP_Tuning_SetISPBypass && HAS_IMP_ISP_Tuning_GetISPBypass
 static void cs_bypass_t40(void)
 {
@@ -2466,10 +2504,29 @@ static void cs_alloc(void)
         pset(a0, c0);
     } else { ALN("IMP_PoolAlloc_Set_Attr"); ALN("IMP_PoolAlloc_Get_Attr"); }
     if (mp_init && mp_get) {
+#if defined(PLATFORM_T41)
+        /* T40/T41 have the vendor 1.2.x form: InitPool(id, size, name), GetById(id) returns the pool (NULL = unknown), no output struct
+         * (the T10..T31 form below fills a descriptor); the physical range comes from OpenIMP_P2_PoolRange (diagnostics export) */
+        {
+            void *(*mp_getp)(int) = (void *(*)(int))mp_get;
+            int (*mp_ini)(int, uint32_t, const char *) = (int (*)(int, uint32_t, const char *))mp_init;
+            int (*mp_range)(int, uint32_t *, uint32_t *) = (int (*)(int, uint32_t *, uint32_t *))dsym("OpenIMP_P2_PoolRange");
+            uint32_t rph = 0, rsz = 0;
+            int second;
+
+            r = mp_ini(9, 65536, "apitest");
+            second = mp_ini(9, 65536, "apitest");
+            ok = r == 0 && second == -1 && mp_getp(9) != NULL && mp_getp(31) == NULL && mp_getp(99) == NULL && mp_getp(-1) == NULL &&
+                 (!mp_range || (mp_range(9, &rph, &rsz) == 0 && rph != 0 && rsz == 65536));
+            rep(LBL("IMP_MemPool_InitPool"), r, ok ? V_PASS : V_FAIL, "pool 9, 64 KB (vendor form with name): phys 0x%x size %u; a second init of the same id returns %d", rph, rsz, second);
+            rep(LBL("IMP_MemPool_GetById"), 0, ok ? V_PASS : V_FAIL, "pool 9 returned (vendor form: pointer, no output struct), unknown ids 31/99/-1 give NULL");
+        }
+#else
         r = mp_init(9, 65536, 0);
         ok = r == 0 && mp_get(9, mi) == 0 && mi->phys != 0 && mi->size == 65536 && mp_get(9 + 20, mi) != 0;
         rep(LBL("IMP_MemPool_InitPool"), r, ok ? V_PASS : V_FAIL, "pool 9, 64 KB: phys 0x%x size %u; a second init of the same id returns %d", mi->phys, mi->size, mp_init(9, 65536, 0));
         rep(LBL("IMP_MemPool_GetById"), 0, ok ? V_PASS : V_FAIL, "pool 9 info read back, unknown id rejected");
+#endif
         if (p_alloc && p_free) {
             uintptr_t st = p_alloc(9, d2, 4096, "apitest"), v = (uintptr_t)d2->virt;
             ok = st == 0 && v != 0 && d2->phys != 0;
@@ -2489,6 +2546,9 @@ static void cs_alloc(void)
             ok = r == 0 && mp_get(9, mi) != 0 && mp_rel(9) == 0 && mp_rel(-1) == -1;
             rep(LBL("IMP_MemPool_Release"), r, ok ? V_PASS : V_FAIL, "pool 9 released: lookup now fails, a second release 0, invalid id -1");
         } else ALN("IMP_MemPool_Release");
+#if defined(PLATFORM_T41)
+        { int (*mpf)(int) = (int (*)(int))dsym("IMP_System_MemPoolFree"); if (mpf) mpf(9); }   /* beyond vendor: the T41 library has no public release; leave no pool behind */
+#endif
     } else { ALN("IMP_MemPool_InitPool"); ALN("IMP_MemPool_GetById"); }
     gfree(d); gfree(d2); gfree(mi);
 }
@@ -2641,6 +2701,7 @@ static void cs_isposdapi(void)
 
             if (oa && ob && ba && bb) {
                 ra = IMP_ISP_Tuning_GetOSDAttr(IMPVI_MAIN, oa);
+                ba->pinum = h;      /* the block of OUR picture: the handle is not 0 when earlier cases already created ISP OSD regions (full case order) */
                 rb = IMP_ISP_Tuning_GetOSDBlock(IMPVI_MAIN, ba);
                 rsa = IMP_ISP_Tuning_SetOSDAttr(IMPVI_MAIN, oa);
                 again_a = region_y(cx0, cy0, cx1, cy1);
@@ -2813,13 +2874,15 @@ static void cs_drawblock(void)
     NEED(IMP_ISP_Tuning_SetDrawBlock) NEED(IMP_ISP_Tuning_GetDrawBlock) {
         G(IMPISPDrawBlockAttr, a); G(IMPISPDrawBlockAttr, g);
         int x = g_sw / 4, y = g_sh / 4, w = g_sw / 2, bw = 24, r1, r2, r3;
-        double base, on, off;
+        double base, on, off, late;
 
         base = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
         a->pinum = 0; a->type = IMP_ISP_DRAW_WIND; a->color_type = IMPISP_MASK_TYPE_YUV;
         a->cfg.wind.enable = 1; a->cfg.wind.left = x; a->cfg.wind.top = y; a->cfg.wind.width = w; a->cfg.wind.height = g_sh / 2;
         a->cfg.wind.color.ayuv.y_value = base < 140 ? 235 : 16; a->cfg.wind.color.ayuv.u_value = 128; a->cfg.wind.color.ayuv.v_value = 128;
-        a->cfg.wind.line_width = bw; a->cfg.wind.alpha = 7;
+        a->cfg.wind.line_width = bw; a->cfg.wind.alpha = 4;      /* range 0..4, 4 = opaque (#188): 5..7 read back black */
+        /* "disabled" = the frame is gone: back at the scene level within 20 luma, or at least 75 % of the way from the drawn value to the scene
+         * (the AE of a full case order is still settling after the earlier brightness cases: base 183.5 -> disabled 161.1 with the drawn value 0.0) */
         r1 = IMP_ISP_Tuning_SetDrawBlock(IMPVI_MAIN, a);
         if (DRV_NONE(r1)) {
             rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1, V_NA, "the ISP module has no handler for tuning control 0x80000a0 (EPERM)");
@@ -2832,8 +2895,9 @@ static void cs_drawblock(void)
         r2 = IMP_ISP_Tuning_GetDrawBlock(IMPVI_MAIN, g); gchk(g);
         a->cfg.wind.enable = 0; r3 = IMP_ISP_Tuning_SetDrawBlock(IMPVI_MAIN, a);
         off = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
-        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && (getenv("APITEST_NOEFFECT") || ((base < 140 ? on > base + 30 : on < base - 30) && dabs(off - base) < 20)) && flow()) ? V_PASS : V_FAIL,
-            "window frame %d px at (%d,%d): top edge luma %.1f -> %.1f; disabled: %.1f (base %.1f); frames flow", bw, x, y, base, on, off, base);
+        usleep(1500000); late = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
+        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && (getenv("APITEST_NOEFFECT") || ((base < 140 ? on > base + 30 : on < base - 30) && (dabs(off - base) < 20 || dabs(off - on) >= 0.75 * dabs(base - on)))) && flow()) ? V_PASS : V_FAIL,
+            "window frame %d px at (%d,%d): top edge luma %.1f -> %.1f; disabled: %.1f (base %.1f, 1.5 s later %.1f); frames flow", bw, x, y, base, on, off, base, late);
         rep(FN(IMP_ISP_Tuning_GetDrawBlock), r2, (r2 == 0 && g->cfg.wind.enable == 1 && g->cfg.wind.left == x && g->cfg.wind.top == y && g->cfg.wind.width == w && g->cfg.wind.line_width == bw) ? V_PASS : V_FAIL,
             "read while drawn: enable %u at (%u,%u) width %u line %u", g->cfg.wind.enable, g->cfg.wind.left, g->cfg.wind.top, g->cfg.wind.width, g->cfg.wind.line_width);
         gfree(a); gfree(g);
@@ -3816,7 +3880,7 @@ static void cs_ispdraw_t23(void)
         a->type = OSD_REG_ISP_LINE_RECT;
         a->osdispdraw.stDrawAttr.pinum = 0; a->osdispdraw.stDrawAttr.type = IMP_ISP_DRAW_WIND;
         a->osdispdraw.stDrawAttr.color_type = IMPISP_MASK_TYPE_YUV;
-        wd->enable = 1; wd->left = x; wd->top = y; wd->width = w; wd->height = h; wd->line_width = lw; wd->alpha = 7;
+        wd->enable = 1; wd->left = x; wd->top = y; wd->width = w; wd->height = h; wd->line_width = lw; wd->alpha = 4;      /* range 0..4 (#188) */
         wd->color.ayuv.y_value = e0 < 128 ? 235 : 16; wd->color.ayuv.u_value = 128; wd->color.ayuv.v_value = 128;
         r1 = IMP_OSD_MultiCamera_SetRgnAttr_ISP(0, a, 1);
         e1 = reg_luma(0, x + 10, y + 1, x + w - 10, y + lw - 1); i1 = reg_luma(0, x + 40, y + 40, x + w - 40, y + h - 40);
@@ -4484,7 +4548,7 @@ static void cs_rgnisp(void)
         d->pinum = 0; d->type = IMP_ISP_DRAW_WIND; d->color_type = IMPISP_MASK_TYPE_YUV;
         d->cfg.wind.enable = 1; d->cfg.wind.left = x; d->cfg.wind.top = y; d->cfg.wind.width = w; d->cfg.wind.height = g_sh / 2;
         d->cfg.wind.color.ayuv.y_value = base < 140 ? 235 : 16; d->cfg.wind.color.ayuv.u_value = 128; d->cfg.wind.color.ayuv.v_value = 128;
-        d->cfg.wind.line_width = bw; d->cfg.wind.alpha = 7;
+        d->cfg.wind.line_width = bw; d->cfg.wind.alpha = 4;      /* range 0..4, 4 = opaque (#188): 5..7 read back black */
         errno = 0; r1 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);
         nodrv = r1 != 0 && errno == EPERM;        /* the module answers EPERM to a tuning control it does not route */
         if (!noeff) on = region_y(x + 4, y + 2, x + w - 4, y + bw - 2);
@@ -4982,7 +5046,7 @@ static void cs_decoder_t2x(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "wdrtoggle_t41", "fscycle" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5044,6 +5108,8 @@ void t_cases(void)
     if (cs_on("csc")) cs_csc();        wdog("cases", 90);
     if (cs_on("awbct")) cs_awbct();      wdog("cases", 90);
     if (cs_on("scalerlv_old")) cs_scalerlv_old(); wdog("cases", 90);
+    if (getenv("APITEST_CASES") && cs_on("wdrtoggle_t41")) cs_wdrtoggle_t41();   /* explicit only: a real WDR switch (#189) */
+    if (getenv("APITEST_CASES") && cs_on("fscycle")) cs_fscycle();               /* explicit only: FrameSource cycles (#189) */
     if (getenv("APITEST_CASES") && cs_on("stalesnap")) cs_stalesnap();   /* explicit only: ~3 min of pauses (issue #89) */
     wdog("cases", 240);
     if (cs_on("aestats")) cs_aestats();    wdog("cases", 60);
