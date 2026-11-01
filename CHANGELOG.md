@@ -11,6 +11,8 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 ## 2026-11-01, T40 apitest expectations (#184, noticed in #183)
 
 - **apitest cases corrected (#184):** `tisp_node_par_get/set` report N/A with the reason when the module answers `-EFAULT` (release module, the `/dev/tisp` parameter commands are debug-only since #164) and stay a full test on a debug module; `IMP_ISP_Tuning_SetModuleControl` takes the gamma-bypass verdict from the early window (~250 ms) like the SetGammaAttr case, because the closed-loop AE compensates the bypass within a second (camera: Y 111.7 -> 92.0 early, 116.8 settled).
+
+  Device proof (Eufy T40, image agg65c): apitest all areas PASS 398 / FAIL 0 / N/A 24 (the three FAILs of agg65b are gone); modctl case Y 111.7 -> 92.0 after 250 ms; tisp_node_par_get/set N/A on the release module.
 - **Found, tracked in open-tx-isp (#183):** the extra `tx_isp_t40` reference after the `t40dev` area comes from an oops in `tisp_g_draw_attr` (IMP_ISP_GetDrawAttr), not from the library.
 
 ## 2026-11-01, T40 WDR-enable / LCE-tgain arrays in open-tx-isp (#182)
