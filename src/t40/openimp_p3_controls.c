@@ -1894,8 +1894,9 @@ int32_t IMP_ISP_Tuning_GetISPBypass(IMPVI_NUM num,
  * -4084; with the ISP device open the 8-byte block {value, sensor} goes to
  * the ISP node as ioctl 0x80085418 (TISP_VIDIOC_BYPASS_SENSOR); without an
  * open ISP device the vendor only remembers the value.  Get returns the
- * remembered value (0 before any Set).  A failing ioctl returns -1 here (the
- * errno goes to syslog) and the value is not remembered: the open-tx-isp T41
+ * remembered value (0 before any Set).  A failing ioctl returns -4095 like the
+ * vendor (0x47418; the errno goes to syslog) and the value is not remembered:
+ * the open-tx-isp T41
  * driver refuses the real bypass (value != 0) until its VIC capture path
  * works (issue 125).  OpenIMP does not reproduce the vendor's "ISP device not
  * open" error for Get.

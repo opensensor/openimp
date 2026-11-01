@@ -602,11 +602,11 @@ int main(void)
           assert(blk[0] == 1 && blk[1] == 0); }
         got = (IMPISPTuningOpsMode)7;
         assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 && got == en);
-        /* a refusing kernel (real bypass not supported): -1, value kept */
+        /* a refusing kernel (real bypass not supported): -4095 like the vendor, value kept */
         en = IMPISP_TUNING_OPS_MODE_DISABLE;
         isp.result = -1;
         isp.err = ENOTTY;
-        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == -1);
+        assert(IMP_ISP_SetISPBypass(IMPVI_MAIN, &en) == -4095);
         assert(IMP_ISP_GetISPBypass(IMPVI_MAIN, &got) == 0 &&
                got == IMPISP_TUNING_OPS_MODE_ENABLE);
         /* ISP not up (ENODEV): remembered like the vendor without an ISP device */

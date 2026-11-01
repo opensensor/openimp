@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, ISP bypass feasibility (#125, #129)
+
+- **T41 `IMP_ISP_SetISPBypass` (#125):** a failing driver ioctl now returns -4095 like the vendor 1.2.6 library (0x47418) instead of -1; the open driver still refuses the real bypass until its VIC capture path exists. Host test only. Design notes for #125 and #129 (vendor call per SoC, what the open drivers lack): `audit/ISP_BYPASS_FEASIBILITY_1101.md` of the campaign.
+
 ## 2026-11-01, review leftovers (#170)
 
 - **T31 `IMP_OSD_MemPoolRequest` (#170 L10):** the once-per-group request is now cleared by `IMP_System_Exit` like the stock OSD exit (the stock `DestroyGroup` does not clear it, so a second request in the same session still returns -1); host test in `tests/t30/osd_attach_test.c`. `DiscardInitialFrame` (L8), `SetChnCallback` (L9) and `GetNCUAlloc` (L11) were compared with the stock disassembly and match; comments only.
