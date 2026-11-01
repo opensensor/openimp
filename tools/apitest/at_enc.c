@@ -220,6 +220,7 @@ static void scan_frame(const unsigned char *b, size_t n, int codec, SI *si)
 /* Pull up to maxf frames from the channel (polling + get + release). rp: report
  * the Polling/GetStream/ReleaseStream lines for the first frame. stop: SI field
  * condition checked each frame: 0 = none, 1 = until IDR seen, 2 = sps+pps+idr */
+static FILE *g_dump;        /* APITEST_CROP_DUMP=<file>: raw stream of the cropped window (picture check off the camera) */
 static int pull(int chn, int codec, int maxf, int stop, int rp, SI *si, int tmo_ms)
 {
     int k;
@@ -245,6 +246,7 @@ static int pull(int chn, int codec, int maxf, int stop, int rp, SI *si, int tmo_
             return -1;
         }
         n = gather(s, g_sbuf, STREAMCAP, &trunc);
+        if (g_dump && !trunc) fwrite(g_sbuf, 1, n, g_dump);
         si->trunc |= trunc;
         scan_frame(g_sbuf, n, codec, si);
         si->frames++;
@@ -1053,6 +1055,10 @@ static void live_old(int chn, int codec)
             rg = cget(chn, g2);
             for (k = 0; k < 6; k++) { IMP_Encoder_RequestIDR(chn); pull(chn, codec, 40, 2, 0, &si, 3000); if (si.w == 576 && si.h == 320) break; }
             s_w = si.w; s_h = si.h;
+            if (getenv("APITEST_CROP_DUMP") && s_w == 576 && s_h == 320 && (g_dump = fopen(getenv("APITEST_CROP_DUMP"), "wb"))) {
+                IMP_Encoder_RequestIDR(chn); pull(chn, codec, 45, 0, 0, &si, 3000);
+                fclose(g_dump); g_dump = NULL;
+            }
             on_ok = rs == 0 && rg == 0 && g2->enable && g2->x == 16 && g2->y == 16 && g2->w == 576 && g2->h == 320 && bad1 == -1 && bad2 == -1 && bad3 == -1 && bad4 == -1 && s_w == 576 && s_h == 320;
             memset(g, 0, sizeof(*g));
             rs = cset(chn, g);                                                 /* off */
