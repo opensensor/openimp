@@ -19407,7 +19407,7 @@
    "cells": {
     "T10": "rt",
     "T20": "rt",
-    "T21": "cache",
+    "T21": "no-op",
     "T23": "rt",
     "T30": "?",
     "T31": "n.a.",
@@ -19419,7 +19419,7 @@
    "auto": true,
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)",
-    "T21": "apitest t2xcov 2026-10-29 .24 (return codes as stock: idle channel 0, channel 99 -1; the pair is kept, the T21 rate control has no trigger yet)",
+    "T21": "apitest t2xcov 2026-10-29 .24 (return codes as stock: idle channel 0, channel 99 -1; the pair is kept; the vendor 1.0.33 controller never reads it, host oracle with five different pairs on seven scenarios: 0 differences, so the stored-only behaviour equals the vendor)",
     "T10": "apitest t2xcov 2026-10-29 .31 (API round trip, no visible effect expected)",
     "T20": "apitest t2xcov 2026-10-29 .107 (API round trip, no visible effect expected)"
    },

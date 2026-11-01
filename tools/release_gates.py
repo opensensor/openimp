@@ -168,7 +168,11 @@ class Gates:
              "label severity:critical or severity:high and (c) no open issue is in the milestone RC3. **Release 1:** RC3 is green and the "
              "release image ran at least %d days on the fleet with at least %d camera per SoC, %d unplanned reboots and %d oops; a "
              "new image or any reset restarts the counter; planned flashes and tests count as planned only when the camera STATUS "
-             "log marks them so." % (", ".join(self.socs), self.min_days, self.min_cams, self.max_reb, self.max_oops), ""]
+             "log marks them so." % (", ".join(self.socs), self.min_days, self.min_cams, self.max_reb, self.max_oops), "",
+             "Project board status of an open issue (https://github.com/users/Lu-Fi/projects/1): Todo, In progress, **Monitoring** "
+             "(diagnostics are running, waiting for the next event of the kind), **Waiting** (blocked from outside, for example on "
+             "test hardware or a measurement setup; the issue says what it waits for, such as a light box A/B), Review, Done. "
+             "Monitoring and Waiting issues are still open: they keep counting for the gates above.", ""]
         wo, wt = self.totals()
         e, bl = self.rc3_eval, self.rc3_eval["blockers"]
         nbl = len({i["number"] for g in bl.values() for i in g})
@@ -254,7 +258,11 @@ class Gates:
         h = ['<section class="card" id="release-gates"><h2>Release gates</h2>'
              '<p class="small">Rules in <code>docs/status/release.yaml</code>. RC3: streamer functions work on every gate SoC, no open critical/high issue, none in milestone RC3.'
              ' Release 1: RC3 green and the release image ran %d days without a reset on at least %d camera per SoC '
-             '(%d unplanned reboots, %d oops).</p>' % (self.min_days, self.min_cams, self.max_reb, self.max_oops)]
+             '(%d unplanned reboots, %d oops).</p>'
+             '<p class="small">Board status of an open issue: Todo, In progress, <b>Monitoring</b> (diagnostics are running, waiting for the next '
+             'event of the kind), <b>Waiting</b> (blocked from outside, e.g. on test hardware or a measurement setup; the issue says what it '
+             'waits for, such as a light box A/B), Review, Done. Monitoring and Waiting issues stay open and still count for the gates.</p>'
+             % (self.min_days, self.min_cams, self.max_reb, self.max_oops)]
         e, bl = self.rc3_eval, self.rc3_eval["blockers"]
         mk = lambda ok: "&#128994;" if ok else "&#128308;"
         h.append(head(self.rc3_ok, "RC3", "Green only if all three parts hold. Milestone "
