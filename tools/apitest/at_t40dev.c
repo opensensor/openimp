@@ -1115,13 +1115,16 @@ int t40dev_main(int argc, char **argv)
               rs1, rs2, rs3, rg, sg.SeiMode, sg.userDataSize, zall.sei, zall.frames, zall.sei_bad, zintra.sei, zintra.idr, zintra.sei_idr, znone.sei, znone.frames, rbad);
         }
         if (dump) { fclose(dump); printf("  stream dumped to %s (H.264 Annex B, decode-check on the host)\n", dp); }
-        /* ISP DrawAttr: a green window (RGB) in ISP output channel 1 (this
-         * 1280x720 channel), 4-pixel line; compare the top edge rows */
+        /* ISP DrawAttr: a green, then a red window (RGB) in ISP output channel 1 (this 1280x720 channel), 4-pixel line,
+         * alpha 4 = opaque.  The draw alpha is 3 bits but the documented range is [0,4] (vendor sample: "the smaller the
+         * value, the more transparent"; 4 = fully drawn): the hardware blends 1..3 and draws zeros for 5..7 (#188: alpha 7
+         * read Y/U/V 0/0/0 for every colour, which was an out-of-range request, not a colour fault).  Each drawn colour
+         * must read back exactly the library's YUV on the top edge rows; disabling restores the picture. */
         {
             static IMPISPDrawAttr da, dg;
             IMPISPDrawUnitAttr *u = &da.draw_chx[1][0];
-            double y0, u0, v0, y1, u1, v1, y2, u2, v2;
-            int rs, rgd, rs0, m0, m1, m2;
+            double y0, u0, v0, y1, u1, v1, y2, u2, v2, y3, u3, v3;
+            int rs, rs2, rgd, rs0, m0, m1, m2, m3, ey1, eu1, ev1, ey2, eu2, ev2;
             m0 = rect_mean(200, 100, 400, 4, &y0, &u0, &v0);
             memset(&da, 0, sizeof da);
             u->type = IMP_ISP_DRAW_WIND; u->color_type = IMPISP_MASK_TYPE_RGB;
@@ -1129,22 +1132,41 @@ int t40dev_main(int argc, char **argv)
             u->draw_cfg.wind.wind_left = 200; u->draw_cfg.wind.wind_top = 100;
             u->draw_cfg.wind.wind_width = 400; u->draw_cfg.wind.wind_height = 200;
             u->draw_cfg.wind.wind_color.mask_argb.g_value = 255;
-            u->draw_cfg.wind.wind_line_width = 4; u->draw_cfg.wind.wind_alpha = 7;
+            u->draw_cfg.wind.wind_line_width = 4; u->draw_cfg.wind.wind_alpha = 4;
             rs = IMP_ISP_SetDrawAttr(IMPVI_MAIN, &da);
             usleep(500000);
             m1 = rect_mean(200, 100, 400, 4, &y1, &u1, &v1);
+            ey1 = da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.y_value;
+            eu1 = da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.u_value;
+            ev1 = da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.v_value;
             memset(&dg, 0, sizeof dg);
             rgd = IMP_ISP_GetDrawAttr(IMPVI_MAIN, &dg);
+            memset(&da, 0, sizeof da);
+            u->type = IMP_ISP_DRAW_WIND; u->color_type = IMPISP_MASK_TYPE_RGB;
+            u->draw_cfg.wind.wind_enable = 1;
+            u->draw_cfg.wind.wind_left = 200; u->draw_cfg.wind.wind_top = 100;
+            u->draw_cfg.wind.wind_width = 400; u->draw_cfg.wind.wind_height = 200;
+            u->draw_cfg.wind.wind_color.mask_argb.r_value = 255;
+            u->draw_cfg.wind.wind_line_width = 4; u->draw_cfg.wind.wind_alpha = 4;
+            rs2 = IMP_ISP_SetDrawAttr(IMPVI_MAIN, &da);
+            usleep(500000);
+            m3 = rect_mean(200, 100, 400, 4, &y3, &u3, &v3);
+            ey2 = da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.y_value;
+            eu2 = da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.u_value;
+            ev2 = da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.v_value;
             u->draw_cfg.wind.wind_enable = 0;
             rs0 = IMP_ISP_SetDrawAttr(IMPVI_MAIN, &da);
             usleep(500000);
             m2 = rect_mean(200, 100, 400, 4, &y2, &u2, &v2);
-            printf("  draw: yuv written by the library for green: %u/%u/%u\n", da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.y_value,
-                   da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.u_value, da.draw_chx[1][0].draw_cfg.wind.wind_color.mask_ayuv.v_value);
-            R("ISP_Get/SetDrawAttr", OK(!rs && !rgd && !rs0 && !m0 && !m1 && !m2 && dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value == 255 &&
-                                         (fabs_d(u1 - u0) + fabs_d(v1 - v0) > 20) && (fabs_d(u2 - u0) + fabs_d(v2 - v0) < 10)),
-              "set rc=%d get rc=%d (G=%u type=%d) off rc=%d; top edge Y/U/V before %.1f/%.1f/%.1f, drawn %.1f/%.1f/%.1f, off %.1f/%.1f/%.1f",
-              rs, rgd, dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value, dg.draw_chx[1][0].color_type, rs0, y0, u0, v0, y1, u1, v1, y2, u2, v2);
+            printf("  draw: yuv written by the library for green: %d/%d/%d, red: %d/%d/%d\n", ey1, eu1, ev1, ey2, eu2, ev2);
+            R("ISP_Get/SetDrawAttr", OK(!rs && !rs2 && !rgd && !rs0 && !m0 && !m1 && !m2 && !m3 && dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value == 255 &&
+                                         fabs_d(y1 - ey1) < 4 && fabs_d(u1 - eu1) < 4 && fabs_d(v1 - ev1) < 4 &&
+                                         fabs_d(y3 - ey2) < 4 && fabs_d(u3 - eu2) < 4 && fabs_d(v3 - ev2) < 4 &&
+                                         fabs_d(u1 - u3) + fabs_d(v1 - v3) > 100 &&
+                                         (fabs_d(u2 - u0) + fabs_d(v2 - v0) < 30) && (fabs_d(u2 - u3) + fabs_d(v2 - v3) > 80)),   /* off = scene again (AWB drifts a little), far from the drawn red */
+              "set rc=%d/%d get rc=%d (G=%u type=%d) off rc=%d; top edge Y/U/V before %.1f/%.1f/%.1f, green %.1f/%.1f/%.1f (want %d/%d/%d), red %.1f/%.1f/%.1f (want %d/%d/%d), off %.1f/%.1f/%.1f",
+              rs, rs2, rgd, dg.draw_chx[1][0].draw_cfg.wind.wind_color.mask_argb.g_value, dg.draw_chx[1][0].color_type, rs0, y0, u0, v0, y1, u1, v1, ey1, eu1, ev1,
+              y3, u3, v3, ey2, eu2, ev2, y2, u2, v2);
         }
     }
 

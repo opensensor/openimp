@@ -166,7 +166,7 @@ recovered vendor kernel routines.
   on H.264 IDR pictures, about 90 on H.265 IDR pictures, else the SEI of that picture is left out and counted; the AU gate
   accepts one SEI in front of the VCL NAL only while SEI is on), `Encoder_SetFrameRelease` (stored,
   no effect, as on T31), `ISP_Get/SetDrawAttr` (control 0x080000a0, 2 x 16 units of 28 bytes, RGB ->
-  YUV in the caller's struct, Get restores type and RGB), `ISP_StartNightMode` (ISP-device ioctl
+  YUV in the caller's struct, Get restores type and RGB; the draw alpha is 0..4 (4 = opaque, as in the vendor sample), the hardware blends 1..3 and draws zeros for 5..7), `ISP_StartNightMode` (ISP-device ioctl
   0xc004542e, before `AddSensor`), `OSD_SetGroupCallback` (called after the group is drawn, return
   value ignored), `OSD_Get/SetRgnAttr_ISP` (LINE_RECT -> `SetDrawAttr`, COVER -> `SetMask`, PIC -1),
   `AI/AO_Get/SetDigitalGain` (raw codec register through the volume ioctls; a failing ioctl is only
