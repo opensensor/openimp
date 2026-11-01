@@ -8,6 +8,14 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, documentation round 6 (T40 camera proofs)
+
+- **T40 (Eufy test camera, images agg65i to agg65k, 6 planned reload cycles each, 0 oopses):** ISP privacy mask on channel 1 (#186) and ISP draw window / line (#187) fixed in the driver and device-proven (mask luma 160 -> 255 and back, draw window edge pixels read the exact colour). The draw alpha range is 0..4 as in the vendor (4 opaque); the earlier all-zero readings came from a test using alpha 7 (#188, no library or driver change; the apitest case now uses alpha 4). apitest all areas PASS 398 / FAIL 0, area t40dev 83 PASS / 0 FAIL.
+- **T40 typed-pointer audit (#189):** a scanner for lifted code that steps typed pointers runs in the driver's `make check`; 12 of the 13 fixed functions were reached on the camera (11 FrameSource cycles, 6 reload cycles). Not proven: the 21-count wait loop of `__frame_channel_vb2_streamoff` and the DVP leg of `tx_isp_vic_start`; the issue stays open.
+- **T40 AWB special-light fix (#163, closed):** camera A/B showed no regression; the camera scene never reached the changed branch, so the fix itself is proven by the host replay only.
+- **T41:** AF statistics only with `t41_af=1` (default off, #179); the ADC calls (#80) pass on a test image with the kernel RTC/SADC drivers enabled, not on the stock image. **T30 (QEMU only):** second-channel start oops fixed (#175).
+- **Feature matrix:** no symbol moved; cell texts of the rows above carry the evidence, API cell `ISP_Get/SetDrawAttr` (T40) err -> dev (see docs/status/history.md).
+
 ## 2026-11-01, documentation round 5 (driver fixes with device or QEMU evidence)
 
 - **T40 (Eufy test camera, 6 planned reload cycles per image, 0 oopses):** the pipeline-top block is zeroed at ISP open like the vendor (#150); the ISP/CSI clock teardown at rmmod follows the vendor, `div_isp`, `gate_isp` and `gate_csi` read 0 after every unload (#152); WDR-enable/LCE arrays (#182), `tisp_g_draw_attr` NULL dereference (#183) and the AWB close with the algorithm callbacks on (#173) no longer oops. apitest all areas PASS 398 / FAIL 0 / N/A 24. Still open: ISP privacy mask on channel 1 (#186) and ISP draw window (#187).
