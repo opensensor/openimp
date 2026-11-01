@@ -101,6 +101,53 @@ Nothing in this list has run on a T30 camera. Wishlist for a T30 tester: the
 tuning controls above against the open T30 driver, a DMIC capture, and
 `Encoder_SetChnHSkip` with the IDR period.
 
+## API run in QEMU and static audit (2026-11-01)
+
+Still no T30 camera. Method: (1) the T30 1.0.5 vendor `libimp.so` was
+disassembled and compared with OpenIMP's T30 build call site by call site
+(tuning transport and control id, return paths); (2) `tools/apitest` now builds
+for T30 and was run in the QEMU T30 machine (sc4236 sensor model, the open
+`tx-isp-t30` driver and `audio.ko`): all areas plus 56 cases, one case per
+run, the machine restarted after a driver crash. QEMU shows return codes,
+round trips and driver reactions, not pictures, sound or timing. Cells move
+only to `qemu`, `err`, `aud` or `host`; nothing is `dev`.
+
+Result for the 14 audit issues (237 list entries; before: 222 `?`, 5 `qemu`,
+5 `miss`, 5 `cache`): 160 `qemu`, 32 `err`, 24 `aud`, 6 `cache`, 5 `miss`,
+2 `host`, 2 `stub`, 4 `n.a.` and 2 `?` (`GetAFMetrices`, `SetChnRcTrigLevel`).
+The `miss` cells are the vendor-exported names OpenIMP's T30 build still lacks
+(`Decoder_*`, `Get/SetChnCrop`, `PadFrame`, `SetPadFrameAttr`, `SetISPLDC`).
+
+Fixed in OpenIMP (host tests in `tests/t30`): `IMP_ISP_Tuning_AE_Get/SetROI`
+(control 0x8000024 by value, box check), `SetISPProcess`, `SetFWFreeze`,
+`SetShading` (S_CTRL by value with the vendor cache), `IMP_FrameSource_GetFrame`
+(waits up to 2 s), `Get/SetH265TransCfg`, `SetChnResizeMode`. New host tests:
+`fs_lifecycle_test_t30`, `ivs_framework_test_t30`.
+
+Open driver gaps seen in QEMU (open-tx-isp, `tx-isp-t30`; OpenIMP sends the
+vendor transport): getters of `AntiFlickerAttr`, `WB`, `Expr`, `EVAttr`,
+`IntegrationTime`, `AeComp`, `AE_ROI`, the histogram/weight/statistics blocks,
+`Awb_RgbCoefft`, `Gamma`; the controls behind `SetSensorFPS`, `HiLightDepress`,
+night running mode, Hflip/Vflip (V4L2 0x980914/15 are inline ENOSYS cases),
+colour effect and scene mode, `SetFWFreeze` (0x8000165), the strengths. Stored
+values of Brightness and Saturation read back as 0. `IMP_ISP_GetSensorRegister`
+oopses the driver (NULL dereference). A few starts of the second FrameSource
+channel (about one run in seven) ended in a fatal oops in the ISP interrupt path
+(LIST_POISON2 dereference), and the `hvflip` case oopsed in the ISP state
+initialisation both times; both are driver bugs found by this run, not
+analysed here.
+
+Differences between OpenIMP and the 1.0.5 vendor library that remain:
+`Set/GetSinterStrength`, `SetTemperStrength` and `SetDPStrength` (the vendor
+scales driver tables 109/132/83 with `isp_table_tuning_ratio`, OpenIMP sends
+other controls), `SetISPBypass` (stub), `WaitFrame` (stub: wiring the vendor
+block returns -1 against the current driver), `Get/SetRawDRC` (kept in
+userspace, the vendor sends 0x8000168 and 0x80000a0), the temper-denoise detour
+around Hflip/Vflip, `GetAFMetrices` (the vendor returns a value of its own AF
+thread), `Scene`/`Colorfx` (refused by design). The vendor sends the
+FrameSource format with 0xc05c56c3/0x405c56c4 (0x5c bytes); OpenIMP uses the
+0x4c-byte form of the open driver and the stock device trace.
+
 ## Build
 
 ```sh
