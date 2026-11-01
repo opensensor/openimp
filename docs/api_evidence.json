@@ -10065,7 +10065,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -10086,7 +10086,7 @@
      "r†"
     ]
    },
-   "note": "T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11) T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)",
+   "note": "T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11) T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #25): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (FrameSource_GetDelay: ret=0 delay 1 (set 1, before SetChnFifoAttr); FrameSource_SetDelay: ret=0 ch1 delay 1).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -10094,7 +10094,8 @@
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg61 2026-10-31 .34"
+    "T41": "apitest agg61 2026-10-31 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "FrameSource_Get/SetDirectModeAttr": {
@@ -10123,7 +10124,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -10165,7 +10166,7 @@
      "r†"
     ]
    },
-   "note": "T41: GetFrame follows the frame depth as the vendor (not the shared capture queue); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps T41: GetFrame follows the frame depth as the vendor (not the shared capture queue); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps",
+   "note": "T41: GetFrame follows the frame depth as the vendor (not the shared capture queue); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps T41: GetFrame follows the frame depth as the vendor (not the shared capture queue); used by: T10/T20/T21/T31/T41: prudynt†, raptor†; T23: prudynt, raptor, timps. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #25): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (FrameSource_GetFrameDepth: ret=0 depth 2 (set 2); FrameSource_SetFrameDepth: ret=0 ch1 depth 2).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -10173,7 +10174,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 libimp swap 2026-10-27 .34 (depth semantics of the vendor 1.2.5 GetFrame: depth 0 -> no frame, N held, third waits 2 s -> 0x80012000)"
+    "T41": "apitest rc3gaps2 libimp swap 2026-10-27 .34 (depth semantics of the vendor 1.2.5 GetFrame: depth 0 -> no frame, N held, third waits 2 s -> 0x80012000)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "FrameSource_Get/SetI2dAttr": {
@@ -10217,7 +10219,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -10238,7 +10240,7 @@
      "r†"
     ]
    },
-   "note": "T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11) T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11)",
+   "note": "T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11) T10+T20+T21+T23+T31: real delay FIFO (agg-25); T10 shares the T20 build; FIFO_DATA_PRIORITY refused for maxdepth>0; T41: host (vendor 1.2.6 semantics in src/t40/openimp_p1.c, delay cache; host test only, `export-check` 2026-10-11). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #25): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (FrameSource_GetMaxDelay: ret=0 max delay 3 (set 3, before SetChnFifoAttr); FrameSource_SetMaxDelay: ret=0 ch1 ).",
    "ref": {
     "T10": "apitest rc3gaps2 2026-10-27 .31",
     "T20": "apitest rc3gaps2 2026-10-27 .107",
@@ -10246,7 +10248,8 @@
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest agg61 2026-10-31 .34"
+    "T41": "apitest agg61 2026-10-31 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "FrameSource_Get/SetPool": {
@@ -10291,7 +10294,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -10325,7 +10328,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T21/T31/T41: raptor†; T23: raptor, timps; all: GetFrame/SnapFrame wait up to 2 s like the vendor libimp (T20 REQBUFS/SET_BANKS fix, T21/T23/T31 wait), apitest PASS",
+   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T21/T31/T41: raptor†; T23: raptor, timps; all: GetFrame/SnapFrame wait up to 2 s like the vendor libimp (T20 REQBUFS/SET_BANKS fix, T21/T23/T31 wait), apitest PASS. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #25): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (16 frames 640x360 luma 137 (first frame 137) ts monotonic 1, 19.3 fps (wall), ts span 735659 us). FIXED: the T30 build did not wait; the vendor 1.0.5 (0xe4118) waits up to 2 s on the depth list like T20/T21/T23/T31. QEMU: the case failed before ('0 frames') and passes now (16 frames at 19 fps). Host test fs_lifecycle_test_t30.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -10333,7 +10336,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "FrameSource_GetFrameEx": {
@@ -10438,7 +10442,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -10472,7 +10476,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T21/T31/T41: raptor†; T23: raptor, timps",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T21/T31/T41: raptor†; T23: raptor, timps. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #25): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (last release).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -10480,7 +10484,8 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "FrameSource_ReleaseFrameEx": {
@@ -10533,14 +10538,17 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "aud",
     "T31": "aud",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: userspace implementation"
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #25): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Static: channel bound (< 5) and source bound (< 3) equal to the vendor 1.0.5 (0xe3f7c); the vendor additionally clears three per-channel depth counters and sets a source-map flag, OpenIMP stores the source channel. No apitest case.",
+   "ref": {
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+   }
   },
   "FrameSource_SetYuvAlign": {
    "area": "FrameSource",

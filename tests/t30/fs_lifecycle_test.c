@@ -720,6 +720,26 @@ static void test_stale_release(void)
     check_clean("stale release");
 }
 
+/* GetFrame waits for a frame (stock T20 3.12.0, T21 1.0.33, T30 1.0.5,
+ * T31 1.1.6 and T23 1.3.0: up to 2 s on the depth list): the very first
+ * call after EnableChn must return a frame without a retry loop. */
+static void test_getframe_wait(void)
+{
+    IMPFSChnAttr a = attr_for(640, 360, 2);
+    void *frame = NULL;
+
+    CHECK(IMP_FrameSource_CreateChn(0, &a) == 0, "create");
+    CHECK(IMP_FrameSource_EnableChn(0) == 0, "enable");
+    CHECK(IMP_FrameSource_GetFrame(0, &frame) == 0 && frame != NULL,
+          "first GetFrame after EnableChn waits for a frame");
+    if (frame)
+        CHECK(IMP_FrameSource_ReleaseFrame(0, frame) == 0, "release");
+    CHECK(IMP_FrameSource_DisableChn(0) == 0, "disable");
+    CHECK(IMP_FrameSource_GetFrame(0, &frame) != 0, "GetFrame on a stopped channel fails at once");
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "destroy");
+    check_clean("getframe wait");
+}
+
 /* An application thread pulls and releases frames while the channel is
  * enabled and disabled under it. */
 static int puller_stop;
@@ -1016,7 +1036,7 @@ static void test_disable_during_dqbuf(void)
     check_clean("disable during dqbuf");
 }
 
-#if !defined(PLATFORM_T23)
+#if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
 #include "framesource/nv12_rotate.h"
 
 void openimp_fs_rotate_capture(int chn, void *frame);
@@ -1154,7 +1174,7 @@ static void test_rotate(void)
     check_clean("rotate");
 }
 #else
-/* T23 rotates in the caller (unbound YuvEncode): SetChnRotate refuses. */
+/* T23 rotates in the caller (unbound YuvEncode), the T30 vendor libimp has no SetChnRotate: it refuses. */
 static void test_rotate(void)
 {
     CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 368) == -1, "T23 refuses");
@@ -1189,6 +1209,7 @@ int main(void)
     RUN(create_while_enabled);
     RUN(bad_channels);
     RUN(stale_release);
+    RUN(getframe_wait);
     RUN(pull_during_disable);
     RUN(depth_during_disable);
     RUN(disable_during_delivery);

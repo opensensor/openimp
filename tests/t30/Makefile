@@ -128,6 +128,11 @@ ivs_framework_test_t21: $(IVS_DEPS)
 		-I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
 	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(IVS_SOURCES) -pthread
 
+ivs_framework_test_t30: $(IVS_DEPS)
+	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T30 -fno-pie -no-pie \
+		-I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(IVS_SOURCES) -pthread
+
 ivs_framework_test_t20: $(IVS_DEPS)
 	$(CC) $(CFLAGS) -Wno-unused-function -DPLATFORM_T20 -DPLATFORM_T21 \
 		-fno-pie -no-pie -I$(ROOT)/include -I$(ROOT)/src -I$(IVS_SRC) \
@@ -171,6 +176,9 @@ fs_lifecycle_test_t21: $(FS_DEPS)
 fs_lifecycle_test_t20: $(FS_DEPS)
 	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 \
 	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(FS_SOURCES) -pthread
+
+fs_lifecycle_test_t30: $(FS_DEPS)
+	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T30 $(ROOT)/src/core/imp_log_emit.c -o $@ $(FS_SOURCES) -pthread
 
 fs_lifecycle_test_t23: $(FS_DEPS)
 	$(CC) $(CFLAGS) $(FS_FLAGS) -DPLATFORM_T23 $(ROOT)/src/core/imp_log_emit.c -o $@ $(FS_SOURCES) -pthread
@@ -288,8 +296,8 @@ p2_t1x_test_t21: $(P2_T1X_SOURCES)
 check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 	t21_sinter_map_test t21_front_crop_test helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
-	ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
-	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
+	ivs_framework_test_t21 ivs_framework_test_t20 ivs_framework_test_t30 ivs_move_bench_t20 \
+	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 fs_lifecycle_test_t30 \
 	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
 	p2_gap_test_t21 p2_gap_test_t20 osd_attach_test isp_gap_test_t21 isp_gap_test_t20 \
 	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
@@ -320,10 +328,12 @@ check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestat
 	./helix_jpeg_test_t23
 	./ivs_framework_test_t21
 	./ivs_framework_test_t20
+	./ivs_framework_test_t30
 	./ivs_move_bench_t20 equiv
 	./fs_lifecycle_test_t21
 	./fs_lifecycle_test_t20
 	./fs_lifecycle_test_t23
+	./fs_lifecycle_test_t30
 	./system_test
 	./rc_readback_test_t21
 	./rc_readback_test_t20
@@ -410,7 +420,7 @@ clean:
 		rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
 		helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 		t21_sinter_map_test t21_front_crop_test helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
-		ivs_framework_test_t21 ivs_framework_test_t20 ivs_move_bench_t20 \
-		fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 \
+		ivs_framework_test_t21 ivs_framework_test_t20 ivs_framework_test_t30 ivs_move_bench_t20 \
+		fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 fs_lifecycle_test_t30 \
 		fs_lifecycle_asan_* fs_lifecycle_tsan_* helix_encoder_asan_* \
 		ivs_framework_asan_* ivs_framework_tsan_* system_test system_tsan
