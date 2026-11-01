@@ -13534,7 +13534,8 @@
     "T41": "apitest rc3-cases 2026-10-27 .34 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
     "T10": "apitest rc3-cases 2026-10-27 .31 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)"
-   }
+   },
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build."
   },
   "AENC_ReleaseEncoder": {
    "area": "Audio",
@@ -13559,7 +13560,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13618,7 +13619,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (dev 1).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -13626,7 +13627,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_DisableAec": {
@@ -13693,7 +13695,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -13732,7 +13734,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: reference frame off).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
@@ -13740,7 +13742,8 @@
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
-    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_DisableAgc": {
@@ -13750,7 +13753,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13809,7 +13812,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -13817,7 +13820,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_DisableAlgo": {
@@ -13846,7 +13850,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13905,7 +13909,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation",
+   "note": "audit: reaches the driver/kernel; userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (dev 1 chn 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -13913,7 +13917,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_DisableGetRaw": {
@@ -13941,7 +13946,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14000,7 +14005,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14008,7 +14013,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_DisableHs": {
@@ -14038,7 +14044,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14097,7 +14103,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14105,7 +14111,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_Enable": {
@@ -14115,7 +14122,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14174,7 +14181,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test)",
+   "note": "audit: reaches the driver/kernel; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (dev 1).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14182,7 +14189,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_EnableAec": {
@@ -14244,7 +14252,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -14283,7 +14291,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: reference frame on).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
@@ -14291,7 +14299,8 @@
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
-    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_EnableAgc": {
@@ -14301,7 +14310,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14360,7 +14369,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (target 10 dBfs gain 20 dB; 5 of 5 frames follow, rms 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14368,7 +14377,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_EnableAlgo": {
@@ -14397,7 +14407,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14456,7 +14466,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test)",
+   "note": "audit: userspace implementation; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (dev 1 chn 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14464,7 +14474,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_EnableGetRaw": {
@@ -14492,7 +14503,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14551,7 +14562,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (5 of 5 frames follow, rms 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14559,7 +14570,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_EnableHs": {
@@ -14589,7 +14601,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14648,7 +14660,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (moderate; 5 of 5 frames follow, rms 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14656,7 +14668,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_Get/SetAlcGain": {
@@ -14694,7 +14707,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14753,7 +14766,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (AI_GetChnParam: ret=0 usrFrmDepth 30 (set 30); AI_SetChnParam: ret=0 usrFrmDepth 30).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14761,7 +14774,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_Get/SetDigitalGain": {
@@ -14790,7 +14804,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14849,7 +14863,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; Set dev, Get host on T10/T20/T21/T31 where the cell was aud (2026-10-10 AEC test: SetVol/SetGain called, getter not checked); T21: a microphone gain above 0 drives the noise floor up (hardware, open and vendor stack alike)",
+   "note": "audit: reaches the driver/kernel; userspace implementation; Set dev, Get host on T10/T20/T21/T31 where the cell was aud (2026-10-10 AEC test: SetVol/SetGain called, getter not checked); T21: a microphone gain above 0 drives the noise floor up (hardware, open and vendor stack alike). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (AI_GetGain: ret=0 10; AI_SetGain: ret=0 set 10, read back 10 (was 0)).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14857,7 +14871,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_Get/SetPubAttr": {
@@ -14867,7 +14882,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14926,7 +14941,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation",
+   "note": "audit: reaches the driver/kernel; userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (AI_GetPubAttr: ret=0 rate 16000 width 16 mode 1 frmNum 30 numPerFrm 640 chnCnt 1; AI_SetPubAttr: ret=0 dev 1 1).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -14934,7 +14949,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_Get/SetVol": {
@@ -14944,7 +14960,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15003,7 +15019,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; Set dev, Get host on T10/T20/T21/T31 where the cell was aud (2026-10-10 AEC test: SetVol/SetGain called, getter not checked)",
+   "note": "audit: reaches the driver/kernel; userspace implementation; Set dev, Get host on T10/T20/T21/T31 where the cell was aud (2026-10-10 AEC test: SetVol/SetGain called, getter not checked). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (AI_GetVol: ret=0 60; AI_SetVol: ret=0 set 60, read back 60 (was 60)).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -15011,7 +15027,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_GetFrame": {
@@ -15021,7 +15038,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15080,7 +15097,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test)",
+   "note": "audit: reaches the driver/kernel; userspace implementation; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (len 1280 bytes seq 0 ts 3809908 rms 0 bitwidth 16 mode 1).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -15088,7 +15105,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_GetFrameAndRaw": {
@@ -15116,7 +15134,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15155,7 +15173,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation",
+   "note": "audit: reaches the driver/kernel; userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: frame 1280 bytes, reference 1280 bytes (AO sends only zeros)).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
@@ -15163,7 +15181,8 @@
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
-    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_PollingFrame": {
@@ -15173,7 +15192,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15232,7 +15251,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (timeout 3000 ms).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -15240,7 +15259,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_ReleaseFrame": {
@@ -15250,7 +15270,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15309,7 +15329,7 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -15317,7 +15337,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_SetAgcMode": {
@@ -15394,7 +15415,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15433,7 +15454,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware",
+   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (mute: rms 0, unmute: rms 0 (informational)).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -15441,7 +15462,8 @@
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest rc3-cases 2026-10-27 .184",
-    "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
+    "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_Set_WebrtcProfileIni_Path": {
@@ -15493,7 +15515,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15532,14 +15554,15 @@
      "r†"
     ]
    },
-   "note": "all: implemented with vendor semantics, default off (OPENIMP_AO_CACHE=1 = vendor default on); quiet device test open (audio output only on T31)",
+   "note": "all: implemented with vendor semantics, default off (OPENIMP_AO_CACHE=1 = vendor default on); quiet device test open (audio output only on T31). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (cache off).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_ClearChnBuf": {
@@ -15669,7 +15692,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15708,14 +15731,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_DisableAlgo": {
@@ -15807,7 +15831,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15846,14 +15870,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Enable": {
@@ -15923,7 +15948,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15962,14 +15987,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (target 10 gain 20).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_EnableAlgo": {
@@ -16057,7 +16083,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16096,14 +16122,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_FlushChnBuf": {
@@ -16388,7 +16415,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16427,14 +16454,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_QueryChnStat": {
@@ -16444,7 +16472,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16483,14 +16511,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (total 10 free 10 busy 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_ResumeChn": {
@@ -16500,7 +16529,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16539,14 +16568,15 @@
      "r†"
     ]
    },
-   "note": "audit: userspace implementation",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_SendFrame": {
@@ -16663,7 +16693,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16712,14 +16742,15 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware",
+   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: mute on (kept muted for all AO tests)).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Soft_Mute": {
@@ -16729,7 +16760,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16768,14 +16799,15 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware",
+   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Soft_UNMute": {
@@ -16785,7 +16817,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16824,14 +16856,15 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware",
+   "note": "audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "Audio_Select_Codec": {
