@@ -20,7 +20,7 @@ Rules (machine-readable: `docs/status/release.yaml`). **RC3** is green only if (
   - (a) streamer functions: 🟢 1787 of 1787 cells work, 0 missing
   - (b) no open issue with severity critical or high: 🔴 2 critical, 1 high
   - (c) no open issue in milestone RC3: 🔴 3 open
-- **Release 1: 🔴 RED** (0 of 7 SoCs reached 14 stable days; image –, soak as of 2026-10-31 06:56)
+- **Release 1: 🔴 RED** (0 of 7 SoCs reached 14 stable days; image –, soak as of 2026-11-01 06:53)
   - Not started: the 14-day counter starts when RC3 is published (tag pending) and runs only on the image built from that tag.
 
 ### RC3: blocking issues
