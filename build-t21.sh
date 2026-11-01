@@ -126,7 +126,9 @@ compile audio_codec src/audio/openimp_audio_codec.c -Werror
 compile audio_enc_dec src/audio/openimp_audio_enc_dec.c -Werror
 compile t21_helix src/t30/t30_helix_encoder.c -Werror
 compile t21_h264_descriptor src/t21/t21_h264_descriptor.c -Werror
-compile t21_decoder src/t21/openimp_t21_decoder.c -Werror
+# IMP_Decoder_*: the T23 channel code with the software JPEG decoder only (no OEM worker)
+compile t21_decoder src/t23/openimp_t23_decoder.c -Werror -DOPENIMP_DECODER_SW_ONLY
+compile t21_jpegdec src/t23/openimp_t23_jpegdec.c -Werror
 compile t30_h264_descriptor src/t30/t30_h264_descriptor.c -Werror
 compile t21_h264_common src/t30/h264enc/common.c -Werror
 compile t21_h264_cabac src/t30/h264enc/cabac.c -Werror
@@ -203,6 +205,7 @@ esac
     "$output_dir/t21_helix.o" \
     "$output_dir/t21_h264_descriptor.o" \
     "$output_dir/t21_decoder.o" \
+    "$output_dir/t21_jpegdec.o" \
     "$output_dir/t30_h264_descriptor.o" \
     "$output_dir/t21_h264_common.o" \
     "$output_dir/t21_h264_cabac.o" \

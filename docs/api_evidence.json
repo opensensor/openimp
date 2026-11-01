@@ -6468,9 +6468,9 @@
   "Decoder_*": {
    "area": "Encoder",
    "cells": {
-    "T10": "err",
-    "T20": "err",
-    "T21": "err",
+    "T10": "dev",
+    "T20": "dev",
+    "T21": "dev",
     "T23": "err",
     "T30": "miss",
     "T31": "n.a.",
@@ -6479,7 +6479,7 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T40: declared in imp_decoder.h, exported by no vendor library; OpenIMP exports the names as -1/ENOTSUP from the shared T40/T41 code, so nothing is missing. | T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
+   "note": "T10/T20/T21: the vendor libimp (T10/T20 3.9.0 and 3.12.0, T21 1.0.33) exports all eight calls and decodes JPEG in the VPU (ijpegd, a decoder channel thread); OpenIMP decodes in software in the calling thread (baseline JPEG, own integer IDCT, no libm), same API: channel 0, JPEG into YUV420P/NV12/NV21, nrKeepStream pictures in flight, picture in a malloc buffer (no physical address). Device: a 1080p picture takes about 2 s on T20/T21 and about 1 s for 720p on T10 (the VPU is faster); pictures above maxWidth x maxHeight, non-baseline files and damaged data are refused with -1. | T40: declared in imp_decoder.h, exported by no vendor library; OpenIMP exports the names as -1/ENOTSUP from the shared T40/T41 code, so nothing is missing. | T41: the vendor JPEG decoder is not in the T41 1.2.5 libimp; OpenIMP exports the eight names as -1/ENOTSUP without touching anything (src/t40/t4x_unbound.c). apitest case dec: 8/8 PASS in QEMU T41",
    "action": {
     "T40": "enotsup",
     "T41": "enotsup"
@@ -6487,9 +6487,9 @@
    "ref": {
     "T41": "apitest agg5y 2026-11-01 .34 (open-tx-isp next a84b6be2 + OpenIMP next 246bf938, full-order cases run): 8/8 PASS, every call -1/ENOTSUP, arguments untouched, frames still flow",
     "T40": "vendor libimp T40 1.3.1 (uclibc and glibc libimp.so, libimp.a): no IMP_Decoder_* symbol exported (nm -D, strings); the names only exist in the SDK header imp_decoder.h, so the stock library answers a program with an unresolved symbol (checked 2026-10-31, #66)",
-    "T10": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)",
-    "T20": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)",
-    "T21": "apitest t2xbl 2026-10-31 QEMU (no camera): exported as a stub by design, all eight calls return -1 with errno ENOTSUP (no JPEG decoder in OpenIMP on this SoC)"
+    "T10": "apitest dec-t1x 2026-11-01 .31 (library from /tmp, streamer restarted, stock module md5 unchanged): 8/8 PASS (32 PASS / 0 FAIL in the case run; QEMU T10 first: 8/8, frames flow); a JPEG snapshot of the same camera (1280x720) decoded to NV12 against a host decode of the same file (ffmpeg): Y PSNR 68.8 dB, SSIM 0.9999, max difference 1 level, chroma PSNR 63.8 dB",
+    "T20": "apitest dec-t1x 2026-11-01 .107 (library from /tmp, streamer restarted, stock module md5 unchanged): 8/8 PASS (32 PASS / 0 FAIL; QEMU T20 first: 8/8, frames flow); JPEG snapshot of the same camera (1920x1080) decoded to NV12 in 2.0 s against a host decode of the same file: Y PSNR 69.5 dB, SSIM 0.9999, max difference 1 level, chroma PSNR 60.7 dB",
+    "T21": "apitest dec-t1x 2026-11-01 .24 (library from /tmp, streamer restarted, stock module md5 unchanged): 8/8 PASS (32 PASS / 0 FAIL; QEMU T21 first: 8/8, frames flow); JPEG snapshot of the same camera (1920x1080) decoded to NV12 in 2.0 s against a host decode of the same file: Y PSNR 69.0 dB, SSIM 0.9999, max difference 1 level, chroma PSNR 62.5 dB"
    }
   },
   "Encoder_CreateChn": {

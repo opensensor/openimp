@@ -2,10 +2,9 @@
  *
  * The vendor library decodes on the Helix VPU; the stack without the OEM
  * worker has no decoder at all, so this is a plain software decoder: marker
- * parser, Huffman decoder, dequantisation, a separable floating point IDCT
- * and the rearrangement into 4:2:0.  No dependencies beyond libc/libm. */
+ * parser, Huffman decoder, dequantisation, an integer IDCT
+ * and the rearrangement into 4:2:0.  No dependencies beyond libc. */
 
-#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -41,20 +40,6 @@ typedef struct {
     int marker;             /* a marker was reached: only zero bits follow */
     int zeros;              /* zero bytes fed after the marker */
 } Bits;
-
-static float costab[8][8];  /* costab[x][u] = c(u) / 2 * cos((2x + 1) u pi / 16) */
-static int cos_ready;
-
-static void cos_init(void)
-{
-    if (cos_ready)
-        return;
-    for (int x = 0; x < 8; x++)
-        for (int u = 0; u < 8; u++)
-            costab[x][u] = (float)((u ? 1.0 : sqrt(0.5)) / 2.0 *
-                                   cos((2 * x + 1) * u * 3.14159265358979323846 / 16.0));
-    cos_ready = 1;
-}
 
 static int getbits(Bits *b, int n)
 {
@@ -103,28 +88,74 @@ static int extend(int v, int t)
     return t && v < (1 << (t - 1)) ? v - (1 << t) + 1 : v;
 }
 
+/* Integer inverse DCT (Loeffler / Ligtenberg / Moschytz, 13 bit constants, two passes): no floating point (the XBurst
+ * cores of T10/T20/T21/T23 emulate it in the kernel) and no libm; results equal the "slow integer" IDCT of libjpeg. */
+#define IDCT_BITS  13
+#define IDCT_PASS1 2
+#define F_0_298 2446
+#define F_0_390 3196
+#define F_0_541 4433
+#define F_0_765 6270
+#define F_0_899 7373
+#define F_1_175 9633
+#define F_1_501 12299
+#define F_1_847 15137
+#define F_1_961 16069
+#define F_2_053 16819
+#define F_2_562 20995
+#define F_3_072 25172
+#define DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
+
+/* one 8 point transform: in[k * st], k = 0..7 -> o[0..7] scaled up by IDCT_BITS */
+static void idct_1d(const int *in, int st, int32_t o[8])
+{
+    int32_t z1, z2, z3, z4, z5, t0, t1, t2, t3, t10, t11, t12, t13;
+
+    z2 = in[2 * st]; z3 = in[6 * st];
+    z1 = (z2 + z3) * F_0_541;
+    t2 = z1 - z3 * F_1_847;
+    t3 = z1 + z2 * F_0_765;
+    z2 = in[0]; z3 = in[4 * st];
+    t0 = (z2 + z3) * (1 << IDCT_BITS);
+    t1 = (z2 - z3) * (1 << IDCT_BITS);
+    t10 = t0 + t3; t13 = t0 - t3; t11 = t1 + t2; t12 = t1 - t2;
+    t0 = in[7 * st]; t1 = in[5 * st]; t2 = in[3 * st]; t3 = in[st];
+    z1 = t0 + t3; z2 = t1 + t2; z3 = t0 + t2; z4 = t1 + t3;
+    z5 = (z3 + z4) * F_1_175;
+    t0 *= F_0_298; t1 *= F_2_053; t2 *= F_3_072; t3 *= F_1_501;
+    z1 *= -F_0_899; z2 *= -F_2_562; z3 *= -F_1_961; z4 *= -F_0_390;
+    z3 += z5; z4 += z5;
+    t0 += z1 + z3; t1 += z2 + z4; t2 += z2 + z3; t3 += z1 + z4;
+    o[0] = t10 + t3; o[7] = t10 - t3;
+    o[1] = t11 + t2; o[6] = t11 - t2;
+    o[2] = t12 + t1; o[5] = t12 - t1;
+    o[3] = t13 + t0; o[4] = t13 - t0;
+}
+
+/* a damaged file must not overflow the IDCT arithmetic: valid 8 bit data stays far below this */
+static int clampc(long long v)
+{
+    return v < -16384 ? -16384 : v > 16383 ? 16383 : (int)v;
+}
+
 static void idct_block(const int *coef, uint8_t *dst, int stride)
 {
-    float tmp[64];
+    int ws[64];
+    int32_t o[8];
 
-    for (int y = 0; y < 8; y++)             /* rows: over u */
+    for (int x = 0; x < 8; x++) {                   /* columns */
+        idct_1d(coef + x, 8, o);
+        for (int y = 0; y < 8; y++)
+            ws[y * 8 + x] = DESCALE(o[y], IDCT_BITS - IDCT_PASS1);
+    }
+    for (int y = 0; y < 8; y++) {                   /* rows */
+        idct_1d(ws + y * 8, 1, o);
         for (int x = 0; x < 8; x++) {
-            float s = 0;
+            int v = DESCALE(o[x], IDCT_BITS + IDCT_PASS1 + 3) + 128;
 
-            for (int u = 0; u < 8; u++)
-                s += costab[x][u] * (float)coef[y * 8 + u];
-            tmp[y * 8 + x] = s;
-        }
-    for (int x = 0; x < 8; x++)             /* columns: over v */
-        for (int y = 0; y < 8; y++) {
-            float s = 0;
-            int v;
-
-            for (int u = 0; u < 8; u++)
-                s += costab[y][u] * tmp[u * 8 + x];
-            v = (int)lrintf(s) + 128;
             dst[y * stride + x] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v);
         }
+    }
 }
 
 static int build_huff(Huff *h, const uint8_t *counts, const uint8_t *vals, int nvals)
@@ -212,7 +243,7 @@ static int decode_scan(Bits *b, Comp *comp, int ncomp, const int *scan, int ns,
                         return -1;
                     diff = t ? extend(getbits(b, t), t) : 0;
                     c->pred += diff;
-                    coef[0] = c->pred * (int)q[c->tq][0];
+                    coef[0] = clampc((long long)c->pred * (long long)q[c->tq][0]);
                     for (k = 1; k < 64;) {
                         int rs = decode_huff(b, &ac[c->ta]), r, s;
 
@@ -229,7 +260,7 @@ static int decode_scan(Bits *b, Comp *comp, int ncomp, const int *scan, int ns,
                         k += r;
                         if (k > 63)
                             return -1;
-                        coef[zigzag[k]] = extend(getbits(b, s), s) * (int)q[c->tq][k];
+                        coef[zigzag[k]] = clampc((long long)extend(getbits(b, s), s) * (long long)q[c->tq][k]);
                         k++;
                     }
                     if (bx < c->bw && by < c->bh)
@@ -264,7 +295,6 @@ int t23_jpeg_decode(const uint8_t *jpeg, size_t len, int pixfmt,
     if (!jpeg || len < 4 || !out || !ow || !oh ||
         (pixfmt != T23_JPEGDEC_YUV420P && pixfmt != T23_JPEGDEC_NV12 && pixfmt != T23_JPEGDEC_NV21))
         return -1;
-    cos_init();
     memset(dc, 0, sizeof(dc));
     memset(ac, 0, sizeof(ac));
     memset(q, 0, sizeof(q));

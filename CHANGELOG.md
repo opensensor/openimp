@@ -8,9 +8,15 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, `IMP_Decoder_*` on T10, T20 and T21 (#3, #5, #7)
+
+- The vendor libimp of T10/T20 (3.9.0 and 3.12.0) and T21 (1.0.33) exports all eight `IMP_Decoder_*` calls (nm -D) and decodes JPEG on the VPU (`ijpegd`, `hwicodec_pf_jpegd_t20`, a decoder channel thread); OpenIMP answered ENOTSUP. The T10/T20/T21 builds now use the T23 channel code with the software decoder (`OPENIMP_DECODER_SW_ONLY`): channel 0, JPEG into YUV420P / NV12 / NV21, `nrKeepStream` pictures in flight, `SendStreamTimeout` waits for a free buffer, oversized (above `maxWidth` x `maxHeight`), progressive and damaged files return -1. The picture is a heap buffer (no physical address).
+- The software decoder's IDCT is now integer (the XBurst cores of these SoCs have no FPU, and libimp does not link libm): output equals the libjpeg integer IDCT (`make -C tests/t23 check`, 0.02 mean error against ffmpeg on 4:2:0).
+- Proof: host test `tests/t20/decoder_test.c`; QEMU T10/T20/T21 8/8; cameras T10, T20, T21 (library from /tmp, stock module and streamer restored): apitest case 8/8 PASS and a snapshot JPEG of the same camera decoded to NV12 matches a host decode of the same file (Y PSNR 68.8 to 69.5 dB, SSIM 0.9999, max difference 1 level; about 2 s for 1080p on T20/T21, 1 s for 720p on T10).
+
 ## 2026-11-01, T10/T20/T21 encoder backlog (#3, #5, #7)
 
-- `IMP_Encoder_Get/SetChnCrop` is camera-proven on T10, T20 and T21 (SPS visible size follows the window, stream decodes clean and shows a real picture); apitest encoder area and pad-frame case 0 FAIL on all three. The names that only the 3.9.0 vendor library exports are marked n.a. for T10/T20. Open: `Decoder_*` (ENOTSUP), stored-only encoder options, `SetChnRcTrigLevel` effect on T21.
+- `IMP_Encoder_Get/SetChnCrop` is camera-proven on T10, T20 and T21 (SPS visible size follows the window, stream decodes clean and shows a real picture); apitest encoder area and pad-frame case 0 FAIL on all three. The names that only the 3.9.0 vendor library exports are marked n.a. for T10/T20. Open: stored-only encoder options, `SetChnRcTrigLevel` effect on T21.
 
 ## 2026-11-01, apitest: T41 full-order failures triaged (#189)
 

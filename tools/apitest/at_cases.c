@@ -4850,8 +4850,8 @@ static void cs_osdalloc_t23(void) {}
 #endif
 
 
-#if defined(PLATFORM_T23)
-/* IMP_Decoder_* (#11): JPEG decode on channel 0 (stock: ijpegd on the VPU; OpenIMP without the OEM worker: its own baseline decoder).
+#if defined(PLATFORM_T23) || defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
+/* IMP_Decoder_* (#11; T10/T20/T21 #3 #5 #7): JPEG decode on channel 0 (stock: ijpegd on the VPU; OpenIMP without the OEM worker: its own baseline decoder).
  * A 32x24 JFIF 4:2:0 picture, left half yellow (Y 208, Cb 33, Cr 143), right half blue (Y 70, Cb 201, Cr 107), decoded to NV12. */
 static const unsigned char at_dec_jpg[] = {
     0xff,0xd8,0xff,0xe0,0x00,0x10,0x4a,0x46,0x49,0x46,0x00,0x01,0x01,0x00,0x00,0x01,
@@ -4984,6 +4984,52 @@ static void cs_decoder_t23(void)
         }
     }
     gfree(jp);
+    /* APITEST_DEC_JPEG=<file> [APITEST_DEC_OUT=<raw file>]: decode a real JPEG (a snapshot of this camera) to NV12 and write the picture
+     * for a host comparison (PSNR / SSIM against a host decode of the same file); the decode time and the heap use are reported. */
+    {
+        const char *in = getenv("APITEST_DEC_JPEG"), *outp = getenv("APITEST_DEC_OUT");
+        FILE *fi;
+        long n = 0;
+        unsigned char *buf = NULL;
+
+        if (in && cc && dc && sd && gf && rf && (fi = fopen(in, "rb"))) {
+            fseek(fi, 0, SEEK_END); n = ftell(fi); fseek(fi, 0, SEEK_SET);
+            buf = (unsigned char *)malloc((size_t)n);
+            if (buf && fread(buf, 1, (size_t)n, fi) == (size_t)n) {
+                at_decattr fa;
+                at_decstream fs;
+                IMPFrameInfo *ff = NULL;
+                struct timespec t0, t1;
+                int rcc, rsd = -1, rgf = -1, rrf = -1;
+                long wr = 0;
+                unsigned pw = 0, ph = 0;
+
+                memset(&fa, 0, sizeof(fa));
+                fa.decType = PT_JPEG; fa.maxWidth = 1920; fa.maxHeight = 1088; fa.pixelFormat = PIX_FMT_NV12; fa.nrKeepStream = 1; fa.frmRateNum = 25; fa.frmRateDen = 1;
+                fs.i_payload = (int)n; fs.p_payload = buf; fs.timeStamp = 1;
+                rcc = cc(0, &fa);
+                if (rcc == 0) sr(0);
+                clock_gettime(CLOCK_MONOTONIC, &t0);
+                if (rcc == 0) rsd = sd(0, &fs, 20000);
+                clock_gettime(CLOCK_MONOTONIC, &t1);
+                if (rsd == 0) rgf = gf(0, &ff);
+                if (rgf == 0 && ff) { pw = ff->width; ph = ff->height; }
+                if (rgf == 0 && ff && outp) {
+                    FILE *fo = fopen(outp, "wb");
+
+                    if (fo) { wr = (long)fwrite((void *)(uintptr_t)ff->virAddr, 1, ff->size, fo); fclose(fo); }
+                }
+                if (rgf == 0) rrf = rf(0, ff);
+                st(0);
+                dc(0);
+                rep(LBL("IMP_Decoder_SendStreamTimeout"), rsd, (rcc == 0 && rsd == 0 && rgf == 0 && rrf == 0) ? V_PASS : V_FAIL,
+                    "real JPEG %ld bytes -> %ux%u NV12 in %ld ms, %ld bytes written (create %d send %d get %d release %d)", n,
+                    pw, ph, (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000, wr, rcc, rsd, rgf, rrf);
+            }
+            free(buf);
+            fclose(fi);
+        }
+    }
 }
 #else
 static void cs_decoder_t23(void) {}
@@ -5012,34 +5058,9 @@ static void cs_wbalgo_t23(void) {}
 #endif
 
 
-/* ------------------------------------------------------------------------------- IMP_Decoder on T10/T20/T21
- * OpenIMP has no JPEG decoder on these SoCs: the eight exports answer -1 with errno ENOTSUP (documented stub), so an application sees the
- * missing feature at CreateChn.  The case checks exactly that, through dlsym (the vendor header is not part of the build). */
+/* IMP_Decoder_* on T10/T20/T21: the same case as T23 (OpenIMP's software JPEG decoder), run under the case name decoder_t2x. */
 #if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
-static void cs_decoder_t2x(void)
-{
-    static const char *nm[] = { "IMP_Decoder_CreateChn", "IMP_Decoder_DestroyChn", "IMP_Decoder_StartRecvPic", "IMP_Decoder_StopRecvPic",
-                                "IMP_Decoder_SendStreamTimeout", "IMP_Decoder_PollingFrame", "IMP_Decoder_GetFrame", "IMP_Decoder_ReleaseFrame" };
-    static const char *lbl[8];
-    typedef long (*fn_t)(long, long, long);
-    unsigned i;
-    long r[8];
-    int en[8];
-    void *buf = gnew(64);
-
-    lbl[0] = LBL("IMP_Decoder_CreateChn"); lbl[1] = LBL("IMP_Decoder_DestroyChn"); lbl[2] = LBL("IMP_Decoder_StartRecvPic"); lbl[3] = LBL("IMP_Decoder_StopRecvPic");
-    lbl[4] = LBL("IMP_Decoder_SendStreamTimeout"); lbl[5] = LBL("IMP_Decoder_PollingFrame"); lbl[6] = LBL("IMP_Decoder_GetFrame"); lbl[7] = LBL("IMP_Decoder_ReleaseFrame");
-    for (i = 0; i < 8; i++) {
-        fn_t f = (fn_t)dsym(nm[i]);
-
-        if (!f) { rep_na(lbl[i]); continue; }
-        errno = 0;
-        r[i] = f(0, (long)buf, 100);
-        en[i] = errno;
-        rep(lbl[i], r[i], (r[i] == -1 && en[i] == ENOTSUP) ? V_PASS : V_FAIL, "stub by design: returns %ld errno %d (ENOTSUP %d); no JPEG decoder in OpenIMP on this SoC", r[i], en[i], ENOTSUP);
-    }
-    gfree(buf);
-}
+static void cs_decoder_t2x(void) { cs_decoder_t23(); }
 #else
 static void cs_decoder_t2x(void) {}
 #endif
@@ -5154,7 +5175,9 @@ void t_cases(void)
     if (cs_on("padframe_t23")) cs_padframe_t23(); wdog("cases", 120);
     if (cs_on("switchbin_t23")) cs_switchbin_t23(); wdog("cases", 90);
     if (cs_on("osdalloc_t23")) cs_osdalloc_t23(); wdog("cases", 60);
+#if defined(PLATFORM_T23)
     if (cs_on("decoder_t23")) cs_decoder_t23(); wdog("cases", 60);
+#endif
     if (cs_on("wbalgo_t23")) cs_wbalgo_t23(); wdog("cases", 90);
     if (getenv("APITEST_CASES") && cs_on("framedrop_t40")) cs_framedrop_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("ratiohang_t40")) cs_ratiohang_t40(); wdog("cases", 60);

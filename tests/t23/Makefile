@@ -182,7 +182,7 @@ $(OSD_PACK): osd_pack_test.c $(PROJECT_DIR)/src/t23/openimp_t23_osd_pack.h \
 # IMP_Decoder software JPEG decoder (no OEM worker), compared with libjpeg / ffmpeg by jpegdec_check.py
 $(JPEGDEC_CLI): jpegdec_cli.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.h
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src -o $@ jpegdec_cli.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.c -lm
+	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src -o $@ jpegdec_cli.c $(PROJECT_DIR)/src/t23/openimp_t23_jpegdec.c
 
 $(AUDIO_ABI): audio_abi_test.c $(PROJECT_DIR)/include/imp/imp_audio.h
 	@mkdir -p $(BUILD)

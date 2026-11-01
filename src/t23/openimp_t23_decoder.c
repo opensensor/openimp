@@ -26,10 +26,18 @@
 
 #include <imp/imp_common.h>
 
-#include "dma_alloc.h"
 #include "imp_log_int.h"
-#include "t23/openimp_t23_helix_bridge.h"
 #include "t23/openimp_t23_jpegdec.h"
+
+/* OPENIMP_DECODER_SW_ONLY (T10/T20/T21 builds, host test): software decoder
+ * only, no OEM worker and no rmem mapping.  The T10/T20/T21 vendor libimp
+ * decodes with the same ijpegd on the VPU (hwicodec_pf_jpegd_t20); the API
+ * (channel 0 only, JPEG into YUV420P/NV12/NV21, PollingFrame / GetFrame /
+ * ReleaseFrame, nrKeepStream pictures in flight) is the one of the T23. */
+#ifndef OPENIMP_DECODER_SW_ONLY
+#include "dma_alloc.h"
+#include "t23/openimp_t23_helix_bridge.h"
+#endif
 
 /* vendor imp_decoder.h */
 typedef struct {
@@ -71,7 +79,9 @@ static struct {
     int receiving;
     int sw;                         /* software decoder instead of the OEM worker */
     T23DecoderChnAttr attr;
+#ifndef OPENIMP_DECODER_SW_ONLY
     T23HelixBridge bridge;
+#endif
     T23DecSlot slots[T23_DEC_SLOTS];
     int depth;
     uint64_t order;
@@ -112,13 +122,16 @@ int IMP_Decoder_CreateChn(int chn, const T23DecoderChnAttr *attr)
         pthread_mutex_unlock(&dec.lock);
         return -1;
     }
+#ifndef OPENIMP_DECODER_SW_ONLY
     memset(&dec.bridge, 0, sizeof(dec.bridge));
+#endif
     memset(dec.slots, 0, sizeof(dec.slots));
     dec.attr = *attr;
     dec.depth = attr->nrKeepStream ? (int)attr->nrKeepStream : 1;
     if (dec.depth > T23_DEC_SLOTS)
         dec.depth = T23_DEC_SLOTS;
     dec.sw = 0;
+#ifndef OPENIMP_DECODER_SW_ONLY
     ret = OpenIMP_T23_HelixDecoderOpen(&dec.bridge, attr, sizeof(*attr),
                                        attr->maxWidth, attr->maxHeight);
     if (ret != 0) {
@@ -126,6 +139,10 @@ int IMP_Decoder_CreateChn(int chn, const T23DecoderChnAttr *attr)
         dec.sw = 1;                 /* no OEM worker: decode in software */
         ret = 0;
     }
+#else
+    dec.sw = 1;
+    ret = 0;
+#endif
     dec.created = 1;
     pthread_mutex_unlock(&dec.lock);
     return ret == 0 ? 0 : -1;
@@ -144,8 +161,10 @@ int IMP_Decoder_DestroyChn(int chn)
     dec.receiving = 0;
     pthread_cond_broadcast(&dec.cond);
     /* the worker returns every frame it still holds when it exits */
+#ifndef OPENIMP_DECODER_SW_ONLY
     if (!dec.sw)
         OpenIMP_T23_HelixExit(&dec.bridge);
+#endif
     for (int i = 0; i < T23_DEC_SLOTS; i++)
         free(dec.slots[i].copy);
     memset(dec.slots, 0, sizeof(dec.slots));
@@ -182,6 +201,7 @@ int IMP_Decoder_StopRecvPic(int chn)
     return 0;
 }
 
+#ifndef OPENIMP_DECODER_SW_ONLY
 /* Make the decoded picture readable here: map the worker's VBM buffer
  * through OpenIMP's rmem mapping, or fall back to a copy. */
 static int expose_frame(T23DecSlot *slot)
@@ -206,6 +226,7 @@ static int expose_frame(T23DecSlot *slot)
     f->phyAddr = 0;
     return 0;
 }
+#endif
 
 static T23DecSlot *free_slot(void)
 {
@@ -226,8 +247,10 @@ int IMP_Decoder_SendStreamTimeout(int chn, T23DecoderStream *stream,
 {
     struct timespec deadline;
     T23DecSlot *slot;
+#ifndef OPENIMP_DECODER_SW_ONLY
     IMPFrameInfo frame;
     uint32_t handle;
+#endif
     int wait = 0;
 
     if (chn != 0 || !stream || !stream->p_payload || stream->i_payload <= 0)
@@ -244,8 +267,10 @@ int IMP_Decoder_SendStreamTimeout(int chn, T23DecoderStream *stream,
     slot->state = SLOT_HELD;        /* reserved while decoding */
     pthread_mutex_unlock(&dec.lock);
 
+#ifndef OPENIMP_DECODER_SW_ONLY
     memset(&frame, 0, sizeof(frame));
     handle = 0;
+#endif
     if (dec.sw) {
         uint8_t *pic = NULL;
         uint32_t w, h;
@@ -275,6 +300,7 @@ int IMP_Decoder_SendStreamTimeout(int chn, T23DecoderStream *stream,
         pthread_mutex_unlock(&dec.lock);
         return 0;
     }
+#ifndef OPENIMP_DECODER_SW_ONLY
     if (OpenIMP_T23_HelixDecode(&dec.bridge, stream->p_payload,
                                 (uint32_t)stream->i_payload,
                                 stream->timeStamp,
@@ -303,6 +329,7 @@ int IMP_Decoder_SendStreamTimeout(int chn, T23DecoderStream *stream,
     slot->state = SLOT_READY;
     pthread_cond_broadcast(&dec.cond);
     pthread_mutex_unlock(&dec.lock);
+#endif
     return 0;
 }
 
@@ -371,8 +398,10 @@ int IMP_Decoder_ReleaseFrame(int chn, IMPFrameInfo *frame)
         pthread_mutex_unlock(&dec.lock);
         return -1;
     }
+#ifndef OPENIMP_DECODER_SW_ONLY
     if (!dec.sw)
         (void)OpenIMP_T23_HelixDecoderRelease(&dec.bridge, slot->handle);
+#endif
     free(slot->copy);
     memset(slot, 0, sizeof(*slot));
     pthread_cond_broadcast(&dec.cond);
