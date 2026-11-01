@@ -1,6 +1,6 @@
 {
  "_comment": "Machine-readable evidence for the API coverage tables of docs/FEATURE_MATRIX.md (generated section) and docs/feature-matrix.html. Edit THIS file, then run python3 tools/gen_feature_matrix_html.py. cells: dev (device-tested), host (host tests only), aud (connected per static audit, no device test), no-op (vendor no-op, matched), cache, stub, err, miss (not exported), n.a. (not in that SoC's vendor API), ? (not determined), nob (no OpenIMP build for this SoC yet). better: SoCs where OpenIMP is better than the vendor (dev only). ref: evidence reference per SoC. used: streamers per SoC (p prudynt, r raptor, t timps; a dagger = source only, no binary checked). feature_links: a function cell 'aud' becomes 'dev' while the linked main-matrix feature cell is device-tested (supported).",
- "asof": "2026-10-31",
+ "asof": "2026-11-01",
  "socs": [
   "T10",
   "T20",
@@ -2829,7 +2829,8 @@
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T23": "apitest apitest-cov 2026-10-27 .30",
-    "T21": "apitest apitest-cov 2026-10-27 .24"
+    "T21": "apitest apitest-cov 2026-10-27 .24",
+    "T40": "apitest agg65c 2026-11-01 .184"
    }
   },
   "ISP_Tuning_Get/SetModule_Ratio": {
