@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, T40 WDR-enable / LCE-tgain arrays in open-tx-isp (#182)
+
+- **open-tx-isp #182 closed:** `tisp_dmsc/ydns/ysp_dn_params_refresh` and `tisp_lce_tgain_interp_strength` read the per-channel WDR enable / LCE tgain through the `isp_memopt` module parameter while the writers stored elsewhere (including stray stores 68 KB past a 4-byte object); readers and writers now meet on the OEM arrays, the refresh tails pass the per-channel gain. Camera (T40 test camera, image agg65b): full OTA, snapshot 200, 0 oopses, 6 of 6 module reload cycles. No feature cell changes.
+- **Noticed, not fixed:** the apitest area `t40dev` leaves one extra reference on `tx_isp_t40` (module cannot be unloaded until the next boot; the other areas leave none).
+
 ## 2026-11-01, T40 AWB-close oops fixed in open-tx-isp (#173)
 
 - **open-tx-isp #173 closed:** `DisableSensor` with the algorithm callbacks on no longer oopses `tx_isp_t40` (the AWB close indexed an absolute address instead of the AWB enable array; fix in open-tx-isp next, c639fb86 and a7538b66). Camera proof on the T40 test camera (image agg65a, `OPENIMP_ISP_ALGO_FUNC=1`): apitest PASS 285 / FAIL 0, 6 of 6 module reload cycles, 0 oopses.
