@@ -4392,7 +4392,10 @@ int IMP_ISP_Tuning_GetEvStart(uint32_t *value)
 #endif
 
 /* Stock T31 1.1.6 (0x8c658): int (void), the IMPAlloc of the NCU buffer
- * that IMP_ISP_AddSensor reserved ("ncubuf", isp + 0xac), 0 without an ISP. */
+ * that IMP_ISP_AddSensor reserved ("ncubuf", isp + 0xac), 0 without an ISP.
+ * Not declared in the T40/T41 SDK headers either (an exported, undeclared call,
+ * so there is deliberately no prototype in include/); the pointer is a 32-bit
+ * MIPS address like the stock int return (issue #170 L11). */
 int IMP_ISP_Tuning_GetNCUAlloc(void)
 {
     ISPDevice *isp;

@@ -6,6 +6,13 @@
  */
 #include "../../src/t31/openimp_t31_services.c"
 
+/* the error log of the pool request is not under test (level 0: silent) */
+int openimp_log_level;
+void imp_log_emit(int prio, const char *tag, const char *fmt, ...)
+{
+    (void)prio; (void)tag; (void)fmt;
+}
+
 static int failures;
 #define CHECK(c) do { if (!(c)) { failures++; \
     fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
@@ -103,6 +110,14 @@ int main(void)
         fail_bind_nth = 0;
         CHECK(nbinds() == 1 && linked(&fs, &enc));
     }
+    /* IMP_OSD_MemPoolRequest: once per group until the OSD exit (stock
+     * T31 DestroyGroup does not clear it), IMP_System_Exit resets it */
+    CHECK(IMP_OSD_MemPoolRequest(1, 4096, "pool") == 0);
+    CHECK(IMP_OSD_MemPoolRequest(1, 4096, "pool") == -1);
+    CHECK(IMP_OSD_MemPoolRequest(5, 4096, "pool") == -1);
+    CHECK(IMP_OSD_MemPoolRequest(2, 0, "pool") == -1);
+    openimp_t31_osd_pool_reset();
+    CHECK(IMP_OSD_MemPoolRequest(1, 4096, "pool") == 0);
     if (failures) {
         fprintf(stderr, "osd_attach_test: %d failure(s)\n", failures);
         return 1;

@@ -2951,7 +2951,10 @@ int IMP_FrameSource_DisableChnUndistort(int chnNum)
 /* Stock T31 1.1.5-zrt (0x97d18): a per-channel hook that
  * on_framesource_group_data_update calls as cb(chn, frame) for every frame
  * taken from the VBM, before the frame goes to the bound modules; its
- * return value is ignored.  NULL removes it. */
+ * return value is ignored.  NULL removes it.  The stock call is one plain
+ * store into the channel record and neither DisableChn nor DestroyChn
+ * (0x975f4, 0x95250) writes it back, so the hook survives them and runs
+ * before the frame is queued for GetFrame, as here (issue #170 L9). */
 #if defined(PLATFORM_T31)
 int IMP_FrameSource_SetChnCallback(int chnNum, int (*cb)(int, void *))
 {

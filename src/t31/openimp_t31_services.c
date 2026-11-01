@@ -723,6 +723,17 @@ static struct {
 } t31_osd_pool[T31_OSD_POOL_GROUPS];
 static pthread_mutex_t t31_osd_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* The stock pool table (ctx + (4 + group) * 4) is cleared by nothing but the
+ * OSD exit (OSDExit -> free_osd, T31 1.1.5-zrt 0xba7d4): DestroyGroup and
+ * DestroyRgn leave a requested pool in place, so a second request for the
+ * group fails (-1) until IMP_System_Exit.  IMP_System_Exit calls this. */
+void openimp_t31_osd_pool_reset(void)
+{
+    pthread_mutex_lock(&t31_osd_pool_lock);
+    memset(t31_osd_pool, 0, sizeof(t31_osd_pool));
+    pthread_mutex_unlock(&t31_osd_pool_lock);
+}
+
 int IMP_OSD_MemPoolRequest(int group, int size, const char *name)
 {
     if ((unsigned int)group >= T31_OSD_POOL_GROUPS || size <= 0)

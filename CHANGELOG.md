@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, review leftovers (#170)
+
+- **T31 `IMP_OSD_MemPoolRequest` (#170 L10):** the once-per-group request is now cleared by `IMP_System_Exit` like the stock OSD exit (the stock `DestroyGroup` does not clear it, so a second request in the same session still returns -1); host test in `tests/t30/osd_attach_test.c`. `DiscardInitialFrame` (L8), `SetChnCallback` (L9) and `GetNCUAlloc` (L11) were compared with the stock disassembly and match; comments only.
+
 ## 2026-11-01, documentation round 6 (T40 camera proofs)
 
 - **T40 (Eufy test camera, images agg65i to agg65k, 6 planned reload cycles each, 0 oopses):** ISP privacy mask on channel 1 (#186) and ISP draw window / line (#187) fixed in the driver and device-proven (mask luma 160 -> 255 and back, draw window edge pixels read the exact colour). The draw alpha range is 0..4 as in the vendor (4 opaque); the earlier all-zero readings came from a test using alpha 7 (#188, no library or driver change; the apitest case now uses alpha 4). apitest all areas PASS 398 / FAIL 0, area t40dev 83 PASS / 0 FAIL.

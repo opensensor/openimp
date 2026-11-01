@@ -294,6 +294,10 @@ static int root_init(enum openimp_root_id root)
     return 0;
 }
 
+#if defined(PLATFORM_T31)
+extern void openimp_t31_osd_pool_reset(void) __attribute__((weak));
+#endif
+
 static void root_exit(enum openimp_root_id root)
 {
     uint32_t bit = 1U << root;
@@ -312,6 +316,11 @@ static void root_exit(enum openimp_root_id root)
         break;
     case OPENIMP_ROOT_OSD:
         memset(&state.osd, 0, sizeof(state.osd));
+#if defined(PLATFORM_T31)
+        /* stock OSDExit frees the per-group MemPoolRequest table */
+        if (openimp_t31_osd_pool_reset)
+            openimp_t31_osd_pool_reset();
+#endif
         break;
     case OPENIMP_ROOT_ENCODER:
         memset(&state.encoder, 0, sizeof(state.encoder));

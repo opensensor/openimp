@@ -510,7 +510,13 @@ static void p2_group_slot_drop(int channel)
     pthread_mutex_unlock(&p2_slot_lock);
 }
 
-/* one frame of the group's DiscardInitialFrame budget, if any is left */
+/* one frame of the group's DiscardInitialFrame budget, if any is left.
+ * Stock T31 1.1.5-zrt (on_encoder_group_data_update 0x774c0): the counter is
+ * per group and is taken once per frame that reaches the group, before any
+ * channel of the group sees it.  Here every group frame is pulled from the
+ * one source queue by exactly one reader (a fan-out JPEG channel is fed from
+ * the video channel's pulled frame), so taking the budget at the pull drops
+ * the same n group frames; which channel pulls first does not matter. */
 static int p2_discard_take(int group)
 {
     int left;
