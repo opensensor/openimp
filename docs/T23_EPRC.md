@@ -345,6 +345,17 @@ change, IDR) the slice fields stay as the OEM hwicodec slice block does.
     (no E+44 "param[52]" field: T23 E+48.. is T21 E+44..), no per-picture
     inputs (T23 E+1796..1829, S+240..279: T21 S offsets from T23 S+280 are
     40 lower), A 336 bytes, S = A + 336, header 7104 bytes;
+  - `IMP_Encoder_SetChnRcTrigLevel` (issue #7): the T21 1.0.33 library
+    stores the pair (`i264e_reconfig_rc_trig_set`, i264e_reconfig +10336/+10340,
+    flag 0x10), copies it into the i264e parameters +268/+272 at the next IDR
+    (`i264e_idr_reconfig`) and clips it in `i264e_validate_parameters`
+    (trigger truncated to 2..10, new max QP to min QP..51), but nothing in
+    `i264e_ratecontrol_*` or `JZ_VPU_RC_*_T21` reads those two words (the
+    T20/T10 controllers do, `src/rc_t20`).  `tools/eprc_trig_oracle.py` runs
+    the OEM controller with five different pairs on the seven oracle
+    scenarios: picture types, QPs, sizes and re-encode decisions are
+    identical (0 differences).  So the stored-only OpenIMP behaviour equals
+    the vendor; there is no trigger to port.
   - defaults (`eprc_default_set_T21` 0x96574): E+180/184/188 = 63/255/255
     (T23 31/128/128), E+192 = 1 from 51 x 39 macroblocks on, E+204/206 = 1,
     E+273 = 1, E+284/285 = 3/1, E+288 = 20 (T23 E+293);
