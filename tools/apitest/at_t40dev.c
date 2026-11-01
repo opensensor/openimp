@@ -66,6 +66,10 @@ static double now_s(void)
 #ifndef CH
 #define CH 1            /* scaled sub channel, 1280x720 */
 #endif
+#ifndef SENSOR_W
+#define SENSOR_W 3840   /* sc830ai native size, channel 0 */
+#define SENSOR_H 2160
+#endif
 #ifndef FW
 #define FW 1280
 #define FH 720
@@ -359,12 +363,16 @@ static void stream_sei(double secs, struct seiscan *z, FILE *dump)
             z->bytes += pk->length;
             if (dump && n && save_guard_ok(n)) fwrite(buf, 1, n, dump);
             if (pk->nalType.h264NalType == 5) isidr = 1;
-            while (h + 3 < n && !(buf[h] == 0 && buf[h + 1] == 0 && buf[h + 2] == 1)) h++;
-            h += 3;
-            if (h < n && (buf[h] & 0x1f) == 6) {
-                /* nal 6, payload 5, size, uuid */
-                if (h + 3 + 16 <= n && buf[h + 1] == 5 && !memcmp(buf + h + 3, sei_uuid, 16)) hassei = 1;
-                else z->sei_bad++;
+            /* every NAL of the pack: an IDR pack may carry SPS, PPS and the SEI in front of the slice */
+            for (;;) {
+                while (h + 3 < n && !(buf[h] == 0 && buf[h + 1] == 0 && buf[h + 2] == 1)) h++;
+                if (h + 3 >= n) break;
+                h += 3;
+                if ((buf[h] & 0x1f) == 6) {
+                    /* nal 6, payload 5, size, uuid */
+                    if (h + 3 + 16 <= n && buf[h + 1] == 5 && !memcmp(buf + h + 3, sei_uuid, 16)) hassei = 1;
+                    else z->sei_bad++;
+                }
             }
         }
         z->frames++;
@@ -425,7 +433,7 @@ static double mic_rms(double secs, unsigned *frames)
 
 static IMPSensorInfo sinfo;
 static IMPEncoderChnAttr eattr;
-static int fs_made, grp_made, chn_made, bound, fs_on, recv_on;
+static int fs_made, grp_made, chn_made, bound, fs_on, recv_on, fs0_made, fs0_on;
 static IMPCell csrc, cdst;
 
 int t40dev_main(int argc, char **argv)
@@ -478,6 +486,21 @@ int t40dev_main(int argc, char **argv)
     r = IMP_FrameSource_CreateChn(CH, &fs);   if (r) { R("FrameSource_CreateChn", "FAIL", "rc=%d", r); goto down; }
     fs_made = 1;
     IMP_FrameSource_SetChnAttr(CH, &fs);
+    /* The scaled channel 1 is fed from the ISP main output: with channel 0 not enabled the driver delivers no
+     * picture at all and libimp hands out its "no sensor signal" fallback frames (constant mean Y, no control
+     * has any effect on them; #185).  Production apps always run channel 0 beside channel 1, so the helper
+     * does too (T40DEV_CH0=0 restores the old single-channel setup for an A/B check). */
+    {
+        const char *c0 = getenv("T40DEV_CH0");
+        if (CH != 0 && (!c0 || strcmp(c0, "0"))) {
+            IMPFSChnAttr f0 = fs;
+            f0.picWidth = SENSOR_W; f0.picHeight = SENSOR_H;
+            f0.scaler.enable = 0; f0.nrVBs = 2;
+            r = IMP_FrameSource_CreateChn(0, &f0);
+            R("FrameSource_CreateChn(ch0)", OK(!r), "rc=%d %ux%u beside the scaled channel %d", r, SENSOR_W, SENSOR_H, CH);
+            fs0_made = !r;
+        }
+    }
 
     /* FrameDepth: before enable */
     {
@@ -568,8 +591,11 @@ int t40dev_main(int argc, char **argv)
     {
         IMPCell got; memset(&got, 0xff, sizeof got);
         r = IMP_System_GetBindbyDest(&cdst, &got);
-        R("System_GetBindbyDest", OK(!r && got.deviceID == DEV_ID_FS && got.groupID == CH), "rc=%d src dev=%d grp=%d out=%d", r, got.deviceID, got.groupID, got.outputID);
+        /* with the OSD group attached the chain is FS -> OSD -> ENC: the source of the encoder is the OSD group */
+        R("System_GetBindbyDest", OK(!r && got.deviceID == (osd_att ? DEV_ID_OSD : DEV_ID_FS) && got.groupID == CH),
+          "rc=%d src dev=%d grp=%d out=%d (expected %s)", r, got.deviceID, got.groupID, got.outputID, osd_att ? "the OSD group" : "the frame source");
     }
+    if (fs0_made) { r = IMP_FrameSource_EnableChn(0); R("FrameSource_EnableChn(ch0)", OK(!r), "rc=%d", r); fs0_on = !r; }
     r = IMP_FrameSource_EnableChn(CH);        R("FrameSource_EnableChn", OK(!r), "rc=%d", r);
     fs_on = !r;
 
@@ -809,7 +835,7 @@ int t40dev_main(int argc, char **argv)
           u8 = 20; rsl = IMP_ISP_Tuning_SetSaturation(IMPVI_MAIN, &u8); pl = grab(1500); IMP_ISP_Tuning_GetSaturation(IMPVI_MAIN, &g); gl = g;
           u8 = 240; rsh = IMP_ISP_Tuning_SetSaturation(IMPVI_MAIN, &u8); ph = grab(1500); IMP_ISP_Tuning_GetSaturation(IMPVI_MAIN, &g); gh = g;
           u8 = o; IMP_ISP_Tuning_SetSaturation(IMPVI_MAIN, &u8);
-          R("ISP_Tuning_Get/SetSaturation", OK(!rgo && !rsl && !rsh && gl == 20 && gh == 240 && ph.chroma > pl.chroma + 2), "default=%u; set20->get %d chroma=%.1f; set240->get %d chroma=%.1f", o, gl, pl.chroma, gh, ph.chroma); }
+          R("ISP_Tuning_Get/SetSaturation", (a.chroma < 3.0 && !rgo && !rsl && !rsh && gl == 20 && gh == 240) ? "SKIP" : OK(!rgo && !rsl && !rsh && gl == 20 && gh == 240 && ph.chroma > pl.chroma + 2), "grey scene (baseline chroma < 3, night mode / IR light): colour effects cannot be seen, round trip only; default=%u; set20->get %d chroma=%.1f; set240->get %d chroma=%.1f", o, gl, pl.chroma, gh, ph.chroma); }
         /* Sharpness */
         { int rgo, rsl, rsh, gl = -1, gh = -1; struct pm pl, ph; unsigned char o = 0, g = 0;
           rgo = IMP_ISP_Tuning_GetSharpness(IMPVI_MAIN, &o);
@@ -825,7 +851,7 @@ int t40dev_main(int argc, char **argv)
           u8 = 20; rsl = IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &u8); pl = grab(1500); IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &g); gl = g;
           u8 = 230; rsh = IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &u8); ph = grab(1500); IMP_ISP_Tuning_GetBcshHue(IMPVI_MAIN, &g); gh = g;
           u8 = o; IMP_ISP_Tuning_SetBcshHue(IMPVI_MAIN, &u8);
-          R("ISP_Tuning_Get/SetBcshHue", OK(!rgo && !rsl && !rsh && gl == 20 && gh == 230 && (fabs_d(pl.u - ph.u) + fabs_d(pl.v - ph.v) > 1.5)), "default=%u; set20->get %d U=%.1f V=%.1f; set230->get %d U=%.1f V=%.1f", o, gl, pl.u, pl.v, gh, ph.u, ph.v); }
+          R("ISP_Tuning_Get/SetBcshHue", (a.chroma < 3.0 && !rgo && !rsl && !rsh && gl == 20 && gh == 230) ? "SKIP" : OK(!rgo && !rsl && !rsh && gl == 20 && gh == 230 && (fabs_d(pl.u - ph.u) + fabs_d(pl.v - ph.v) > 1.5)), "grey scene (baseline chroma < 3, night mode / IR light): colour effects cannot be seen, round trip only; default=%u; set20->get %d U=%.1f V=%.1f; set230->get %d U=%.1f V=%.1f", o, gl, pl.u, pl.v, gh, ph.u, ph.v); }
         (void)orig;
 
         /* HV flip (ISP modes) */
@@ -1304,7 +1330,7 @@ int t40dev_main(int argc, char **argv)
             corner_a = (ta.v[0] + ta.v[TW - 1] + ta.v[(TH - 1) * TW] + ta.v[TH * TW - 1]) / 4;
             corner_b = (tb.v[0] + tb.v[TW - 1] + tb.v[(TH - 1) * TW] + tb.v[TH * TW - 1]) / 4;
             centre_a = ta.v[4 * TW + 7] ; centre_b = tb.v[4 * TW + 7];
-            R("W9_LSC_bypass", (!rm0 && !rm1 && !rm2 && m1.bitBypassLSC == 1) ? ((fabs_d((corner_a / centre_a) - (corner_b / centre_b)) > 0.02) ? "PASS" : "PART") : "FAIL",
+            R("W9_LSC_bypass", !(mask & 0x200000) ? "SKIP" : (!rm0 && !rm1 && !rm2 && m1.bitBypassLSC == 1) ? ((fabs_d((corner_a / centre_a) - (corner_b / centre_b)) > 0.02) ? "PASS" : "PART") : "FAIL",
               "ModuleControl get key=0x%x, set bypass LSC rc=%d readback key=0x%x; corner/centre luma %.3f (LSC on) -> %.3f (bypassed); restored", m0.key, rm1, m1.key,
               corner_a / centre_a, corner_b / centre_b);
         }
@@ -1376,7 +1402,7 @@ int t40dev_main(int argc, char **argv)
             memset(&m0, 0, sizeof m0); IMP_ISP_Tuning_GetModuleControl(IMPVI_MAIN, &m0);
             ta = thumb_grab(1500); m1 = m0; m1.bitBypassADR = 1; ro0 = (mask & 0x200000) ? IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m1) : -77;
             tb = thumb_grab(3000); if (mask & 0x200000) IMP_ISP_Tuning_SetModuleControl(IMPVI_MAIN, &m0);
-            R("W14_ADR_bypass", !ro0 ? (thumb_diff(&ta, &tb, 0) > 0.8 ? "PASS" : "PART") : "FAIL", "bypass ADR rc=%d, mean luma %.1f -> %.1f, thumbnail diff %.2f", ro0, ta.mean, tb.mean, thumb_diff(&ta, &tb, 0));
+            R("W14_ADR_bypass", !(mask & 0x200000) ? "SKIP" : !ro0 ? (thumb_diff(&ta, &tb, 0) > 0.8 ? "PASS" : "PART") : "FAIL", "bypass ADR rc=%d, mean luma %.1f -> %.1f, thumbnail diff %.2f", ro0, ta.mean, tb.mean, thumb_diff(&ta, &tb, 0));
             (void)p2;
         }
 
@@ -1588,7 +1614,7 @@ int t40dev_main(int argc, char **argv)
         printf("  W44 %u Query samples in 5 s, %u frames: leftPics %u/%u/%u work_done 0:%u 1:%u leftStreamFrames 0:%u 1:%u leftBytes!=0 in %u curPacks!=0 in %u\n",
                q.n, e2.frames, q.lp[0], q.lp[1], q.lp[2], q.wd[0], q.wd[1], q.sf[0], q.sf[1], q.nzb, q.nzp);
         if (OpenIMP_Encoder_GetTelemetry) {
-            memset(&tt, 0, sizeof tt); rt = OpenIMP_Encoder_GetTelemetry(CH, &tt);
+            memset(&tt, 0, sizeof tt); tt.size = sizeof tt; rt = OpenIMP_Encoder_GetTelemetry(CH, &tt);   /* ABI: size in */
             printf("  W44 telemetry rc=%d frames=%llu bytes=%llu idr=%llu enc_us last/avg/max=%u/%u/%u fps=%u.%02u kbps=%u (consumer %u frames %u bytes)\n", rt,
                    (unsigned long long)tt.frames, (unsigned long long)tt.bytes, (unsigned long long)tt.idr_frames, tt.encode_us_last, tt.encode_us_avg, tt.encode_us_max,
                    tt.fps_x100 / 100, tt.fps_x100 % 100, tt.avg_kbps, e2.frames, e2.bytes);
@@ -1691,6 +1717,7 @@ down:
     /* ===== teardown (also lifecycle evidence) ===== */
     if (recv_on) { r = IMP_Encoder_StopRecvPic(CH); R("Encoder_StopRecvPic", OK(!r), "rc=%d", r); }
     if (fs_on) { r = IMP_FrameSource_DisableChn(CH); R("FrameSource_DisableChn", OK(!r), "rc=%d", r); }
+    if (fs0_on) IMP_FrameSource_DisableChn(0);
     if (osd_att) {
         /* FS -> OSD -> ENC: undo both binds, then the plain one is gone */
         IMP_OSD_Stop(CH);
@@ -1703,6 +1730,7 @@ down:
     if (chn_made) { IMP_Encoder_UnRegisterChn(CH); r = IMP_Encoder_DestroyChn(CH); R("Encoder_DestroyChn", OK(!r), "rc=%d", r); }
     if (grp_made) IMP_Encoder_DestroyGroup(CH);
     if (fs_made) IMP_FrameSource_DestroyChn(CH);
+    if (fs0_made) IMP_FrameSource_DestroyChn(0);
     r = IMP_ISP_DisableTuning();              R("ISP_DisableTuning", OK(!r), "rc=%d", r);
     r = IMP_System_Exit();                    R("System_Exit", OK(!r), "rc=%d", r);
     r = IMP_ISP_DisableSensor(IMPVI_MAIN);    R("ISP_DisableSensor", OK(!r), "rc=%d", r);
