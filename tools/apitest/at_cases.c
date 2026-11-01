@@ -4244,7 +4244,7 @@ void algo_pre_t40(void)
     if (IMP_ISP_SetAeAlgoFunc) {                  /* default: switched off, -1 / ENOTSUP (nothing is registered) */
         errno = 0; g_algo_gate_rc = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, &ae); g_algo_gate_errno = errno;
     }
-    setenv("OPENIMP_ISP_ALGO_FUNC", "1", 1);      /* off by default in libimp: the open driver's AWB close oopses (see openimp_p1_algo.c) */
+    setenv("OPENIMP_ISP_ALGO_FUNC", "1", 1);      /* off by default in libimp until the callbacks are shown working on a camera (see openimp_p1_algo.c) */
     if (IMP_ISP_SetAeAlgoFunc) g_algo_reg_ae = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, &ae);
     if (IMP_ISP_SetAwbAlgoFunc) g_algo_reg_awb = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, &awb);
 }

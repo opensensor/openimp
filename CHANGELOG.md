@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, T40 AWB-close oops fixed in open-tx-isp (#173)
+
+- **open-tx-isp #173 closed:** `DisableSensor` with the algorithm callbacks on no longer oopses `tx_isp_t40` (the AWB close indexed an absolute address instead of the AWB enable array; fix in open-tx-isp next, c639fb86 and a7538b66). Camera proof on the T40 test camera (image agg65a, `OPENIMP_ISP_ALGO_FUNC=1`): apitest PASS 285 / FAIL 0, 6 of 6 module reload cycles, 0 oopses.
+- **#65 unchanged:** the callbacks stay off by default and the `customalgo_t40` case has not run on a camera, so the API cells stay `err`. Docs and code comments that named the oops as the blocker now say the driver is fixed and only the camera run of the callbacks is missing.
+
 ## 2026-11-01, T30 audit (#14-#27, branch claude/t30-audit)
 
 No T30 camera: static audit of the vendor T30 1.0.5 libimp (disassembly) against OpenIMP, plus an API run in the QEMU T30 machine (sc4236 model, open-tx-isp tx-isp-t30 + audio.ko, 2026-10-31/11-01; apitest areas and 56 cases, a few extra runs). Cells move only to `qemu` (API round trip in QEMU), `err` (the call fails in QEMU), `aud` (static) or `host`; no camera evidence, so no streamer-function cell is `dev` and no issue of the list is closed.
@@ -35,7 +40,7 @@ No T30 camera: static audit of the vendor T30 1.0.5 libimp (disassembly) against
 - **T40 camera proof (image agg63, includes #161):** apitest all areas PASS 279, 6 of 6 reload cycles of our module clean, dark IR scene stable. #141 (OSD pictures on T40) is proven on the camera. #148 (dark-scene livelock in the libimp gap flush) is fixed in OpenIMP (stale bound). #149: encoder CPU at vendor level (0.71 % against 0.77 / 0.84 %).
 - **Other closed:** #2 (AE limit cycle), #88, #92, #93, #96 (full tmpfs), #104 (Linux 7.2: the T31L boots 7.2.11 with the IRQ balance fix), #131 (no DMIC hardware), #133.
 - **New doc:** [docs/RESET_DIAGNOSTICS.md](docs/RESET_DIAGNOSTICS.md): how to capture the cause of an unplanned reboot (RTC scratch record on the T31, reset-PC sled on the T23, SD ring log).
-- **Still open:** RC3 blockers #84 (waits for the light measurement box), #94 and #108 (unexplained resets). #65 (T40 AE/AWB algorithm callbacks: off by default, driver bug #173 in open-tx-isp). #3 #5 #7 (T10/T20/T21 stored-only stubs). #171 (T41 ISP routes in the open-tx-isp T41 module, branch `claude/t41-isp-routes` not merged). T30 audits run separately; the T32/T33 backlog is open. A fleet image needs the next modules (T23 ISP OSD pictures, SU CIPHER in libimp).
+- **Still open:** RC3 blockers #84 (waits for the light measurement box), #94 and #108 (unexplained resets). #65 (T40 AE/AWB algorithm callbacks: off by default; driver bug #173 is fixed, `customalgo_t40` has not run on a camera yet). #3 #5 #7 (T10/T20/T21 stored-only stubs). #171 (T41 ISP routes in the open-tx-isp T41 module, branch `claude/t41-isp-routes` not merged). T30 audits run separately; the T32/T33 backlog is open. A fleet image needs the next modules (T23 ISP OSD pictures, SU CIPHER in libimp).
 
 ## 2026-10-31, T10/T20/T21 backlog (#3 to #8, branch claude/t2x-backlog)
 

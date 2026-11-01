@@ -82,10 +82,9 @@ static void algo_name(const char *name)
     prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0);
 }
 
-/* OPENIMP_ISP_ALGO_FUNC=1 switches the callbacks on.  Default off: against the open-tx-isp driver of 2026-10-31 the
- * registration works (the driver fills the init attribute), but the AWB close ioctl oopses the kernel
- * (tisp_awb_algo_deinit_internal indexes the absolute address 16712 instead of the AWB enable array) and no
- * statistics reached handle() in QEMU, so the feature is not offered until a driver fix and a camera run. */
+/* OPENIMP_ISP_ALGO_FUNC=1 switches the callbacks on.  Default off: the registration works (the driver fills the init attribute)
+ * and the former AWB close oops of open-tx-isp is fixed (#173), but no statistics reached handle() in QEMU, so the
+ * feature is not offered until a camera run shows the callbacks working. */
 static int algo_enabled(void)
 {
     const char *e = getenv("OPENIMP_ISP_ALGO_FUNC");
