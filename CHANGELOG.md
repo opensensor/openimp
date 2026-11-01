@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, T40 apitest expectations (#184, noticed in #183)
+
+- **apitest cases corrected (#184):** `tisp_node_par_get/set` report N/A with the reason when the module answers `-EFAULT` (release module, the `/dev/tisp` parameter commands are debug-only since #164) and stay a full test on a debug module; `IMP_ISP_Tuning_SetModuleControl` takes the gamma-bypass verdict from the early window (~250 ms) like the SetGammaAttr case, because the closed-loop AE compensates the bypass within a second (camera: Y 111.7 -> 92.0 early, 116.8 settled).
+- **Found, tracked in open-tx-isp (#183):** the extra `tx_isp_t40` reference after the `t40dev` area comes from an oops in `tisp_g_draw_attr` (IMP_ISP_GetDrawAttr), not from the library.
+
 ## 2026-11-01, T40 WDR-enable / LCE-tgain arrays in open-tx-isp (#182)
 
 - **open-tx-isp #182 closed:** `tisp_dmsc/ydns/ysp_dn_params_refresh` and `tisp_lce_tgain_interp_strength` read the per-channel WDR enable / LCE tgain through the `isp_memopt` module parameter while the writers stored elsewhere (including stray stores 68 KB past a 4-byte object); readers and writers now meet on the OEM arrays, the refresh tails pass the per-channel gain. Camera (T40 test camera, image agg65b): full OTA, snapshot 200, 0 oopses, 6 of 6 module reload cycles. No feature cell changes.

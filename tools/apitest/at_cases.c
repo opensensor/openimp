@@ -947,7 +947,7 @@ static void cs_modctl(void)
     NEED(IMP_ISP_Tuning_GetModuleControl) NEED(IMP_ISP_Tuning_SetModuleControl) {
         G(IMPISPModuleCtl, o); G(IMPISPModuleCtl, b); G(IMPISPModuleCtl, m); G(IMPISPModuleCtl, c);
         int r1 = IMP_ISP_Tuning_GetModuleControl(V0 o), r2, r3, r4, r5, ms;
-        Fst base, off, back;
+        Fst base, off, off_s, back;
 
         gchk(o);
         rep(FN(IMP_ISP_Tuning_GetModuleControl), r1, r1 == 0 ? V_PASS : V_FAIL, "key 0x%08x", o->key);
@@ -955,11 +955,13 @@ static void cs_modctl(void)
         base = fst(800);
         /* effect: bypass the gamma module (the picture goes dark: the linear sensor data without the gamma curve), restored afterwards */
         *m = *o; m->bitBypassGAMMA = 1;
-        r4 = IMP_ISP_Tuning_SetModuleControl(V0 m); r5 = IMP_ISP_Tuning_GetModuleControl(V0 c); off = fst(1500);
+        r4 = IMP_ISP_Tuning_SetModuleControl(V0 m); r5 = IMP_ISP_Tuning_GetModuleControl(V0 c); off_s = fst(100); off = fst(1400);
+        /* The closed-loop AE sees the luma after the gamma stage and compensates a bypass within ~1 s (T40: Y 123.6 -> 117.1 settled,
+         * same mechanism as the SetGammaAttr case, #167), so the verdict also accepts the early window (~250 ms after the set). */
         IMP_ISP_Tuning_SetModuleControl(V0 o); back = recover(base.y, &ms);
-        rep(FN(IMP_ISP_Tuning_SetModuleControl), r2 | r4, (r2 == 0 && r3 == 0 && !memcmp(o, b, sizeof(*o)) && r5 == 0 && c->bitBypassGAMMA && off.ok && off.y < base.y * 0.85 && ms >= 0) ? V_PASS : V_FAIL,
-            "same value written (set ret %d), read back %s; gamma bypass bit read back %d, Y %.1f -> %.1f; picture %s restored (Y %.1f)", r2,
-            !memcmp(o, b, sizeof(*o)) ? "equal" : "DIFFERENT", (int)c->bitBypassGAMMA, base.y, off.y, ms >= 0 ? "" : "NOT", back.y);
+        rep(FN(IMP_ISP_Tuning_SetModuleControl), r2 | r4, (r2 == 0 && r3 == 0 && !memcmp(o, b, sizeof(*o)) && r5 == 0 && c->bitBypassGAMMA && ((off.ok && off.y < base.y * 0.85) || (off_s.ok && off_s.y < base.y * 0.85)) && ms >= 0) ? V_PASS : V_FAIL,
+            "same value written (set ret %d), read back %s; gamma bypass bit read back %d, Y %.1f -> %.1f after 250 ms (settled %.1f); picture %s restored (Y %.1f)", r2,
+            !memcmp(o, b, sizeof(*o)) ? "equal" : "DIFFERENT", (int)c->bitBypassGAMMA, base.y, off_s.y, off.y, ms >= 0 ? "" : "NOT", back.y);
         gfree(o); gfree(b); gfree(m); gfree(c);
     }
 }
@@ -2982,6 +2984,14 @@ static void cs_tisppar_t40(void)
 
     if (fd < 0 || !a || !b) {
         rep("tisp_node_par_get", -1, V_SKIP, "/dev/tisp not usable (fd %d)", fd);
+        goto out;
+    }
+    /* #164: the release module has no t40_tisp_par parameter and both commands fail with -EFAULT by design (debug build only,
+     * TX_ISP_T40_TISP_PAR=y + t40_tisp_par=1): that is not a failure of the release module. */
+    memset(a, 0, T40_TISP_PAR_BYTES);
+    if (t40_tisp_par(fd, a, 0x20007400, 0, 0, 0) != 0 && errno == EFAULT) {
+        rep("tisp_node_par_get", -1, V_NA, "debug module only (t40_tisp_par, #164): the release module answers -EFAULT by design");
+        rep("tisp_node_par_set", -1, V_NA, "see get");
         goto out;
     }
     for (id = 0; id <= 0x19; id++) {
