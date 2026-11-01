@@ -4491,7 +4491,8 @@ static void cs_rgnisp(void)
         r5 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);
         memset(g, 0, sizeof(*g)); g->osdispdraw.stCoverAttr.chx = 0; g->osdispdraw.stCoverAttr.pinum = 0;
         r4 = IMP_OSD_GetRgnAttr_ISP(0, g, &shown); gchk(g);
-        g2 = g->osdispdraw.stCoverAttr.mask_en == 1 && g->osdispdraw.stCoverAttr.mask_width == 64 && g->osdispdraw.stCoverAttr.mask_height == 64 &&
+        /* the stock kernel getter never writes mask_en (vendor tisp_g_mscaler_mask_block_attr leaves byte 2 alone, libimp does not fill it): it reads back 0 */
+        g2 = g->osdispdraw.stCoverAttr.mask_en == 0 && g->osdispdraw.stCoverAttr.mask_width == 64 && g->osdispdraw.stCoverAttr.mask_height == 64 &&
              g->osdispdraw.stCoverAttr.mask_pos_left == 64 && g->osdispdraw.stCoverAttr.mask_pos_top == 64;
         m->mask_en = 0; IMP_OSD_SetRgnAttr_ISP(0, a, 1);
         a->type = OSD_REG_ISP_PIC; e1 = IMP_OSD_SetRgnAttr_ISP(0, a, 1);           /* pictures: IMP_OSD_SetRgnAttr_PicISP */
