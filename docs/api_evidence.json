@@ -4722,7 +4722,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "err",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4749,9 +4749,10 @@
      "r†"
     ]
    },
-   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; used by: T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor†",
+   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; used by: T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #23): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_AE_GetROI: ret=-1 roi 0x00000000). FIXED: OpenIMP sent control 0x8000035 through a pointer (the T30 driver refuses 0x8000035); the vendor 1.0.5 (0xd9688/0xd978c) sends 0x8000024 with the four ROI bytes by value and Set checks b[3] < b[1] && b[2] < b[0]. Now equal; host test isp_gap_test_t30. Set reaches the driver (apical_command 3/0x5a); Get returns -1 because the open T30 driver has no get case for 0x8000024.",
    "ref": {
-    "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)"
+    "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
+    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_AE_GetROI: ret=-1 roi 0x00000000"
    }
   },
   "ISP_Tuning_AwbSync": {
@@ -6376,7 +6377,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "aud",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -6391,13 +6392,14 @@
      "r†"
     ]
    },
-   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified",
+   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #23): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). Static: the pointer is passed in the tuning block as in the vendor (0xd9f70, control 0x8000025, tuning running required); not run in QEMU (no apitest case for the set side), the get side is not served by the open driver.",
    "ref": {
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T31": "apitest agg47 2026-10-26 .26",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T20": "apitest expr 2026-10-27 .107 (#130): 240 lines read back 240, Y 122 -> 191 (30 -> 240 lines); 10000 us -> 338 lines; AUTO restores (beyond vendor SDK)",
-    "T10": "apitest expr 2026-10-27 .31 (#130): 240 lines -> 240, Y 64 -> 92; 10000 us -> 227 lines (44 us/line) (beyond vendor SDK)"
+    "T10": "apitest expr 2026-10-27 .31 (#130): 240 lines -> 240, Y 64 -> 92; 10000 us -> 227 lines (44 us/line) (beyond vendor SDK)",
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
    }
   },
   "ISP_Tuning_SetWB_ALGO": {

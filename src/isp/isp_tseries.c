@@ -1312,11 +1312,12 @@ enum {
 #endif
     TISP_CID_AE_FREEZE = 0x8000034,
 #if defined(PLATFORM_T23) || defined(PLATFORM_T31) || \
-    defined(PLATFORM_T20) || defined(PLATFORM_T21)
+    defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
     /* 0x8000035 is SetAeAttr on T23/T31: sending ROI weights there switched
      * AE to manual with ROI bytes as its flags and froze it.  The vendor
-     * T20 3.12.0 and T21 1.0.33 AE_Set/GetROI send 0x8000024 as well
-     * (IMAGE_TUNING_CID_AE_ROI in the T20 SDK); the T20 driver rejects 0x35. */
+     * T20 3.12.0, T21 1.0.33 and T30 1.0.5 AE_Set/GetROI send 0x8000024 as
+     * well (IMAGE_TUNING_CID_AE_ROI in the T20 SDK); the T20 driver rejects
+     * 0x35, and so does the T30 driver (0x8000035 is in its "-1" group). */
     TISP_CID_AE_ROI = 0x8000024,
 #else
     TISP_CID_AE_ROI = 0x8000035,
@@ -3385,14 +3386,25 @@ int IMP_ISP_Tuning_GetAeWeight(void *weight)
 
 int IMP_ISP_Tuning_AE_SetROI(void *roi)
 {
-#if defined(PLATFORM_T20)
-    /* T20: the vendor libimp and the SDK driver pass the 4-byte ROI by
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
+    /* T20/T30: the vendor libimp and the SDK driver pass the 4-byte ROI by
      * value in control->value (AE_ROI_ID), not through a pointer. */
     int32_t packed;
 
     if (roi == NULL) {
         return -1;
     }
+#if defined(PLATFORM_T30)
+    /* T30 1.0.5 (0xd978c): refuses a box whose bytes do not satisfy
+     * b[3] < b[1] && b[2] < b[0] (-1, no driver call). */
+    {
+        const uint8_t *b = (const uint8_t *)roi;
+
+        if (!(b[3] < b[1] && b[2] < b[0])) {
+            return -1;
+        }
+    }
+#endif
     memcpy(&packed, roi, sizeof(packed));
     return tseries_tuning_set_val(TISP_CID_AE_ROI, packed);
 #else
@@ -3402,7 +3414,7 @@ int IMP_ISP_Tuning_AE_SetROI(void *roi)
 
 int IMP_ISP_Tuning_AE_GetROI(void *roi)
 {
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
     int32_t packed = 0;
     int result;
 

@@ -17,6 +17,11 @@
 #include "isp/isp_tseries_dev.h"
 
 ISPDevice *gISP;
+int IMP_ISP_Tuning_AE_SetROI(void *roi);   /* not declared in the OpenIMP header */
+int IMP_ISP_Tuning_AE_GetROI(void *roi);
+int IMP_ISP_Tuning_SetISPProcess(void *mode);
+int IMP_ISP_Tuning_SetFWFreeze(int mode);
+int IMP_ISP_Tuning_SetShading(void *mode);
 
 /* stubs for the rest of libimp */
 int IMP_Log_Get_Option(void) { return 0; }
@@ -205,6 +210,28 @@ int main(void)
         CHECK(IMP_ISP_Tuning_GetTemperDnsAttr(&tg) == 0 &&
               tg.type == IMPISP_TEMPER_MANUAL && tg.temper_strength == 77);
         CHECK(IMP_ISP_Tuning_SetTemperDnsCtl(NULL) == -1);
+    }
+    {
+        /* AE ROI (T30 1.0.5 0xd978c / 0xd9688): tuning control 0x8000024
+         * with the four ROI bytes by value (the T31 control 0x8000035 is
+         * refused by the T30 driver); Set refuses a box that does not
+         * satisfy b[3] < b[1] && b[2] < b[0] without a driver call. */
+        uint8_t roi[4] = { 10, 20, 3, 4 };
+        uint8_t bad[4] = { 1, 2, 5, 6 };
+        uint8_t got[4] = { 0 };
+        int32_t packed;
+
+        t_calls = 0;
+        CHECK(IMP_ISP_Tuning_AE_SetROI(roi) == 0);
+        memcpy(&packed, roi, sizeof(packed));
+        CHECK(t_calls == 1 && last_tuning_sub == 0x8000024 && last_tuning_val == packed);
+        CHECK(IMP_ISP_Tuning_AE_SetROI(bad) == -1 && t_calls == 1);
+        CHECK(IMP_ISP_Tuning_AE_SetROI(NULL) == -1 && t_calls == 1);
+        CHECK(IMP_ISP_Tuning_AE_GetROI(got) == 0 && t_calls == 2 && last_tuning_sub == 0x8000024);
+        CHECK(IMP_ISP_Tuning_AE_GetROI(NULL) == -1);
+        isp.tuning_state = 1;
+        CHECK(IMP_ISP_Tuning_AE_SetROI(roi) == -1);
+        isp.tuning_state = 2;
     }
 #endif
     if (failures) {

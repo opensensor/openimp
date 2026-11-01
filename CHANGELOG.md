@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-01, T30 audit (#14-#27, branch claude/t30-audit)
+
+No T30 camera: static audit of the vendor T30 1.0.5 libimp (disassembly) against OpenIMP, plus an API run in the QEMU T30 machine (sc4236 model, open-tx-isp tx-isp-t30 + audio.ko, 2026-10-31/11-01; apitest areas and 56 cases, a few extra runs). Cells move only to `qemu` (API round trip in QEMU), `err` (the call fails in QEMU), `aud` (static) or `host`; no camera evidence, so no streamer-function cell is `dev` and no issue of the list is closed.
+
+- **ISP / AE (#23):** `IMP_ISP_Tuning_AE_Get/SetROI` sent control 0x8000035 through a pointer, which the T30 driver refuses; the vendor 1.0.5 (0xd9688/0xd978c) sends 0x8000024 with the four ROI bytes by value and rejects a box with b[3] >= b[1] or b[2] >= b[0]. Fixed, host test `isp_gap_test_t30`. QEMU T30: Set reaches the driver, Get returns -1 (the open T30 driver has no get case for 0x8000024, an open-tx-isp gap): cell err. `ISP_Tuning_SetExpr`: pointer and control equal to the vendor, not run (cell aud).
+
 ## 2026-10-31, T41 backlog (#75-#80, branch claude/t41-backlog)
 
 - **FrameSource (#78):** `IMP_EmuFrameSource_*` is not exported by the T41 1.2.5 vendor library (nm); the names come from older vendor builds. OpenIMP keeps its five exports as a documented ENOTSUP (-1, errno ENOTSUP, no state change). New apitest case `emu` (5/5 PASS in QEMU T41), API reference entry, evidence action `enotsup`. No matrix cell changed (no camera run yet).
