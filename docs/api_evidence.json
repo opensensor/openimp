@@ -13574,7 +13574,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -13612,7 +13612,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: AEC off).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
@@ -13620,7 +13620,8 @@
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
     "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
-    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)"
+    "T23": "apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_DisableAecRefFrame": {
@@ -14129,7 +14130,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -14167,10 +14168,11 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test)",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (mono 16 kHz recording, AEC test). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: AI dev 1 chn 0 with the muted AO dev 0 chn 0 as reference). Round trip with a muted AO reference in QEMU (no speaker involved in the model).",
    "ref": {
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
-    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
+    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AI_EnableAecRefFrame": {
@@ -15485,7 +15487,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15523,14 +15525,15 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Disable": {
@@ -15540,7 +15543,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15586,14 +15589,15 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (dev 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_DisableAgc": {
@@ -15677,7 +15681,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -15723,14 +15727,15 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†",
+   "note": "audit: userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (chn 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_DisableHpf": {
@@ -15796,7 +15801,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15842,10 +15847,11 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (dev 0).",
    "ref": {
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
-    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
+    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_EnableAgc": {
@@ -15929,7 +15935,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -15975,10 +15981,11 @@
      "t†"
     ]
    },
-   "note": "audit: userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
+   "note": "audit: userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (chn 0).",
    "ref": {
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
-    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
+    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_EnableHpf": {
@@ -16044,7 +16051,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16090,14 +16097,15 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Get/SetDigitalGain": {
@@ -16126,7 +16134,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16172,14 +16180,15 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†",
+   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (AO_GetGain: ret=0 0; AO_SetGain: ret=0 rt: same value written, read back 0 (was 0)).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Get/SetPubAttr": {
@@ -16189,7 +16198,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16235,14 +16244,15 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†",
+   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (AO_GetPubAttr: ret=0 rate 16000 mode 1; AO_SetPubAttr: ret=0 dev 0 16 kHz mono).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_Get/SetVol": {
@@ -16252,7 +16262,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -16298,14 +16308,15 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; Set dev, Get host on T10/T20/T21/T31 where the cell was aud (2026-10-10 AEC test: SetVol/SetGain called, getter not checked)",
+   "note": "audit: reaches the driver/kernel; userspace implementation; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; Set dev, Get host on T10/T20/T21/T31 where the cell was aud (2026-10-10 AEC test: SetVol/SetGain called, getter not checked). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (AO_GetVol: ret=0 -30; AO_SetVol: ret=0 rt: set the minimum -30, read back -30 (was 60), -29 accepted; volume l).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
     "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
-    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)"
+    "T31": "apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_PauseChn": {
@@ -16483,7 +16494,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -16529,10 +16540,11 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only",
+   "note": "audit: reaches the driver/kernel; used by: T10/T20/T31: prudynt†, raptor†, timps; T21/T23/T41: prudynt†, raptor†; T10/T20/T21/T23/T31: device-tested 2026-10-10 (known signal played at several volumes and recorded back; AEC test); T41: no audio hardware on the test board (no microphone, no speaker), results are API-level only. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: 3 zero-filled frames of 1280 bytes (silence), muted, volume minimum).",
    "ref": {
     "T40": "apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected)",
-    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)"
+    "T41": "apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
   },
   "AO_SetHpfCoFrequency": {
