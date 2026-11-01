@@ -8794,18 +8794,19 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "?",
+    "T30": "host",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
     "T41": "dev"
    },
-   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run. MISMATCH (minor): the vendor 1.0.5 (0xc44c8) accepts any value (non-zero = on) for channel < 6; OpenIMP returns -1 for values other than 0 and 1.",
+   "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run in QEMU. The vendor 1.0.5 (0xc44c8) accepts any value (non-zero = on) for channel < 6; ALIGNED: OpenIMP's T30 build now accepts any value (host test p2_gap_test_t30).",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T40": "apitest agg59 2026-10-31 .184",
-    "T41": "apitest rc3gaps2 2026-10-27 .34"
+    "T41": "apitest rc3gaps2 2026-10-27 .34",
+    "T30": "static audit + host test p2_gap_test_t30 2026-11-01 (OpenIMP claude/t30-audit)"
    }
   },
   "Encoder_SetDefaultParam": {
@@ -13527,7 +13528,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13569,9 +13570,10 @@
    "ref": {
     "T41": "apitest rc3-cases 2026-10-27 .34 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
     "T10": "apitest rc3-cases 2026-10-27 .31 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
-    "T40": "apitest rc3-cases 2026-10-27 .184 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)"
+    "T40": "apitest rc3-cases 2026-10-27 .184 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
+    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    },
-   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build."
+   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): all AENC/ADEC calls except the custom codec registration pass in QEMU T30 (G.711A encode and decode round trip)."
   },
   "AENC_ReleaseEncoder": {
    "area": "Audio",

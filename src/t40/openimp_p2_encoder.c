@@ -5543,8 +5543,16 @@ int IMP_Encoder_SetChnEntropyMode(int channel, IMPEncoderEntropyMode mode)
 
 int IMP_Encoder_SetChnResizeMode(int channel, int enabled)
 {
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T21)
+    /* T30 1.0.5 (0xc44c8): any non-zero value switches the mode on (stored
+     * as 1), nothing is refused for a valid channel */
+    if (!p2_valid_channel(channel))
+        return -1;
+    enabled = enabled != 0;
+#else
     if (!p2_valid_channel(channel) || (enabled != 0 && enabled != 1))
         return -1;
+#endif
     EncoderInit();
     p2_channels[channel].resize_mode = enabled;
     return 0;

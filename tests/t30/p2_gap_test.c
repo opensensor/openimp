@@ -150,6 +150,10 @@ int main(void)
     }
 #endif
 #if defined(PLATFORM_T30) && !defined(PLATFORM_T21)
+    /* SetChnResizeMode (T30 1.0.5 0xc44c8): any non-zero value is "on" */
+    CHECK(IMP_Encoder_SetChnResizeMode(1, 7) == 0 && p2_channels[1].resize_mode == 1);
+    CHECK(IMP_Encoder_SetChnResizeMode(1, 0) == 0 && p2_channels[1].resize_mode == 0);
+    CHECK(IMP_Encoder_SetChnResizeMode(-1, 1) == -1);
     /* --- SetPoolSize, SetChnRcTrigLevel (T30 only) ----------------------- */
     CHECK(IMP_Encoder_SetPoolSize(0) == -1);
     CHECK(IMP_Encoder_SetPoolSize(-5) == -1);
