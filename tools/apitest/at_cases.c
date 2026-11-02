@@ -4906,23 +4906,23 @@ static void cs_t41isp(void)
         G(IMPISPLDCAttr, l);
         errno = 0; r = IMP_ISP_LDC_GetAttr(IMPVI_MAIN, l); e = errno; gchk(l);
         if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_GetAttr, r, e);
-        else rep(FN(IMP_ISP_LDC_GetAttr), r, r == 0 ? V_PASS : V_FAIL, "read");
+        else rep(FN(IMP_ISP_LDC_GetAttr), r, r == 0 ? V_PASS : V_FAIL, "vendor no-op (the stock module has no handler and answers 0): returns 0, buffer untouched, no function");
         gfree(l);
     }
     if (risky) {
         NEED(IMP_ISP_StartNightMode) { errno = 0; r = IMP_ISP_StartNightMode(IMPVI_MAIN); e = errno;
-            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_StartNightMode, r, e); else rep(FN(IMP_ISP_StartNightMode), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "night-start flag set after the sensor runs, frames flow"); }
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_StartNightMode, r, e); else rep(FN(IMP_ISP_StartNightMode), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "night-start word stored like the stock module (taken by the next first ISP tuning open), frames flow"); }
         NEED(IMP_ISP_LDC_SetAttr) { G(IMPISPLDCAttr, l); IMP_ISP_LDC_GetAttr(IMPVI_MAIN, l); errno = 0; r = IMP_ISP_LDC_SetAttr(IMPVI_MAIN, l); e = errno;
-            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_SetAttr, r, e); else rep(FN(IMP_ISP_LDC_SetAttr), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "same value written, frames flow"); gfree(l); }
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_SetAttr, r, e); else rep(FN(IMP_ISP_LDC_SetAttr), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "vendor no-op (stock: no handler, 0, no effect): returns 0, frames flow, no function"); gfree(l); }
         NEED(IMP_ISP_LDC_INIT) { G(IMPISPLDCInitAttr, l); errno = 0; r = IMP_ISP_LDC_INIT(IMPVI_MAIN, l); e = errno;
-            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_INIT, r, e); else rep(FN(IMP_ISP_LDC_INIT), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "zero init block, frames flow"); gfree(l); }
-        NEED(IMP_ISP_WDR_OPEN) { IMPISPWdrOpenAttr w; memset(&w, 0, sizeof(w)); w.rmode = IMPISP_TYPE_RUN_LINEAR; errno = 0; r = IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w); e = errno;
-            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_WDR_OPEN, r, e); else rep(FN(IMP_ISP_WDR_OPEN), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "linear start mode request, frames flow"); }
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_LDC_INIT, r, e); else rep(FN(IMP_ISP_LDC_INIT), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "vendor no-op (stock: no handler, 0, no effect): returns 0, frames flow, no function"); gfree(l); }
+        NEED(IMP_ISP_WDR_OPEN) { IMPISPWdrOpenAttr w; memset(&w, 0, sizeof(w)); w.rmode = IMPISP_TYPE_RUN_LINEAR; w.imode = IMPISP_TYPE_WDR_DOL; errno = 0; r = IMP_ISP_WDR_OPEN(IMPVI_MAIN, &w); e = errno;
+            if (t41x_nomod(r, e)) T41X_NA(IMP_ISP_WDR_OPEN, r, e); else rep(FN(IMP_ISP_WDR_OPEN), r, (r == 0 && flow()) ? V_PASS : V_FAIL, "linear start, mode byte stored like the stock module (imode 0 is refused there with EFAULT), frames flow"); }
         NEED(IMP_ISP_SET_GPIO_STA) NEED(IMP_ISP_SET_GPIO_INIT_OR_FREE) { G(IMPISPGPIO, g); g->gpio_num[0] = 0xff; errno = 0; r = IMP_ISP_SET_GPIO_INIT_OR_FREE(IMPVI_MAIN, g); e = errno;
             if (t41x_nomod(r, e)) { T41X_NA(IMP_ISP_SET_GPIO_INIT_OR_FREE, r, e); T41X_NA(IMP_ISP_SET_GPIO_STA, r, e); }
             else { int r2 = IMP_ISP_SET_GPIO_STA(IMPVI_MAIN, g);
-                rep(FN(IMP_ISP_SET_GPIO_INIT_OR_FREE), r, r == 0 ? V_PASS : V_FAIL, "empty GPIO list (0xff first)");
-                rep(FN(IMP_ISP_SET_GPIO_STA), r2, r2 == 0 ? V_PASS : V_FAIL, "empty GPIO list"); }
+                rep(FN(IMP_ISP_SET_GPIO_INIT_OR_FREE), r, r == 0 ? V_PASS : V_FAIL, "vendor no-op (stock: no handler, 0, no effect): empty GPIO list (0xff first)");
+                rep(FN(IMP_ISP_SET_GPIO_STA), r2, r2 == 0 ? V_PASS : V_FAIL, "vendor no-op (stock: no handler, 0, no effect): empty GPIO list"); }
             gfree(g); }
     } else {
         rep(FN(IMP_ISP_StartNightMode), 0, V_SKIP, "APITEST_RISKY=1 (QEMU)");
