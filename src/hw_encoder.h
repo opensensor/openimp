@@ -116,9 +116,6 @@ typedef struct {
     uint32_t hskip_m;
     uint32_t hskip_n;
     uint32_t hskip_flags;
-    /* 0x80: T20/T10 IMP_Encoder_SetChangeRef: 1 = the OEM flag is off (its
-     * default is on, so a zero block keeps the default) */
-    uint32_t change_ref_off;
 } HWEncoderParams;
 
 #define HW_HSKIP_SCENECUT 1u    /* bEnableScenecut */
@@ -133,7 +130,7 @@ typedef struct {
 #define HW_SUPERFRM_NONE     1u
 #define HW_SUPERFRM_REENCODE 2u
 
-_Static_assert(sizeof(HWEncoderParams) == 0x84, "HWEncoderParams size");
+_Static_assert(sizeof(HWEncoderParams) == 0x80, "HWEncoderParams size");
 _Static_assert(offsetof(HWEncoderParams, static_time) == 0x30 &&
                offsetof(HWEncoderParams, rc_flags) == 0x48,
                "HWEncoderParams rate-control extras layout");

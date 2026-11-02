@@ -1531,7 +1531,7 @@ void t_enc(void)
  * SetChnHSkipBlackEnhance from the environment; every picture is logged as "pic <n> <bytes> <nal type:ref_idc ...>" and the
  * whole stream is dumped for the host (ffmpeg -bsf:v trace_headers shows frame_num, ref list modification, MMCO).
  *   HSKIP_TYPE (0..6, default 0)  HSKIP_M  HSKIP_N  HSKIP_SAME (maxSameSceneCnt)  HSKIP_SCENECUT  HSKIP_BLACK  HSKIP_REF (ChangeRef)
- *   HSKIP_MAXTYPE (maxHSkipType at CreateChn, default 6)  HSKIP_RT=1 (set through IMP_Encoder_SetChnHSkip after the first IDR
+ *   HSKIP_SMART=1 (SMART rate control, HSKIP_BITRATE = maximum kbit/s)  HSKIP_MAXTYPE (maxHSkipType at CreateChn, default 6)  HSKIP_RT=1 (set through IMP_Encoder_SetChnHSkip after the first IDR
  *   instead of at CreateChn)  HSKIP_GOP (default 30)  HSKIP_FRAMES (default 240)  HSKIP_DUMP=<file>  HSKIP_BITRATE (kbit/s)
  * ------------------------------------------------------------------------------------------ */
 #if !defined(ENC_NEW) && HAS_IMP_Encoder_SetChnHSkip
@@ -1563,6 +1563,14 @@ int enc_hskip_run(void)
     if (grp_up(0, 0) != 0) { gfree(a); return -1; }
     fill_attr(a, CODEC_H264, gop);
     if (hs_env("HSKIP_BITRATE", 0)) a->rcAttr.attrRcMode.attrH264Cbr.outBitRate = hs_env("HSKIP_BITRATE", 0);
+    if (hs_env("HSKIP_SMART", 0)) {                 /* HSKIP_SMART=1: SMART rate control (the OEM method 3), HSKIP_BITRATE = max kbit/s */
+        IMPEncoderAttrH264Smart *sm = &a->rcAttr.attrRcMode.attrH264Smart;
+
+        memset(&a->rcAttr.attrRcMode, 0, sizeof(a->rcAttr.attrRcMode));
+        a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_SMART;
+        sm->maxQp = 45; sm->minQp = 15; sm->staticTime = 2; sm->maxBitRate = hs_env("HSKIP_BITRATE", 512);
+        sm->iBiasLvl = 0; sm->changePos = 80; sm->qualityLvl = 2; sm->frmQPStep = 3; sm->gopQPStep = 15; sm->gopRelation = false;
+    }
     memset(&hs, 0, sizeof(hs));
     hs.skipType = (IMPSkipType)hs_env("HSKIP_TYPE", 0);
     hs.m = hs_env("HSKIP_M", gop - 1);

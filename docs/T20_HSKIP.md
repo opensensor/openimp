@@ -35,9 +35,13 @@ type of `rcAttr.attrHSkip.hSkipAttr` is not `IMP_Encoder_STYPE_N1X`.  OpenIMP's 
   and H1M_TRUE LBASE (T10: not N1X); the controller counts those pictures like GOP starts, and the
   re-encode judge reads the byte.
 * `IMP_Encoder_SetChangeRef` -> `i264e_change_ref_set` (flag applied by `i264e_reconfig` with the
-  next picture): the controller flag E+216 (T10 E+225, read when the controller is set up).  With the
-  class byte 1 in SMART mode an oversized picture is coded again; the flag has an effect only
-  together with an HSkip structure (default on).
+  next picture, default on) -> the controller flag E+216 (T10 E+225, read when the controller is
+  set up).  In SMART mode the re-encode judge asks for a second try of the picture classes above
+  (flag E+0x90385); `i264e_ratecontrol_is_reenc` then arms `slice_write`: the picture is coded again
+  into the previous frame's buffer (`i264e_get_prev_fram_dec`), `i264e_ratecontrol_is_reenc_end`
+  keeps the smaller of the two tries and `i264e_dec_ref_pic_remark` rewrites the header commands of
+  the kept one.  Device effect on the vendor stack: IDR sizes of a SMART H1M stream differ strongly
+  with the flag on and off.
 
 ## Proof
 
@@ -48,8 +52,15 @@ type of `rcAttr.attrHSkip.hSkipAttr` is not `IMP_Encoder_STYPE_N1X`.  OpenIMP's 
 
 ## Not done
 
+* **`SetChangeRef`: not implemented.**  OpenIMP stores the value and keeps the controller from asking
+  for the second try (`mb_rc2` 0 in `t20_rc_start`), because the second try needs the three pieces
+  above (previous-frame buffer, keep-the-smaller, header remark) and the hardware reconstruction
+  buffer juggling of `slice_write`.  The controller decisions themselves are ported and tested with
+  the flag on and off (`tests/rc_t20`, `tests/rc_t10`).  Visible difference to the vendor stack:
+  SMART streams of the skip types H1M / N1X with an IDR period of several GOPs (the flag is on by
+  default there).
 * `bEnableScenecut` (i264e_decide_reset_slice_to_idr 0x32aa0): the H1M structures can turn a coded
   picture that is larger than the last IDR into an IDR once per second and code it again; the flag is
   stored and read back only.
-* A super-frame re-encode of a picture inside an H1M structure (`i264e_dec_ref_pic_remark`,
-  `i264e_get_prev_fram_dec`) uses the plain header of the first try.
+* A super-frame re-encode of a picture inside an H1M structure uses the plain header of the first try
+  (same code as the ChangeRef second try above).

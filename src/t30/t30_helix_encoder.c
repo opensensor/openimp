@@ -1989,8 +1989,12 @@ static void t20_rc_start(T30HelixEncoder *encoder)
         p.super_p_bits = INT32_MAX;
     }
     p.method = hp->rc_mode == HW_RC_MODE_CBR ? 1u : smart ? 3u : 2u;
-    /* IMP_Encoder_SetChangeRef (i264e parameter 12 -> controller E+216): default on */
-    p.mb_rc2 = hp->change_ref_off ? 0u : 1u;
+    /* IMP_Encoder_SetChangeRef (i264e parameter 12 -> controller E+216, default on): with it the OEM codes a
+     * SMART picture of an H1M / long IDR period structure again with another reference
+     * (i264e_get_prev_fram_dec, i264e_ratecontrol_is_reenc_end, i264e_dec_ref_pic_remark) and keeps the
+     * smaller try.  OpenIMP does not code that second try, so the controller is kept from asking
+     * for it (docs/T20_HSKIP.md); the OEM controller decisions are tested with the flag on and off. */
+    p.mb_rc2 = 0u;
     p.width = hp->width;
     p.height = hp->height;
     p.gop = hp->gop_length;
@@ -2039,7 +2043,7 @@ static void t20_rc_start(T30HelixEncoder *encoder)
          * macroblock rate control */
         RCT10_DefaultParams(&q);
         q.method = p.method;
-        q.mb_rc2 = p.mb_rc2;
+        q.mb_rc2 = 0u;                  /* see t20_rc_start above */
         q.width = p.width;
         q.height = p.height;
         q.gop = p.gop;
@@ -2902,18 +2906,6 @@ static int t20_rc_gopstart(const T30HelixEncoder *e, int idr)
     if (e->hs_on && e->hs.gop)
         return e->hs_pic.counter % e->hs.gop == 0;
     return idr;
-}
-
-/* IMP_Encoder_SetChangeRef: i264e_reconfig copies the flag into the controller state of the
- * next picture (E+216 / T10 E+225: a SMART IDR that is too large is coded again) */
-static void t20_change_ref_apply(T30HelixEncoder *e)
-{
-    uint32_t on = e->params.change_ref_off ? 0u : 1u;
-
-    if (e->t20rc_on)
-        e->t20rc.params.mb_rc2 = on;
-    else if (e->t10rc_on)
-        e->t10rc.params.mb_rc2 = on;    /* the T10 branch reads the flag when the controller is set up */
 }
 
 /* T20 only (the OEM tests its CPU id): the controller reports a scene cut */
@@ -3983,7 +3975,6 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
     next.hskip_m = requested->hskip_m;
     next.hskip_n = requested->hskip_n;
     next.hskip_flags = requested->hskip_flags;
-    next.change_ref_off = requested->change_ref_off;
     /* IMP_Encoder_SetMbRC: a change restarts the OEM controller with or
      * without the macroblock QP table (the OEM re-runs
      * i264e_ratecontrol_init on a parameter change) */
@@ -4024,15 +4015,12 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
         cmp.hskip_n = encoder->params.hskip_n;
         cmp.same_scene_gops = encoder->params.same_scene_gops;
         cmp.hskip_flags = encoder->params.hskip_flags;
-        cmp.change_ref_off = encoder->params.change_ref_off;
         if (!memcmp(&cmp, &encoder->params, sizeof(cmp)) && !t20_range_changed) {
             encoder->params.hskip_type = next.hskip_type;
             encoder->params.hskip_m = next.hskip_m;
             encoder->params.hskip_n = next.hskip_n;
             encoder->params.same_scene_gops = next.same_scene_gops;
             encoder->params.hskip_flags = next.hskip_flags;
-            encoder->params.change_ref_off = next.change_ref_off;
-            t20_change_ref_apply(encoder);
             return 0;
         }
     }

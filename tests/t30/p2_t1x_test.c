@@ -113,6 +113,9 @@ int AL_Codec_Encode_SetBitRate(void *c, int a, int b) { (void)c; (void)a; (void)
 int AL_Codec_Encode_SetQpBounds(void *c, int a, int b) { (void)c; (void)a; (void)b; return 0; }
 int AL_Codec_Encode_SetDefaultParam(void *p) { (void)p; return 0; }
 int AL_Codec_Encode_SetSameSceneGops(void *c, uint32_t g) { (void)c; (void)g; return 0; }
+static int hs_calls, hs_type = -1, hs_m, hs_n, hs_scene, hs_black;
+int AL_Codec_Encode_SetHSkip(void *c, uint32_t t, uint32_t m, uint32_t n, int sc, int bl)
+{ (void)c; hs_calls++; hs_type = (int)t; hs_m = (int)m; hs_n = (int)n; hs_scene = sc; hs_black = bl; return 0; }
 int AL_Codec_Encode_SetMbRC(void *c, int e) { (void)c; mbrc_calls++; mbrc_value = e; return 0; }
 int AL_Codec_Encode_SetColor2Grey(void *c, int e) { (void)c; c2g_calls++; c2g_value = e; return 0; }
 static uint8_t roi_entry[8][7];
@@ -245,6 +248,22 @@ int main(void)
     CHECK(IMP_Encoder_GetChnColor2Grey(0, &c2g) == 0 && c2g.enable);
     c2g.enable = 0;
     CHECK(IMP_Encoder_SetChnColor2Grey(0, &c2g) == 0 && c2g_value == 0);
+
+#if defined(PLATFORM_T20)
+    {
+        /* T10/T20: HSkip structure, black enhancement and ChangeRef reach the encoder (src/hskip) */
+        IMPEncoderAttrHSkip hsk;
+        extern int IMP_Encoder_SetChnHSkipBlackEnhance(int, const int);
+
+        memset(&hsk, 0, sizeof(hsk));
+        CHECK(IMP_Encoder_GetChnHSkip(0, &hsk) == 0);
+        hsk.skipType = IMP_Encoder_STYPE_N1X;
+        hs_calls = 0;
+        CHECK(IMP_Encoder_SetChnHSkip(0, &hsk) == 0 && hs_calls == 1 && hs_type == 0);
+        CHECK(IMP_Encoder_SetChnHSkipBlackEnhance(0, 1) == 0 && hs_black == 1);
+        CHECK(IMP_Encoder_SetChnHSkipBlackEnhance(0, 0) == 0 && hs_black == 0);
+    }
+#endif
 
     /* MbRC */
     CHECK(IMP_Encoder_SetMbRC(0, 1) == 0 && mbrc_value == 1);

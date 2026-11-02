@@ -9577,14 +9577,6 @@ int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
     return 0;
 }
 
-int AL_Codec_Encode_SetChangeRef(void *codec, int enable)
-{
-    if (codec == NULL)
-        return -1;
-    ((AL_CodecEncode *)codec)->hw_params.change_ref_off = enable ? 0u : 1u;
-    return 0;
-}
-
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 /* IMP_Encoder_InsertUserData: queue one payload (SEI in front of the next
  * picture).  -1 when max_cnt payloads are already waiting (the OEM: "no

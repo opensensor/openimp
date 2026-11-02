@@ -114,7 +114,7 @@ void RCT20_Free(RcT20 *rc);
 /* i264e_ratecontrol_start (0x3caa8) marks a picture of an HSkip structure for the controller:
  * cond = ((skip type N1X and the picture opens a GOP) or H1M_FALSE) and frame type SBASE, or
  * H1M_TRUE and frame type LBASE (src/hskip).  The byte is 2 while the controller plans the
- * picture and 1 afterwards (the re-encode judge, SetChangeRef), else it keeps the value of the
+ * picture and 1 afterwards (the re-encode judge, the SetChangeRef second try), else it keeps the value of the
  * last picture.  Call before RCT20_Start; 0 (default) is a plain GOP. */
 void RCT20_HSkipClass(RcT20 *rc, int cond);
 
