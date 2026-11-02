@@ -234,6 +234,14 @@ static int fake_fail(int error)
     return -1;
 }
 
+#if defined(PLATFORM_T30)
+/* T30 (Lu-Fi/openimp#178): the vendor libimp sends the format as the
+ * 0x5c-byte object 0xc05c56c3 / 0x405c56c4; any other form of the format
+ * ioctl (the old 0x4c bytes) is counted. */
+static uint32_t fake_fmt_set[0x5c / 4];
+static int fake_fmt_sets, fake_fmt_gets, fake_fmt_wrong;
+#endif
+
 int __wrap_ioctl(int fd, unsigned long request, void *arg)
 {
     struct fake_chan *c;
@@ -325,8 +333,25 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
             c->queued--;
         }
         break;
+#if defined(PLATFORM_T30)
+    case 0xc05c56c3u:                           /* SET_FMT, 0x5c bytes */
+        if (fake_inject == INJ_SET_FMT) {
+            ret = fake_fail(EINVAL);
+            break;
+        }
+        memcpy(fake_fmt_set, arg, sizeof(fake_fmt_set));
+        fake_fmt_sets++;
+        break;
+    case 0x405c56c4u:                           /* GET_FMT, 0x5c bytes */
+        fake_fmt_gets++;
+        break;
+#endif
     default:
         /* format, crop and scaler ioctls */
+#if defined(PLATFORM_T30)
+        if ((request & 0xffffu) == 0x56c3u || (request & 0xffffu) == 0x56c4u)
+            fake_fmt_wrong++;
+#endif
         if (fake_inject == INJ_SET_FMT)
             ret = fake_fail(EINVAL);
         break;
@@ -1182,6 +1207,51 @@ static void test_rotate(void)
 }
 #endif
 
+#if defined(PLATFORM_T30)
+/* T30 format ioctl: 0xc05c56c3 with the 0x5c-byte object of the vendor
+ * libimp (type, 12-word pix header, crop, scaler, rate); the extra pix
+ * words stay zero. */
+static void test_format_abi(void)
+{
+    IMPFSChnAttr a = attr_for(1920, 1080, 2);
+    static const uint32_t zero[4];
+    const uint32_t *w = fake_fmt_set;
+
+    a.crop.enable = 1;
+    a.crop.left = 16;
+    a.crop.top = 8;
+    a.crop.width = 1600;
+    a.crop.height = 900;
+    a.scaler.enable = 1;
+    a.scaler.outwidth = 640;
+    a.scaler.outheight = 360;
+    fake_fmt_sets = fake_fmt_gets = fake_fmt_wrong = 0;
+    memset(fake_fmt_set, 0xa5, sizeof(fake_fmt_set));
+    CHECK(IMP_FrameSource_CreateChn(0, &a) == 0, "format abi: create");
+    CHECK(IMP_FrameSource_EnableChn(0) == 0, "format abi: enable");
+    CHECK(fake_fmt_sets == 1, "format abi: %d 0xc05c56c3 calls", fake_fmt_sets);
+    CHECK(fake_fmt_wrong == 0, "format abi: %d format ioctls of another form",
+          fake_fmt_wrong);
+    CHECK(w[0] == 1, "type %u", w[0]);
+    CHECK(w[3] == 0x3231564eu, "pixelformat 0x%x", w[3]);
+    CHECK(w[4] == 0, "field %u", w[4]);
+    CHECK(w[5] == 0 && w[6] == 0, "bytesperline/sizeimage %u/%u", w[5], w[6]);
+    CHECK(w[7] == 8, "colorspace %u", w[7]);
+    CHECK(w[8] == 0, "priv %u", w[8]);
+    CHECK(memcmp(&w[9], zero, sizeof(zero)) == 0,
+          "extra pix words %x %x %x %x", w[9], w[10], w[11], w[12]);
+    CHECK(w[13] == 1 && w[14] == 8 && w[15] == 16 && w[16] == 1600 &&
+          w[17] == 900, "crop %u top %u left %u %ux%u", w[13], w[14], w[15],
+          w[16], w[17]);
+    CHECK(w[18] == 1 && w[19] == 640 && w[20] == 360, "scaler %u %ux%u",
+          w[18], w[19], w[20]);
+    CHECK(w[21] == 0 && w[22] == 1, "rate bits %u mask %u", w[21], w[22]);
+    CHECK(IMP_FrameSource_DisableChn(0) == 0, "format abi: disable");
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "format abi: destroy");
+    check_clean("format abi");
+}
+#endif
+
 int main(void)
 {
     report = fdopen(dup(2), "w");
@@ -1216,6 +1286,9 @@ int main(void)
     RUN(disable_during_dqbuf);
     RUN(delay_fifo);
     RUN(rotate);
+#if defined(PLATFORM_T30)
+    RUN(format_abi);
+#endif
     if (failures) {
         fprintf(report, "fs_lifecycle_test: %d failure(s)\n", failures);
         return 1;

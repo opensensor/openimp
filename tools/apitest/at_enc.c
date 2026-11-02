@@ -1923,7 +1923,7 @@ int enc_transcfg_run(void)
 
             memset(&o, 0x5a, sizeof(o));
             g = IMP_Encoder_GetH264TransCfg(chn, &o);
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
             printf("transcfg: picture %d Get -> %d chroma %d\n", k, g, (int)o.chroma_qp_index_offset);
 #else
             printf("transcfg: picture %d Get -> %d chroma %d intra %u inter %u scaling %d\n", k, g, (int)o.chroma_qp_index_offset,
