@@ -127,7 +127,8 @@ int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
  * (from the next picture).  maxSameSceneCnt goes through SetSameSceneGops. */
 int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
                              int scenecut, int black);
-
+/* T20/T10 IMP_Encoder_SetChangeRef (OEM i264e parameter 12, from the next picture) */
+int AL_Codec_Encode_SetChangeRef(void *codec, int enable);
 /* IMP_Encoder_InsertUserData (T20/T21/T23/T30 native Helix): SEI payload for
  * the next picture; -1 when the queue is full. */
 int AL_Codec_Encode_InsertUserData(void *codec, const void *data,

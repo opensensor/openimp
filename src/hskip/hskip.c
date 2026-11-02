@@ -204,3 +204,65 @@ int hskip_rc_cond(const HSkip *s, const HSkipPic *pic, int t10)
         return 0;
     }
 }
+
+/* the picture classes of the second try: type 5 with an SBASE, type 6 with an LBASE picture */
+static int hs_second_try_class(const HSkip *s, const HSkipPic *pic)
+{
+    if (pic->idr)
+        return 0;
+    return (s->type == 5 && pic->ftype == HSKIP_FT_SBASE) || (s->type == 6 && pic->ftype == HSKIP_FT_LBASE);
+}
+
+int32_t hskip_prev_frame(const HSkip *s, const HSkipPic *pic)
+{
+    int32_t a = pic->ref, b = pic->recon;
+
+    if (!hs_second_try_class(s, pic))
+        return -1;
+    if (a == 0)
+        return b == 1 ? 2 : 1;
+    if (b != 0)
+        return 0;
+    return a == 1 ? 2 : 1;
+}
+
+void hskip_remark(const HSkip *s, HSkipPic *pic)
+{
+    if (!hs_second_try_class(s, pic))
+        return;
+    pic->reorder = 0;
+    if (s->type == 5) {
+        pic->mmco = 0;
+        pic->ftype = HSKIP_FT_ENHANCE;
+    } else {
+        pic->mmco = 1;
+    }
+}
+
+int hskip_keep_second(uint32_t second_bytes, uint32_t first_bytes)
+{
+    return (int32_t)second_bytes < (int32_t)first_bytes;
+}
+
+int hskip_qp_from_idr(const HSkip *s, const HSkipPic *pic)
+{
+    if (pic->idr)
+        return 0;
+    if (pic->ftype == HSKIP_FT_LBASE)
+        return !(s->same != 0 && (s->type == 5 || s->type == 6));
+    if (pic->ftype == HSKIP_FT_SBASE)
+        return s->same == 0 && s->type == 5;
+    return 0;
+}
+
+int hskip_scenecut(const HSkip *s, const HSkipPic *pic, int enable, uint32_t fps_num, uint32_t fps_den, uint32_t bits,
+                   uint32_t last_idr_bits)
+{
+    if (!enable || (s->type != 5 && s->type != 6) || !fps_num)
+        return 0;
+    if ((pic->counter * fps_den) % fps_num != 0)
+        return 0;
+    if (pic->ftype != HSKIP_FT_LBASE && pic->ftype != HSKIP_FT_SBASE)
+        return 0;
+    return last_idr_bits < bits;
+}

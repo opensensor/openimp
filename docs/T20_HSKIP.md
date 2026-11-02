@@ -37,11 +37,27 @@ type of `rcAttr.attrHSkip.hSkipAttr` is not `IMP_Encoder_STYPE_N1X`.  OpenIMP's 
 * `IMP_Encoder_SetChangeRef` -> `i264e_change_ref_set` (flag applied by `i264e_reconfig` with the
   next picture, default on) -> the controller flag E+216 (T10 E+225, read when the controller is
   set up).  In SMART mode the re-encode judge asks for a second try of the picture classes above
-  (flag E+0x90385); `i264e_ratecontrol_is_reenc` then arms `slice_write`: the picture is coded again
-  into the previous frame's buffer (`i264e_get_prev_fram_dec`), `i264e_ratecontrol_is_reenc_end`
-  keeps the smaller of the two tries and `i264e_dec_ref_pic_remark` rewrites the header commands of
-  the kept one.  Device effect on the vendor stack: IDR sizes of a SMART H1M stream differ strongly
-  with the flag on and off.
+  (flag E+0x90385).  The second try itself is `i264e_slice_write`, and it is not tied to the flag:
+  **every** re-encode of an H1M_FALSE SBASE or H1M_TRUE LBASE picture (also the super-frame
+  re-encode of CBR / VBR) is coded with another reference.  The kept first try is saved
+  (`i264e_ratecontrol_is_reenc`), the picture is coded again with the QP of the judge and the
+  reference named by `i264e_get_prev_fram_dec` (the one reconstruction buffer that is neither the
+  reference nor the reconstruction buffer of the picture, i.e. the previous picture of the three-buffer
+  ring), `i264e_ratecontrol_is_reenc_end` keeps the smaller try (payload bytes) and
+  `i264e_dec_ref_pic_remark` gives the kept second try its header commands: no reference list
+  modification (the decoder's default reference is the previous picture), an LBASE picture keeps its
+  MMCO, an SBASE picture gets no MMCO and the frame type ENHANCE.  The judge then looks at the kept
+  picture again (up to four tries in OpenIMP).
+* `i264e_decide_slice_qp` (0x428b8, every picture): LBASE pictures, and SBASE pictures of H1M_FALSE
+  without an IDR period of several GOPs, are coded at the QP of the last IDR picture instead of the
+  controller's QP (`E+0x90450`, written by `i264e_ratecontrol_end` for every I slice).
+* `bEnableScenecut` (`i264e_decide_reset_slice_to_idr`, 0x32aa0, after the first try of a picture):
+  an LBASE / SBASE picture of an H1M type, at a whole second of the frame rate
+  (`counter * fps_den % fps_num == 0`), that is larger than the last IDR picture (`E+0x9044c`, bits)
+  is coded again as an IDR picture: the rate controller is set up again
+  (`i264e_ratecontrol_init`), the structure restarts (`i264e_decide_slice_type_and_rd` with the
+  force flag), the IDR QP is not below the QP of the first try, SPS / PPS precede the IDR, and the
+  next IDR follows one GOP later.
 
 ## Proof
 
@@ -52,15 +68,17 @@ type of `rcAttr.attrHSkip.hSkipAttr` is not `IMP_Encoder_STYPE_N1X`.  OpenIMP's 
 
 ## Not done
 
-* **`SetChangeRef`: not implemented.**  OpenIMP stores the value and keeps the controller from asking
-  for the second try (`mb_rc2` 0 in `t20_rc_start`), because the second try needs the three pieces
-  above (previous-frame buffer, keep-the-smaller, header remark) and the hardware reconstruction
-  buffer juggling of `slice_write`.  The controller decisions themselves are ported and tested with
-  the flag on and off (`tests/rc_t20`, `tests/rc_t10`).  Visible difference to the vendor stack:
-  SMART streams of the skip types H1M / N1X with an IDR period of several GOPs (the flag is on by
-  default there).
-* `bEnableScenecut` (i264e_decide_reset_slice_to_idr 0x32aa0): the H1M structures can turn a coded
-  picture that is larger than the last IDR into an IDR once per second and code it again; the flag is
-  stored and read back only.
-* A super-frame re-encode of a picture inside an H1M structure uses the plain header of the first try
-  (same code as the ChangeRef second try above).
+* `SetChangeRef` / second try: the rate controller of OpenIMP does not see exactly the picture sizes
+  of the OEM (SMART is a port of the controller, but the hardware statistics and the first-try sizes
+  differ: on the same camera and scene the OEM IDR is 3.5 kB, OpenIMP's 1.6 kB, and the OEM keeps the
+  second try for all 21 SBASE pictures of a 130-picture stream while OpenIMP keeps it for 9 to 10: the
+  second try has to be smaller).  The mechanism (which buffer, which header, which try is kept) is
+  tested against the OEM code, the kept / not kept ratio is a result of the picture sizes.
+* OEM quirks that OpenIMP does not copy: when the first try is kept after a second try, the OEM
+  restores the bitstream but not the slice QP of the header (`E+0xab8`) and not the reconstruction
+  buffer, so the picture header can name another QP than the data was coded with (read from the
+  decompiled `i264e_slice_write`, not proven on a stream; two of the OEM scene-cut streams on the camera
+  decode with errors, the cause was not looked into; OpenIMP's streams decode clean).  OpenIMP writes the header of the try it keeps; the
+  reconstruction buffer then holds the second try's picture (as in the OEM), so the encoder and a
+  decoder can differ until the next IDR in that case (counted in `cr_first_kept`).
+* `ChnDemask` and `ChnH264Denoise`/`ChnH264Demask` are not implemented (see the issue comments).

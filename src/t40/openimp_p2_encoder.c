@@ -1350,6 +1350,7 @@ extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
 extern int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
 extern int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
                                     int scenecut, int black);
+extern int AL_Codec_Encode_SetChangeRef(void *codec, int enable);
 extern int AL_Codec_Encode_SetMbRC(void *codec, int enable);
 extern int AL_Codec_Encode_SetColor2Grey(void *codec, int enable);
 extern int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
@@ -6327,6 +6328,12 @@ int IMP_Encoder_SetChangeRef(int channel, int enable)
     pthread_mutex_lock(&p2_channels[channel].lock);
     if (p2_channels[channel].created) {
         p2_channels[channel].change_ref = enable != 0;
+#if defined(PLATFORM_T20)
+        /* i264e_change_ref_set: the rate controller's "change reference" flag
+         * (the SMART controller codes an oversized IDR again), next picture */
+        if (p2_channels[channel].codec)
+            (void)AL_Codec_Encode_SetChangeRef(p2_channels[channel].codec, enable != 0);
+#endif
         ret = 0;
     }
     pthread_mutex_unlock(&p2_channels[channel].lock);

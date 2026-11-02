@@ -1559,6 +1559,8 @@ int enc_hskip_run(void)
     FILE *dump = NULL;
     char nals[96];
     unsigned long total = 0;
+    int flick = hs_env("HSKIP_FLICKER", 0);
+    int (*sbright)(unsigned char) = flick > 0 ? (int (*)(unsigned char))dlsym((void *)0, "IMP_ISP_Tuning_SetBrightness") : NULL;
 
     if (grp_up(0, 0) != 0) { gfree(a); return -1; }
     fill_attr(a, CODEC_H264, gop);
@@ -1600,6 +1602,12 @@ int enc_hskip_run(void)
         int trunc = 0;
         size_t n;
 
+        if (flick > 0 && sbright && (k % flick == 3 || k % flick == 13)) {
+            /* a scene change that is the same for both libraries (HSKIP_FLICKER=N, N > 13): the ISP brightness jumps to white at
+             * picture 3 and back at picture 13 of every N; the change reaches the encoder about two pictures later, so the
+             * large picture after the way back is picture 15 (a whole second at 15 fps, a base picture of the H1M types) */
+            sbright(k % flick == 3 ? 255 : 128);
+        }
         if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("hskip: poll timeout at picture %d\n", k); break; }
         if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("hskip: GetStream failed at picture %d\n", k); break; }
         gchk(s);
