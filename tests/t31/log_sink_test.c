@@ -6,9 +6,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "imp_log_fun.h"
+
+/* interposes libc: the child below plays a set-id process (euid != uid) */
+static int fake_setid;
+uid_t geteuid(void) { return fake_setid ? getuid() + 1 : getuid(); }
+
+/* review L5: a set-id process ignores OPENIMP_LOGGER_DEV (the device would
+ * be written with elevated rights); a normal process honours it */
+static void setid_ignores_env(void)
+{
+    char dev[] = "/tmp/openimp-log-setid-XXXXXX";
+    struct stat st;
+    int fd = mkstemp(dev), status;
+    pid_t pid;
+
+    assert(fd >= 0);
+    pid = fork();
+    assert(pid >= 0);
+    if (!pid) {
+        fake_setid = 1;
+        setenv("OPENIMP_LOGGER_DEV", dev, 1);
+        imp_set_log_level(0);
+        imp_log_fun(6, IMP_LOG_OP_ALL, IMP_LOG_OUT_SERVER, "tag", "f.c", 1, "fn", "x\n");
+        _exit(0);
+    }
+    assert(waitpid(pid, &status, 0) == pid && WIFEXITED(status));
+    assert(fstat(fd, &st) == 0 && st.st_size == 0);
+    unlink(dev);
+    close(fd);
+}
 
 int main(void)
 {
@@ -18,6 +49,7 @@ int main(void)
     char *msg;
 
     assert(fd >= 0);
+    setid_ignores_env();
     setenv("OPENIMP_LOGGER_DEV", dev, 1);
     memset(big, 'T', sizeof(big) - 1);
     big[sizeof(big) - 1] = 0;
