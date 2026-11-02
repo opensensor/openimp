@@ -149,6 +149,12 @@ extern int OpenIMP_T40_FrameSource_WaitFrame(int channel, void **frame,
 #else
 #define P2_MAX_CHANNELS 8
 #endif
+
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* The vendor T21 library has six encoder channels; Set/GetFisheyeEnableStatus and Set/GetH264TransCfg answer -1 above that
+ * (OpenIMP keeps eight channels for the other calls). */
+#define P2_T21_VENDOR_CHANNELS 6
+#endif
 /* T40/T41: hidden slots behind the public channels for the unbound
  * encoder (IMP_Encoder_YuvInit); the vendor creates a standalone codec there
  * as well, no public channel number is used up. */
@@ -1371,6 +1377,9 @@ extern int AL_Codec_Encode_SetColor2Grey(void *codec, int enable);
 extern int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
                                   const uint8_t entry[7]);
 extern int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset);
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+extern int AL_Codec_Encode_GetChromaQpOffset(void *codec, int *offset);
+#endif
 #endif
 #if defined(PLATFORM_T20)
 /* HW_SUPERFRM_NONE / HW_SUPERFRM_REENCODE in hw_encoder.h */
@@ -2344,8 +2353,9 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
      * method 3 (its own SMART controller), not as VBR. */
     (void)AL_Codec_Encode_SetRcExtras(ch->codec, &attr->rcAttr.attrRcMode);
 #endif
-#if defined(PLATFORM_T20)
-    /* OEM CreateChn: the fisheye flag is i264e parameter 0x72 (src/fisheye) */
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21)
+    /* OEM CreateChn: the fisheye flag is an i264e parameter (src/fisheye; T10/T20 word 0x72, T21 1.0.33 the same
+     * flag two words further) */
     (void)AL_Codec_Encode_SetFisheye(ch->codec, ch->fisheye);
 #endif
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21)
@@ -6344,13 +6354,18 @@ int IMP_Encoder_GetChnFrmUsedMode(int channel, IMPEncoderAttrFrmUsed *attr)
 /* OEM: a flag in the channel record, settable only while the channel is not
  * created (-1 afterwards).  CreateChn hands it to the encoder (i264e parameter
  * 0x72): T10/T20 build, the per-picture ROI of src/fisheye (OEM
- * i264e_icodec_enc); the other builds keep it as a stored flag. */
+ * i264e_icodec_enc); T21 builds the same table, which the T21 hardware path never
+ * reads (docs/T21_FISHEYE.md); the other builds keep it as a stored flag. */
 int IMP_Encoder_SetFisheyeEnableStatus(int channel, int enable)
 {
     int ret = -1;
 
     if (!p2_valid_channel(channel))
         return -1;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    if (channel >= P2_T21_VENDOR_CHANNELS)
+        return -1;
+#endif
     EncoderInit();
     pthread_mutex_lock(&p2_channels[channel].lock);
     if (!p2_channels[channel].created) {
@@ -6365,6 +6380,10 @@ int IMP_Encoder_GetFisheyeEnableStatus(int channel, int *enable)
 {
     if (!p2_valid_channel(channel) || !enable)
         return -1;
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    if (channel >= P2_T21_VENDOR_CHANNELS)
+        return -1;
+#endif
     EncoderInit();
     pthread_mutex_lock(&p2_channels[channel].lock);
     *enable = p2_channels[channel].fisheye != 0;
@@ -6740,6 +6759,56 @@ int IMP_Encoder_GetSuperFrameCfg(int channel,
     return 0;
 }
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* Vendor T21 libimp 1.0.33 (SetH264TransCfg 0x493dc, GetH264TransCfg 0x4957c, i264e_reconfig_trans_set, i264e_idr_reconfig;
+ * camera A/B in docs/T21_H264TRANS.md): a channel number outside the table or a NULL pointer is -1.  Of an H.264 channel
+ * that exists, Set hands the raw value to the encoder (no range check, 0); the next IDR picture codes it, clamped to
+ * -12..12, in both chroma_qp_index_offset fields of the PPS and in the command list.  Get returns the offset the encoder
+ * codes with NOW (a Set shows only after the next IDR picture), 0 on success.  Any other channel (not created, destroyed,
+ * JPEG): Set does nothing and returns 0, Get returns 0 with the structure zeroed.  (The vendor indexes its channel table
+ * with a negative number without a check and answers 0; OpenIMP says -1.) */
+int IMP_Encoder_SetH264TransCfg(int channel,
+                               const IMPEncoderH264TransCfg *config)
+{
+    P2EncoderChannel *ch;
+    int ret = 0;
+
+    if (!p2_valid_channel(channel) || channel >= P2_T21_VENDOR_CHANNELS || !config)
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec && ch->codec_type == IMP_ENC_TYPE_AVC &&
+        AL_Codec_Encode_SetChromaQpOffset(ch->codec,
+                                          config->chroma_qp_index_offset) != 0)
+        ret = -1;
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
+}
+
+int IMP_Encoder_GetH264TransCfg(int channel,
+                               IMPEncoderH264TransCfg *config)
+{
+    P2EncoderChannel *ch;
+    int ret = 0, offset = 0;
+
+    if (!p2_valid_channel(channel) || channel >= P2_T21_VENDOR_CHANNELS || !config)
+        return -1;
+    EncoderInit();
+    ch = &p2_channels[channel];
+    memset(config, 0, sizeof(*config));
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec && ch->codec_type == IMP_ENC_TYPE_AVC) {
+        if (AL_Codec_Encode_GetChromaQpOffset(ch->codec, &offset) == 0)
+            config->chroma_qp_index_offset = offset;
+        else
+            ret = -1;
+    }
+    pthread_mutex_unlock(&ch->lock);
+    return ret;
+}
+
+#else
 int IMP_Encoder_SetH264TransCfg(int channel,
                                const IMPEncoderH264TransCfg *config)
 {
@@ -6790,6 +6859,8 @@ int IMP_Encoder_GetH264TransCfg(int channel,
     pthread_mutex_unlock(&ch->lock);
     return 0;
 }
+
+#endif /* T21 */
 
 int IMP_Encoder_SetH265TransCfg(int channel,
                                const IMPEncoderH265TransCfg *config)

@@ -9690,11 +9690,34 @@ int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
 
 int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset)
 {
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* T21 1.0.33: any value is accepted and coded as -12..12 */
+    if (offset < -12)
+        offset = -12;
+    else if (offset > 12)
+        offset = 12;
+    if (codec == NULL)
+        return -1;
+#else
     if (codec == NULL || offset < -12 || offset > 12)
         return -1;
+#endif
     ((AL_CodecEncode *)codec)->hw_params.chroma_qp_offset = offset;
     return 0;
 }
+
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* The offset the Helix encoder codes with now (IMP_Encoder_GetH264TransCfg); a Set takes effect with the next IDR */
+int AL_Codec_Encode_GetChromaQpOffset(void *codec, int *offset)
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc || !offset)
+        return -1;
+    *offset = enc->t30_helix ? OpenIMP_T30_HelixChromaQpOffset(enc->t30_helix) : 0;
+    return 0;
+}
+#endif
 
 #if defined(PLATFORM_T20)
 /* IMP_Encoder_SetChnRcTrigLevel: the OEM controller raises the QP cap from

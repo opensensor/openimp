@@ -1,3 +1,5 @@
+# Vendor i264e_icodec_enc vectors (tools/fisheye_oracle.py). T10/T20 libimp 3.12.0 (gcc 4.7.2) generated this file; the output for
+# T21 libimp 1.0.33 (gcc 4.7.2 and gcc 5.4.0) is byte-identical (checked with cmp; md5 of the 'C' lines below 9363fcf6ab70dc39a20bce038ade8ded).
 C 0 0 0 25 1 0 : a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdc
 C 0 0 1 25 1 0 : a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdc
 C 0 0 2 25 1 0 : a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdc

@@ -31,7 +31,7 @@ With the flag clear the table is untouched.  Nothing else in the library reads t
   gets its fisheye region raised to the lowest QP the stream can carry (the vendor writes the 15 and
   produces such a stream).
 * `AL_Codec_Encode_SetFisheye` (`codec-t40.c`) is called by `IMP_Encoder_CreateChn` (`openimp_p2_encoder.c`)
-  with the flag; the other builds (T21, T23, T30, T31, T40) keep the flag as stored state.
+  with the flag (the T21 build too, `docs/T21_FISHEYE.md`); the other builds (T23, T30, T31, T40) keep the flag as stored state.
 
 ## Proof
 
@@ -61,4 +61,5 @@ With the flag clear the table is untouched.  Nothing else in the library reads t
 * T20 CBR: the vendor's macroblock rate control (QP table) saturates the region at picture QP - 12; OpenIMP's
   default CBR has no table (`SetMbRC`), the region reaches 15.
 * A picture whose region macroblocks are all skipped shows no QP in the stream (in both libraries).
-* T21, T23, T30, T31, T40: the flag stays a stored value (T21 has the same vendor code; no T21 camera was used).
+* T21: the vendor function is the same, but the T21 hardware path never reads its table (no region, no ROI effect on a T21 camera
+  in the vendor library either): `docs/T21_FISHEYE.md`.  T23, T30, T31, T40: the flag stays a stored value.

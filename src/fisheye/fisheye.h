@@ -16,6 +16,13 @@
  *     (macroblocks x 0..3, y 0..1) at an absolute QP of 15 or better.
  * With the flag clear the table is left alone.
  *
+ * T21 (libimp 1.0.33, issue #7): i264e_icodec_enc is the same function (tools/fisheye_oracle.py
+ * gives byte-identical vectors for both gcc builds).  But the T21 hardware path
+ * (hwicodec_pf_h264e_t21_enc, H264E_T21_SliceInit) never reads that table: a
+ * stream coded with the flag set shows no region and no application ROI on a T21
+ * camera (docs/T21_FISHEYE.md).  fisheye_roi_hw() is the table the hardware
+ * gets: T10/T20 the table of fisheye_roi(), T21 nothing.
+ *
  * Pure C: tests/fisheye checks it against tools/fisheye_oracle.py (the vendor
  * function run under unicorn).
  */
@@ -31,5 +38,13 @@
  * an I slice (IDR), qp the slice QP of this try. */
 void fisheye_roi(int enable, uint32_t counter, int i_slice, uint32_t fps_num,
                  uint32_t fps_den, int qp, uint8_t roi[8][7]);
+
+/* The regions the encoder hardware is programmed with.  t21 selects the T21
+ * hardware path: no region of the i264e table reaches it.  With the flag set
+ * the application's table is dropped, like the vendor's, and no region 0 is
+ * coded; with the flag clear the table is left alone. */
+void fisheye_roi_hw(int t21, int enable, uint32_t counter, int i_slice,
+                    uint32_t fps_num, uint32_t fps_den, int qp,
+                    uint8_t roi[8][7]);
 
 #endif

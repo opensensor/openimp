@@ -157,6 +157,10 @@ int AL_Codec_Encode_SetRoiAttr(void *codec, const void *roi_attr);
 /* IMP_Encoder_SetH264TransCfg on the native Helix encoder (T20, T21):
  * chroma_qp_index_offset (-12..12) from the next IDR on */
 int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset);
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* T21: the offset the encoder codes with now (a Set is applied with the next IDR) */
+int AL_Codec_Encode_GetChromaQpOffset(void *codec, int *offset);
+#endif
 /* IMP_Encoder_SetSuperFrameCfg for the OEM T20/T10 controller: mode
  * HW_SUPERFRM_NONE or HW_SUPERFRM_REENCODE, thresholds in bits */
 int AL_Codec_Encode_SetSuperFrame(void *codec, uint32_t mode,

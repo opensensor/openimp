@@ -1880,6 +1880,94 @@ static void test_fisheye(int t10)
 #endif
 
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* T21 IMP_Encoder_SetFisheyeEnableStatus (src/fisheye, docs/T21_FISHEYE.md): the vendor's i264e table never reaches the T21
+ * hardware.  Without the flag the application's window is programmed (beyond vendor), with it the table is dropped and no region
+ * 0 is coded, on I pictures and at whole seconds alike */
+static void test_fisheye_t21(void)
+{
+    static const uint8_t roi[8][7] = { {1, 1, (uint8_t)-4, 0, 39, 0, 22}, {0}, {0}, {0}, {0}, {0}, {0}, {0} };
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+    PictureInfo info;
+    unsigned int n, flag, late, idrs = 0;
+
+    unsetenv("OPENIMP_T21_ROI");
+    for (late = 0; late < 2u; late++)
+    for (flag = 0; flag < 2u; flag++) {
+        memset(&params, 0, sizeof(params));
+        params.width = 640;
+        params.height = 360;
+        params.fps_num = 25;
+        params.fps_den = 1;
+        params.gop_length = 20;
+        params.rc_mode = HW_RC_MODE_FIXQP;
+        params.qp = 30;
+        params.min_qp = 20;
+        params.max_qp = 45;
+        params.fisheye = late ? 0u : flag;      /* late: IMP_Encoder_CreateChn sets the flag after the encoder was made */
+        assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+        if (late) {
+            params.fisheye = flag;
+            assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
+        }
+        assert(OpenIMP_T30_HelixSetRoi(encoder, roi) == 0);
+        for (n = 0; n < 60u; n++) {
+            unsigned int i;
+
+            assert(encode(encoder, &info) == 0);
+            if (info.idr)
+                idrs++;
+            if (!flag) {
+                if (n > 0u)
+                    assert(list_roi[0] != 0u);          /* the application's window */
+                continue;
+            }
+            for (i = 0; i < 10u; i++)
+                assert(list_roi[i] == 0u);
+        }
+        OpenIMP_T30_HelixDestroy(encoder);
+    }
+    assert(idrs == 12u);                                /* IDRs at 0, 20, 40 in all four runs */
+}
+
+/* T21 IMP_Encoder_SetH264TransCfg (docs/T21_H264TRANS.md): a value outside -12..12 is coded as -12 or 12 (vendor 1.0.33), a new
+ * value is the encoder's own only from the next IDR picture on (the vendor's Get shows the applied value) */
+static void test_chroma_clamp_t21(void)
+{
+    static const int ask[] = { 13, -13, 100, 5 }, want[] = { 12, -12, 12, 5 };
+    T30HelixEncoder *encoder = create(640, 360, 25, 4);
+    HWEncoderParams p;
+    PictureInfo info;
+    int32_t second;
+    unsigned int k, i;
+
+    memset(&p, 0, sizeof(p));
+    p.width = 640;
+    p.height = 360;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.gop_length = 4;
+    p.rc_mode = HW_RC_MODE_CBR;
+    p.bitrate = 2000000;
+    p.qp = 30;
+    p.min_qp = 20;
+    p.max_qp = 45;
+    assert(encode(encoder, &info) == 0 && info.idr);
+    assert(OpenIMP_T30_HelixChromaQpOffset(encoder) == 0);
+    for (k = 0; k < 4u; k++) {
+        p.chroma_qp_offset = ask[k];
+        assert(OpenIMP_T30_HelixUpdateParams(encoder, &p) == 0);
+        for (i = 0; i < 3u; i++) {
+            assert(encode(encoder, &info) == 0 && !info.idr);
+            assert(OpenIMP_T30_HelixChromaQpOffset(encoder) == (k ? want[k - 1] : 0));
+        }
+        assert(encode(encoder, &info) == 0 && info.idr);
+        assert(OpenIMP_T30_HelixChromaQpOffset(encoder) == want[k]);
+        assert(pps_chroma_offset(&second) == want[k] && second == want[k]);
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+}
+
 int OpenIMP_T21_PpsWithChromaOffset(bs_t *bits, int offset);
 
 /* the rewritten T21 PPS with offset 0 is the stock one bit for bit */
@@ -1924,6 +2012,8 @@ int main(void)
     test_eprc_runtime_hskip();
     test_t21_hskip();
     test_eprc_mbrc();
+    test_fisheye_t21();
+    test_chroma_clamp_t21();
 #endif
 #if defined(PLATFORM_T20)
     test_t20_rate_control();

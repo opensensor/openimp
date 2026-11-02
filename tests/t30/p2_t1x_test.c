@@ -137,6 +137,11 @@ int AL_Codec_Encode_SetRoi(void *c, uint32_t i, const uint8_t e[7])
 { (void)c; if (i >= 8u) return -1; roi_calls++; memcpy(roi_entry[i], e, 7); return 0; }
 int AL_Codec_Encode_SetChromaQpOffset(void *c, int o)
 { (void)c; chroma_calls++; chroma_value = o; return 0; }
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+static int chroma_applied;      /* what the encoder codes with now (the IDR picture takes chroma_value over) */
+int AL_Codec_Encode_GetChromaQpOffset(void *c, int *o)
+{ (void)c; *o = chroma_applied; return 0; }
+#endif
 int IMP_Encoder_SetChnCrop(int encChn, const IMPEncoderCropCfg *cfg);
 int IMP_Encoder_GetChnCrop(int encChn, IMPEncoderCropCfg *cfg);
 static int crop_calls, crop_en;
@@ -252,7 +257,7 @@ int main(void)
         CHECK(IMP_Encoder_DestroyChn(2) == 0);
     }
 #endif
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21)
     {
         /* IMP_Encoder_SetFisheyeEnableStatus: settable before CreateChn only; CreateChn hands the flag to the
          * encoder (i264e parameter 0x72, src/fisheye) */
@@ -267,6 +272,12 @@ int main(void)
         CHECK(IMP_Encoder_SetFisheyeEnableStatus(3, 0) == -1);
         CHECK(IMP_Encoder_GetFisheyeEnableStatus(3, &fe) == 0 && fe == 1);
         CHECK(IMP_Encoder_DestroyChn(3) == 0);
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+        /* the vendor T21 library has six channels */
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(6, 1) == -1 && IMP_Encoder_GetFisheyeEnableStatus(6, &fe) == -1);
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(5, 1) == 0 && IMP_Encoder_GetFisheyeEnableStatus(5, &fe) == 0 && fe == 1);
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(5, 0) == 0);
+#endif
     }
 #endif
 
@@ -416,6 +427,38 @@ int main(void)
     CHECK(dn.dnType == 0);
 #endif
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+    /* H264TransCfg, vendor T21 semantics (docs/T21_H264TRANS.md): the raw value reaches the codec (which codes it clamped), Get
+     * shows what the encoder codes with now (the next IDR picture applies a Set), a channel that does not exist answers 0 */
+    {
+        int calls;
+
+        memset(&tr, 0, sizeof(tr));
+        tr.chroma_qp_index_offset = -3;
+        CHECK(IMP_Encoder_SetH264TransCfg(0, &tr) == 0 && chroma_value == -3);
+        memset(&tr, 0x5a, sizeof(tr));
+        CHECK(IMP_Encoder_GetH264TransCfg(0, &tr) == 0 && tr.chroma_qp_index_offset == 0);       /* not applied yet */
+        chroma_applied = -3;                                                                       /* the IDR picture */
+        CHECK(IMP_Encoder_GetH264TransCfg(0, &tr) == 0 && tr.chroma_qp_index_offset == -3);
+        tr.chroma_qp_index_offset = 13;
+        calls = chroma_calls;
+        CHECK(IMP_Encoder_SetH264TransCfg(0, &tr) == 0 && chroma_calls == calls + 1 && chroma_value == 13);
+        tr.chroma_qp_index_offset = 100;
+        CHECK(IMP_Encoder_SetH264TransCfg(1, &tr) == 0 && chroma_value == 100);
+        /* not created (4), destroyed (2): Set does nothing and answers 0, Get 0 with a zeroed structure */
+        calls = chroma_calls;
+        CHECK(IMP_Encoder_SetH264TransCfg(4, &tr) == 0 && IMP_Encoder_SetH264TransCfg(2, &tr) == 0 && chroma_calls == calls);
+        memset(&tr, 0x5a, sizeof(tr));
+        CHECK(IMP_Encoder_GetH264TransCfg(4, &tr) == 0 && tr.chroma_qp_index_offset == 0);
+        memset(&tr, 0x5a, sizeof(tr));
+        CHECK(IMP_Encoder_GetH264TransCfg(2, &tr) == 0 && tr.chroma_qp_index_offset == 0);
+        /* channel 6 and above, NULL */
+        memset(&tr, 0x5a, sizeof(tr));
+        CHECK(IMP_Encoder_SetH264TransCfg(6, &tr) == -1 && IMP_Encoder_GetH264TransCfg(6, &tr) == -1);
+        CHECK(IMP_Encoder_SetH264TransCfg(0, NULL) == -1 && IMP_Encoder_GetH264TransCfg(0, NULL) == -1);
+        chroma_applied = 0;
+    }
+#else
     /* H264TransCfg: the chroma QP offset (-12..12) reaches the codec */
     memset(&tr, 0, sizeof(tr));
     tr.chroma_qp_index_offset = 0;
@@ -427,6 +470,7 @@ int main(void)
           tr.chroma_qp_index_offset == -3);
     tr.chroma_qp_index_offset = 13;
     CHECK(IMP_Encoder_SetH264TransCfg(0, &tr) == -1 && chroma_calls == 2);
+#endif
 
     /* QpgMode (vendor T21): any value is kept and read back, no range
      * check; a channel that was not created answers 0 and keeps nothing */

@@ -1754,12 +1754,13 @@ int enc_demask_run(void) { return -1; }
 #endif
 
 /* ------------------------------------------------------------------------------------------
- * Explicit case "fisheye" (APITEST_CASES=fisheye, issues #3 #5, T10/T20): H.264 chn 0 with IMP_Encoder_SetFisheyeEnableStatus
+ * Explicit case "fisheye" (APITEST_CASES=fisheye, issues #3 #5 #7, T10/T20/T21): H.264 chn 0 with IMP_Encoder_SetFisheyeEnableStatus
  * before CreateChn.  The vendor encoder (i264e_icodec_enc) clears the ROI table of every picture and codes the top-left 64x32
  * pixels at QP <= 15 on I slices and at whole seconds of the frame rate; the macroblock QPs are read from the stream dump on the
  * host (tools/fisheye_mbqp.c).  Every picture is logged as "pic <n> <bytes>".
  *   FISHEYE_ON (default 1)  FISHEYE_QP (FIXQP at that QP, default 30; 0: CBR)  FISHEYE_GOP (default 40)  FISHEYE_FRAMES (default 100)
  *   FISHEYE_ROI=1 (an application ROI, delta QP -6 over most of the picture, set before the first picture)  FISHEYE_DUMP=<file>
+ *   HSKIP_MAIN=1 (T21: the encoder reads FrameSource ch0 at the sensor size, ch1 is not set up)
  * ------------------------------------------------------------------------------------------ */
 #if !defined(ENC_NEW) && HAS_IMP_Encoder_SetFisheyeEnableStatus
 int enc_fisheye_run(void)
@@ -1776,6 +1777,7 @@ int enc_fisheye_run(void)
 
     if (grp_up(0, 0) != 0) { gfree(a); return -1; }
     fill_attr(a, CODEC_H264, gop);
+    if (getenv("HSKIP_MAIN")) { a->encAttr.picWidth = g_sw; a->encAttr.picHeight = g_sh; }   /* ch0 at the sensor size (T21: no scaled channel) */
     if (fixqp > 0) {
         memset(&a->rcAttr.attrRcMode, 0, sizeof(a->rcAttr.attrRcMode));
         a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_FIXQP;
@@ -1797,7 +1799,8 @@ int enc_fisheye_run(void)
 
         memset(&c, 0, sizeof(c));
         c.u32Index = 0; c.bEnable = true; c.bRelatedQp = true; c.s32Qp = -6;
-        c.rect.p0.x = 0; c.rect.p0.y = 0; c.rect.p1.x = EW - 1; c.rect.p1.y = EH - 1;
+        c.rect.p0.x = 0; c.rect.p0.y = 0;
+        c.rect.p1.x = (getenv("HSKIP_MAIN") ? g_sw : EW) - 1; c.rect.p1.y = (getenv("HSKIP_MAIN") ? g_sh : EH) - 1;
         r = IMP_Encoder_SetChnROI(chn, &c);
         printf("fisheye: SetChnROI (delta -6, whole picture) -> %d\n", r);
     }
@@ -1833,6 +1836,114 @@ int enc_fisheye_run(void)
 }
 #else
 int enc_fisheye_run(void) { return -1; }
+#endif
+
+/* ------------------------------------------------------------------------------------------
+ * Explicit case "transcfg" (APITEST_CASES=transcfg, issues #3 #5 #7, legacy encoder API): IMP_Encoder_Set/GetH264TransCfg (chroma QP
+ * index offset) on an H.264 chn 0, FIXQP.  Prints every return code and the value read back, before and after CreateChn and on a JPEG
+ * channel, and dumps the stream; the host reads the PPS chroma_qp_index_offset (ffmpeg trace_headers) and the chroma statistics.
+ *   TRANS_PRE=<n> (a Set before CreateChn)  TRANS_OFFSETS=a,b,c (Set at picture TRANS_AT, TRANS_AT + TRANS_STEP, ...; default 5 and -4)
+ *   TRANS_QP (default 30)  TRANS_GOP (default 15)  TRANS_FRAMES (default 100)  TRANS_JPEG=1 (Set/Get on a JPEG channel 1)  TRANS_DUMP=<file>
+ *   HSKIP_MAIN=1 (ch0 at the sensor size)
+ * ------------------------------------------------------------------------------------------ */
+#if !defined(ENC_NEW) && HAS_IMP_Encoder_SetH264TransCfg
+static void trans_set(int chn, int v, const char *when)
+{
+    IMPEncoderH264TransCfg c, o;
+    int r, g;
+
+    memset(&c, 0, sizeof(c)); memset(&o, 0x5a, sizeof(o));
+    c.chroma_qp_index_offset = v;
+    r = IMP_Encoder_SetH264TransCfg(chn, &c);
+    g = IMP_Encoder_GetH264TransCfg(chn, &o);
+    printf("transcfg: %s Set %d -> %d, Get -> %d value %d\n", when, v, r, g, (int)o.chroma_qp_index_offset);
+}
+
+int enc_transcfg_run(void)
+{
+    G(EAttr, a);
+    const char *e;
+    int chn = 0, r, k, fixqp = (e = getenv("TRANS_QP")) && *e ? atoi(e) : 30;
+    int gop = (e = getenv("TRANS_GOP")) && *e ? atoi(e) : 15;
+    int frames = (e = getenv("TRANS_FRAMES")) && *e ? atoi(e) : 100;
+    int at = (e = getenv("TRANS_AT")) && *e ? atoi(e) : 5, step = (e = getenv("TRANS_STEP")) && *e ? atoi(e) : 15;
+    int offs[16], noff = 0;
+    FILE *dump = NULL;
+    unsigned long total = 0;
+
+    if ((e = getenv("TRANS_OFFSETS")) && *e) {
+        const char *q = e;
+
+        while (*q && noff < 16) { offs[noff++] = atoi(q); while (*q && *q != ',') q++; if (*q) q++; }
+    } else { offs[0] = 5; offs[1] = -4; noff = 2; }
+    if (grp_up(0, 0) != 0) { gfree(a); return -1; }
+    fill_attr(a, CODEC_H264, gop);
+    if (getenv("HSKIP_MAIN")) { a->encAttr.picWidth = g_sw; a->encAttr.picHeight = g_sh; }
+    memset(&a->rcAttr.attrRcMode, 0, sizeof(a->rcAttr.attrRcMode));
+    a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_FIXQP;
+    a->rcAttr.attrRcMode.attrH264FixQp.qp = fixqp;
+    if ((e = getenv("TRANS_PRE")) && *e) trans_set(chn, atoi(e), "before CreateChn");
+    else trans_set(chn, 0, "before CreateChn");
+    r = IMP_Encoder_CreateChn(chn, a);
+    printf("transcfg: CreateChn %d (qp %d gop %d frames %d)\n", r, fixqp, gop, frames);
+    if (r) { gfree(a); grp_down(0); return -1; }
+    {
+        IMPEncoderH264TransCfg o;
+
+        memset(&o, 0x5a, sizeof(o));
+        r = IMP_Encoder_GetH264TransCfg(chn, &o);
+        printf("transcfg: after CreateChn Get -> %d value %d\n", r, (int)o.chroma_qp_index_offset);
+    }
+    r = IMP_Encoder_RegisterChn(GRP, chn);
+    r = IMP_Encoder_StartRecvPic(chn);
+    printf("transcfg: StartRecvPic %d\n", r);
+    if (getenv("TRANS_DUMP")) dump = fopen(getenv("TRANS_DUMP"), "wb");
+    if (!g_sbuf) g_sbuf = malloc(STREAMCAP);
+    for (k = 0; k < frames; k++) {
+        G(IMPEncoderStream, s);
+        int trunc = 0, i;
+        size_t n;
+
+        for (i = 0; i < noff; i++)
+            if (k == at + i * step) { char w[32]; snprintf(w, sizeof(w), "picture %d", k); trans_set(chn, offs[i], w); }
+        if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("transcfg: poll timeout at picture %d\n", k); break; }
+        if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("transcfg: GetStream failed at picture %d\n", k); break; }
+        gchk(s);
+        n = gather(s, g_sbuf, STREAMCAP, &trunc);
+        if (dump && !trunc) fwrite(g_sbuf, 1, n, dump);
+        printf("pic %d %zu\n", k, n);
+        total += n;
+        IMP_Encoder_ReleaseStream(chn, s);
+        gchk(s);
+        gfree(s);
+    }
+    if (dump) fclose(dump);
+    printf("transcfg: %d pictures, %lu bytes\n", k, total);
+    IMP_Encoder_StopRecvPic(chn);
+    IMP_Encoder_UnRegisterChn(chn);
+    IMP_Encoder_DestroyChn(chn);
+    if (getenv("TRANS_JPEG")) {
+        G(EAttr, j);
+        IMPEncoderH264TransCfg o;
+
+        fill_attr(j, CODEC_JPEG, 0);
+        if (getenv("HSKIP_MAIN")) { j->encAttr.picWidth = g_sw; j->encAttr.picHeight = g_sh; }
+        trans_set(1, 3, "JPEG channel before CreateChn");
+        r = IMP_Encoder_CreateChn(1, j);
+        printf("transcfg: JPEG CreateChn %d\n", r);
+        if (r == 0) { trans_set(1, 3, "JPEG channel"); IMP_Encoder_DestroyChn(1); }
+        trans_set(chn, 3, "destroyed H.264 channel");
+        trans_set(6, 3, "channel 6");
+        printf("transcfg: Set NULL -> %d, Get NULL -> %d, Set ch -1 -> %d\n", IMP_Encoder_SetH264TransCfg(chn, NULL),
+               IMP_Encoder_GetH264TransCfg(chn, NULL), IMP_Encoder_SetH264TransCfg(-1, &o));
+        gfree(j);
+    }
+    gfree(a);
+    grp_down(0);
+    return 0;
+}
+#else
+int enc_transcfg_run(void) { return -1; }
 #endif
 
 /* ------------------------------------------------------------------------------------------

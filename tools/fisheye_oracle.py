@@ -8,33 +8,57 @@ I slice (slice type 2) or a picture at a whole second (counter * fps_den % fps_n
 {1, 0, min(slice qp, 15), 0, 3, 0, 1}: the top-left 64x32 pixels at QP 15 or better.  With the flag clear the table
 is left alone.
 
+T21 (issue #7): libimp 1.0.33 (both gcc builds) has the same function; the layout differs only by two words in the
+encoder handle (flag at +0x1d0, frame rate numerator +0x194, denominator +0x198; T10/T20: +0x1c8, +0x18c, +0x190).  The
+layout is picked from the library.  Both T21 builds give output byte-identical to the T10/T20 vectors
+(tests/fisheye/fisheye_vectors.txt; `tools/fisheye_oracle.py <T21 libimp> | cmp - tests/fisheye/fisheye_vectors.txt` after the
+2-line comment header).
+
 This script runs the real vendor i264e_icodec_enc under the unicorn CPU emulator on a synthetic picture context and
 prints, per case, the ROI table the function hands to hwicodec_process.  tests/fisheye/fisheye_test.c checks
 src/fisheye against the output.  Nothing of the vendor library is copied into OpenIMP; it is read from the path you pass.
 
     pip install unicorn pyelftools
     tools/fisheye_oracle.py T20/lib/3.12.0/uclibc/4.7.2/libimp.so > tests/fisheye/fisheye_vectors.txt
+    tools/fisheye_oracle.py T21/lib/1.0.33/uclibc/4.7.2/libimp.so | cmp - <(tail -n +3 tests/fisheye/fisheye_vectors.txt)
 
 Lines: 'C flag stype counter fps_num fps_den qp : table' (table = 56 bytes hex; the context table is pre-filled with
 the bytes 0xa5 + i, an "application ROI", before the call).
 """
 import os
 import random
+import subprocess
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import eprc_oracle as O
 from unicorn import UC_HOOK_CODE
 from unicorn.mips_const import *
 
-O.LAYOUT_T21['code'] = (0x4d000, 0x4e000)
+O.LAYOUT_T21['code'] = (0x4d000, 0x4e000)       # T10/T20 i264e_icodec_enc (unaligned-access fix-up range)
+O.LAYOUT_T21['code21'] = (0x38000, 0x3a000)     # T21 1.0.33, both gcc builds
 CTX = O.HEAP + 0x100000
 ENC = O.HEAP + 0x200000
 
 
 class Vendor:
     def __init__(self, path):
+        if 'eprc_default_set_T21' in subprocess.run(['strings', '-a', path], capture_output=True, text=True).stdout:
+            self.t21 = True
+            O.LAYOUT_T21['code'] = O.LAYOUT_T21['code21']
+        else:
+            self.t21 = False
         self.L = L = O.Lib(path)
-        got = 0xfc9a0                              # PTR_hwicodec_process
+        if self.t21:
+            # the GOT slot hwicodec_process is called through: the last 'lw t9, N(gp)' before the final 'jr t9'
+            a = L.syms['i264e_icodec_enc']
+            w = [L.r32(a + 4 * i) for i in range(4)]
+            gp = a + ((w[0] & 0xffff) << 16) + ((w[1] & 0xffff) - (0x10000 if w[1] & 0x8000 else 0))
+            end = next(a + 4 * i for i in range(2, 600) if L.r32(a + 4 * i) == 0x03200008)
+            ins = next(L.r32(end - 4 * k) for k in range(1, 8) if (L.r32(end - 4 * k) >> 16) == 0x8f99)
+            off = ins & 0xffff
+            got = gp + off - (0x10000 if off & 0x8000 else 0)
+        else:
+            got = 0xfc9a0                          # PTR_hwicodec_process
         if L.r32(got) == 0:
             L.w32(got, L.syms['hwicodec_process'])
         L.uc.hook_add(UC_HOOK_CODE, self._stop, begin=L.syms['hwicodec_process'], end=L.syms['hwicodec_process'] + 4)
@@ -47,13 +71,14 @@ class Vendor:
         L = self.L
         L.wr(CTX, bytes(0x10000))
         L.wr(ENC, bytes(0x100000))
-        L.w32(CTX + 4 * 0x490, ENC)
+        L.w32(CTX + (0x12b0 if self.t21 else 4 * 0x490), ENC)
         L.w32(CTX, counter)
         L.w32(CTX + 4 * 0x1f6, stype)
         L.w32(CTX + 4 * 0xb9, qp)
-        L.w32(ENC + 4 * 0x72, flag)
-        L.w32(ENC + 4 * 99, fnum)
-        L.w32(ENC + 4 * 100, fden)
+        sh = 8 if self.t21 else 0                  # T21: two words further
+        L.w32(ENC + 4 * 0x72 + sh, flag)
+        L.w32(ENC + 4 * 99 + sh, fnum)
+        L.w32(ENC + 4 * 100 + sh, fden)
         L.wr(CTX + 12, bytes((0xa5 + i) & 0xff for i in range(56)))
         L.call('i264e_icodec_enc', CTX)
         return L.rd(CTX + 12, 56)

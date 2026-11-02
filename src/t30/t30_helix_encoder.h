@@ -51,6 +51,11 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
 #endif
 /* Consecutive failed pictures since the last good one. */
 uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder);
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+/* the chroma QP index offset the encoder codes with now (IMP_Encoder_GetH264TransCfg reads the applied value;
+ * a new one is applied with the next IDR picture) */
+int OpenIMP_T30_HelixChromaQpOffset(const T30HelixEncoder *encoder);
+#endif
 #if defined(PLATFORM_T20)
 /* the QP of the last picture as the OEM i264e_encode reports it (first try,
  * 0 for a BlackEnhance picture); 0 before the first picture, as the OEM record */

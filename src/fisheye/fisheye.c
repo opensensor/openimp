@@ -22,3 +22,12 @@ void fisheye_roi(int enable, uint32_t counter, int i_slice, uint32_t fps_num,
     roi[0][5] = 0;                                  /* y0 */
     roi[0][6] = 1;                                  /* y1 */
 }
+
+void fisheye_roi_hw(int t21, int enable, uint32_t counter, int i_slice,
+                    uint32_t fps_num, uint32_t fps_den, int qp,
+                    uint8_t roi[8][7])
+{
+    fisheye_roi(enable, counter, i_slice, fps_num, fps_den, qp, roi);
+    if (t21 && enable)
+        memset(roi, 0, 8 * 7);
+}

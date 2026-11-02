@@ -6,6 +6,8 @@
  *
  * 'C flag stype counter fps_num fps_den qp : table': the ROI table the vendor
  * function leaves for the hardware, with the table pre-filled with 0xa5 + i.
+ * The vendor T10/T20 3.12.0 and T21 1.0.33 functions give the same vectors
+ * (tools/fisheye_oracle.py, header comment of the vector file).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +53,22 @@ int main(int argc, char **argv)
             ((uint8_t *)roi)[i] = (uint8_t)(0xa5 + i);
         fisheye_roi((int)flag, counter, stype == 2, fnum, fden, qp, roi);
         cases++;
+        /* hardware table: T10/T20 as the vendor builds it, T21 nothing with the flag set */
+        {
+            uint8_t hw[8][7], zero[56];
+
+            memset(zero, 0, sizeof(zero));
+            for (i = 0; i < 56; i++)
+                ((uint8_t *)hw)[i] = (uint8_t)(0xa5 + i);
+            fisheye_roi_hw(0, (int)flag, counter, stype == 2, fnum, fden, qp, hw);
+            if (memcmp(hw, want, 56))
+                errors++;
+            for (i = 0; i < 56; i++)
+                ((uint8_t *)hw)[i] = (uint8_t)(0xa5 + i);
+            fisheye_roi_hw(1, (int)flag, counter, stype == 2, fnum, fden, qp, hw);
+            if (flag ? memcmp(hw, zero, 56) : memcmp(hw, want, 56))
+                errors++;
+        }
         if (flag && want[0])
             regions++;
         if (memcmp(roi, want, 56)) {

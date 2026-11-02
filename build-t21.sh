@@ -156,6 +156,14 @@ esac
 compile hskip src/hskip/hskip.c -Werror
 compile hskip_black src/hskip/hskip_black.c -Werror
 rc_t20_objects="$rc_t20_objects $output_dir/hskip.o $output_dir/hskip_black.o"
+# IMP_Encoder_SetFisheyeEnableStatus (src/fisheye): T10/T20 the ROI table, T21 the table the vendor drops (docs/T21_FISHEYE.md)
+case " $platform_cppflags " in
+    *" -DPLATFORM_T20 "*) ;;
+    *)
+        compile fisheye src/fisheye/fisheye.c -Werror
+        rc_t20_objects="$rc_t20_objects $output_dir/fisheye.o"
+        ;;
+esac
 # T21 only: the Helix eprc controllers (HELIX_T21_SYNTAX in
 # t30_helix_encoder.c); a T20/T10 libimp never calls them.
 # OPENIMP_T21_EPRC_AB (base_flags above) selects the controller revisions.

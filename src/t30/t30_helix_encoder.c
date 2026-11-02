@@ -81,7 +81,7 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #if defined(HELIX_HSKIP)
 #include "hskip/hskip.h"
 #endif
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(HELIX_T21_HSKIP)
 #include "fisheye/fisheye.h"
 #endif
 
@@ -530,8 +530,16 @@ static void t30_chroma_qp_idr(T30HelixEncoder *encoder)
 {
     int offset = (int)encoder->params.chroma_qp_offset;
 
+#if defined(HELIX_T21_HSKIP)
+    /* T21 1.0.33: the offset is clamped to -12..12 (a Set of 13 or 100 codes 12; camera, docs/T21_H264TRANS.md) */
+    if (offset < -12)
+        offset = -12;
+    else if (offset > 12)
+        offset = 12;
+#else
     if (offset < -12 || offset > 12)
         offset = 0;
+#endif
 #if !defined(PLATFORM_T21)
     /* T30: the register of its command list is not known, keep 0 */
     offset = 0;
@@ -1061,6 +1069,12 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
     if (encoder->params.fisheye)
         fisheye_roi(1, encoder->frame_number, idr, encoder->params.fps_num, encoder->params.fps_den, (int)qp,
                     slice->roi);
+#elif defined(HELIX_T21_HSKIP)
+    /* T21: the vendor's i264e_icodec_enc builds the same table, but its hardware path never reads it
+     * (docs/T21_FISHEYE.md): with the flag the application's table is gone and no region 0 is coded */
+    if (encoder->params.fisheye)
+        fisheye_roi_hw(1, 1, encoder->frame_number, idr, encoder->params.fps_num, encoder->params.fps_den, (int)qp,
+                       slice->roi);
 #endif
 #if !defined(PLATFORM_T23)
     slice->chroma_qp_offset = (int8_t)encoder->chroma_qp_offset;
@@ -2815,6 +2829,12 @@ static int t30_helix_encode_job_counted(T30HelixEncoder *encoder,
     return ret;
 }
 
+#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+int OpenIMP_T30_HelixChromaQpOffset(const T30HelixEncoder *encoder)
+{
+    return encoder ? encoder->chroma_qp_offset : 0;
+}
+#endif
 #if defined(PLATFORM_T20)
 int OpenIMP_T30_HelixPictureQp(const T30HelixEncoder *encoder)
 {
@@ -4256,6 +4276,11 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
      * rate-control change */
     encoder->params.color2grey = requested->color2grey ? 1u : 0u;
     encoder->params.chroma_qp_offset = requested->chroma_qp_offset;
+#endif
+#if defined(PLATFORM_T20) || defined(HELIX_T21_HSKIP)
+    /* IMP_Encoder_SetFisheyeEnableStatus: CreateChn sets the flag after the encoder was made (T21 makes it at
+     * CreateChn; T10/T20 with OPENIMP_HELIX_EARLY_CREATE=1) */
+    encoder->params.fisheye = requested->fisheye ? 1u : 0u;
 #endif
     next = encoder->params;
     next.fps_num = requested->fps_num;
