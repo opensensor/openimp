@@ -70,11 +70,12 @@ type of `rcAttr.attrHSkip.hSkipAttr` is not `IMP_Encoder_STYPE_N1X`.  OpenIMP's 
 
 ## Not done
 
-* `SetChangeRef` / second try: the rate controller of OpenIMP does not see exactly the picture sizes
-  of the OEM (SMART is a port of the controller, but the hardware statistics and the first-try sizes
-  differ: on the same camera and scene the OEM IDR is 3.5 kB, OpenIMP's 1.6 kB, and the OEM keeps the
-  second try for all 21 SBASE pictures of a 130-picture stream while OpenIMP keeps it for 9 to 10: the
-  second try has to be smaller).  The mechanism (which buffer, which header, which try is kept) is
+* `SetChangeRef` / second try: the rate controller saw other picture sizes than the OEM's.  Cause found
+  (#191): OpenIMP ran without the macroblock rate control (the OEM default is on), so the first IDR
+  picture was coded at the controller's QP 45 everywhere (1.6 kB) instead of the OEM's per-macroblock QP 35..43
+  (3.5 kB), and the second try was kept for 9 to 10 of 21 SBASE pictures.  With the table (default since 2026-11-02) the
+  IDR macroblock QPs and the keep rate are the OEM's on the T20 camera.  What remains: P pictures at the same fixed QP
+  are larger than the OEM's (see `HELIX_VS_VPU`, issue #191), the second-try judge sees those sizes.  The mechanism (which buffer, which header, which try is kept) is
   tested against the OEM code, the kept / not kept ratio is a result of the picture sizes.
 * OEM quirks that OpenIMP does not copy: when the first try is kept after a second try, the OEM
   restores the bitstream but not the slice QP of the header (`E+0xab8`) and not the reconstruction

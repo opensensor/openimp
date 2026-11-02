@@ -398,7 +398,7 @@ set in production.
 | `OPENIMP_T31_RC_CORE` | `legacy` restores the pre-Allegro rate-control core | allegro | user-facing |
 | `OPENIMP_T21_EPRC` | T21: `0` restores the old GOP controller (the vendor-identical eprc is the default) | on | user-facing |
 | `OPENIMP_T23_EPRC` | T23: `1` runs eprc for CBR/VBR too, `0` never; unset = eprc for SMART only | SMART only | user-facing |
-| `OPENIMP_T20_MBRC` | `1` enables the macroblock-level rate control inside the T20 OEM controller | off | user-facing (opt-in) |
+| `OPENIMP_T20_MBRC` | `0` switches the macroblock-level rate control inside the T20 OEM controller off (the vendor default is on; `IMP_Encoder_SetMbRC` does the same at run time) | on | user-facing |
 | `OPENIMP_EPRC_QP_DOWN1` | `1` / `2` enables the eprc QP-down limit; built, device test pending | off | user-facing (opt-in) |
 | `OPENIMP_MOTION_V2` (+ `_BG`, `_SUPPRESS`, `_BLOBS`, `_OVERRIDE`, parameters) | motion v2, section 4.1; `0`/`off`/`vendor` = vendor algorithm; `shadow` = analysis without changing `retRoi` | on | user-facing |
 | `OPENIMP_MOTION_V2_LOG` | `1` logs every vendor / v2 decision change (A/B) | off | debug-only |

@@ -1946,15 +1946,21 @@ static void helix_eprc_drop(T30HelixEncoder *encoder)
 #endif
 
 /* FIXQP: the stock encoder codes I pictures 3 below the fixed QP
- * (i264e_ratecontrol_init), clamped to the QP range. */
+ * (i264e_ratecontrol_init), clamped to the QP range.  The channel's range
+ * of a FIXQP channel is [qp, qp] (the encoder front end sets min = max =
+ * qp), so the clamp would undo the 3 steps: the OEM T10 / T20 library
+ * (3.12.0, i264e_ratecontrol_init 0x4ab38: I = qp - 3, P = qp, no range) does
+ * not clamp, the T20 build keeps only 0..51 (#191). */
 static uint32_t t30_fixqp_idr_qp(const HWEncoderParams *params)
 {
     uint32_t qp = params->qp > 3u ? params->qp - 3u : 0u;
 
+#if !defined(PLATFORM_T20)
     if (qp < params->min_qp)
         qp = params->min_qp;
     if (qp > params->max_qp)
         qp = params->max_qp;
+#endif
     return qp;
 }
 
@@ -2143,11 +2149,13 @@ static void t20_rc_start(T30HelixEncoder *encoder)
                      runtime ? " (run-time set)" : "");
         return;
     }
-    /* macroblock rate control (the OEM's default): IMP_Encoder_SetMbRC
-     * (HWEncoderParams.mb_rc, the OEM i264e parameter 11); without it
-     * off, OPENIMP_T20_MBRC=1/0 overrides both */
+    /* macroblock rate control, the OEM default (i264e_param_default: on):
+     * IMP_Encoder_SetMbRC (HWEncoderParams.mb_rc, the OEM i264e parameter
+     * 11) switches it, OPENIMP_T20_MBRC=1/0 overrides both.  Off it codes
+     * a first IDR picture at the controller's QP everywhere (SMART, 200
+     * kbit/s: 1.6 kB at QP 45 against the OEM 3.5 kB at QP 35..43, #191). */
     env = getenv("OPENIMP_T20_MBRC");
-    encoder->t20rc_mb = env ? env[0] == '1' : hp->mb_rc == HW_MBRC_ON;
+    encoder->t20rc_mb = env ? env[0] == '1' : hp->mb_rc != HW_MBRC_OFF;
     p.mb_rc = encoder->t20rc_mb ? 1u : 0u;
     /* I-aware P budget (OpenIMP extra, docs/T20_RC.md): default on for
      * CBR (device test), off for VBR/SMART; OPENIMP_T20_RC_IAWARE=1 forces

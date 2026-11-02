@@ -348,9 +348,13 @@ Environment:
   0x132800e4/e8/ec (thingino local patch 0101); without it the reads fail
   (one warning) and the motion statistics are 0.
   `OPENIMP_T20_RC=0` restores OpenIMP's GOP controller.
-- `OPENIMP_T20_MBRC=1`: the macroblock rate control (the OEM default; off
-  in OpenIMP until tested on a camera: it costs about 1.3 M CPU operations
-  per 1080p picture without the OEM's SIMD).
+- `OPENIMP_T20_MBRC`: the macroblock rate control, **default on** as the OEM
+  (`i264e_param_default`; `IMP_Encoder_SetMbRC` switches it, `=0` off, `=1`
+  on).  Off, every macroblock of the first IDR picture sits at the controller's QP (SMART, 200 kbit/s
+  640x360: 1.6 kB at QP 45, the OEM 3.5 kB at QP 35..43, which the table gives).
+  Device (T20, 1080p SMART, 130 pictures): CPU 2.4 s with the table, 0.2 s without,
+  the OEM library 2.3 s (the OEM SIMD does not make it cheaper in practice).  The T10
+  controller has no macroblock table (the OEM T10 IDR is flat at the controller's QP).
 - `OPENIMP_T20_RC_STATS=<seconds>`: one log line per interval: bit rate,
   P and IDR QP average/min/max, scene class, re-encodes (also on the T10).
 - `OPENIMP_T10_RC` (T10 only, **default on** since

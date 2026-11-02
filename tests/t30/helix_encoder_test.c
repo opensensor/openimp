@@ -722,7 +722,7 @@ static void test_t20_superframe(void)
     unsigned int i, before;
 
     unsetenv("OPENIMP_T20_RC");
-    unsetenv("OPENIMP_T20_MBRC");
+    setenv("OPENIMP_T20_MBRC", "0", 1);     /* these checks compare against a controller without the macroblock table */
     encoder = create(640, 360, 25, 10);
     memset(&p, 0, sizeof(p));
     p.width = 640;
@@ -898,6 +898,34 @@ static void test_runtime_parameters(void)
 }
 
 #if defined(PLATFORM_T20)
+/* FIXQP (#191): the OEM i264e_ratecontrol_init codes I pictures at QP - 3, P pictures at QP, whatever
+ * the QP range; the encoder front end hands a FIXQP channel the range [qp, qp] */
+static void test_t20_fixqp(void)
+{
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+    PictureInfo info;
+    unsigned int n, idrs = 0;
+
+    memset(&params, 0, sizeof(params));
+    params.width = 640;
+    params.height = 360;
+    params.fps_num = 25;
+    params.fps_den = 1;
+    params.gop_length = 10;
+    params.rc_mode = HW_RC_MODE_FIXQP;
+    params.qp = 30;
+    params.min_qp = params.max_qp = 30;
+    assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+    for (n = 0; n < 25u; n++) {
+        assert(encode(encoder, &info) == 0);
+        assert(info.qp == (info.idr ? 27 : 30));
+        idrs += info.idr != 0;
+    }
+    assert(idrs == 3u);
+    OpenIMP_T30_HelixDestroy(encoder);
+}
+
 /* The OEM T20 rate control (src/rc_t20) chooses every slice QP from the
  * statistics the encoder hands it: the slice size, the channel's cmpx and
  * three VPU registers.  A second controller fed the same values here must
@@ -912,6 +940,7 @@ static void test_t20_rate_control(void)
     unsigned int i, reads;
 
     setenv("OPENIMP_T20_RC", "1", 1);
+    setenv("OPENIMP_T20_MBRC", "0", 1);     /* the plumbing checks below run without the macroblock table */
     encoder = create(1280, 720, 25, 10);
     RCT20_DefaultParams(&p);
     p.method = 1;
@@ -1040,7 +1069,7 @@ static void test_t20_rate_control(void)
         fill_payload(3000u, 30);
         run_qptab_words = 0;
         assert(encode(encoder, &info) == 0);
-        assert(run_qptab_words == 0u);          /* default: off */
+        assert(run_qptab_words > 0u);           /* default: on, as the OEM (i264e_param_default) */
         for (k = 0; k < 3; k++) {
             mp.mb_rc = k == 1 ? HW_MBRC_OFF : HW_MBRC_ON;
             assert(OpenIMP_T30_HelixUpdateParams(encoder, &mp) == 0);
@@ -2016,6 +2045,7 @@ int main(void)
     test_chroma_clamp_t21();
 #endif
 #if defined(PLATFORM_T20)
+    test_t20_fixqp();
     test_t20_rate_control();
     test_t10_rate_control();
     test_t20_superframe();
