@@ -1188,14 +1188,12 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "no-op"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004547a / 0xc004547b (ENOTTY), so the call returns -4095"
-   }
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): returns 0 (frames flow, no oopses, stock module restored); QEMU T41 the same; vendor no-op matched (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
+   },
+   "note": "T41: vendor no-op, no function. The stock 1.2.5 module has no handler for the ISP-device ioctls 0xc0045479..7b (LDC) and 0xc004548e/f (GPIO) and answers 0 without any effect; OpenIMP and open-tx-isp do the same (before: ENOTTY). There is no lens-distortion and no GPIO function behind these calls."
   },
   "ISP_LDC_INIT": {
    "area": "ISP tuning",
@@ -1209,14 +1207,12 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "no-op"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc0045479 (ENOTTY), so the call returns -4095"
-   }
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): returns 0 (frames flow, no oopses, stock module restored); QEMU T41 the same; vendor no-op matched (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
+   },
+   "note": "T41: vendor no-op, no function. The stock 1.2.5 module has no handler for the ISP-device ioctls 0xc0045479..7b (LDC) and 0xc004548e/f (GPIO) and answers 0 without any effect; OpenIMP and open-tx-isp do the same (before: ENOTTY). There is no lens-distortion and no GPIO function behind these calls."
   },
   "ISP_Open": {
    "area": "ISP tuning",
@@ -1315,7 +1311,7 @@
     "T41": "enotsup"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp"
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): -1 with errno ENOTSUP, frames still flow, documented ENOTSUP (no VIC-done callback / RAW exchange path in the open module)"
    }
   },
   "ISP_SET_GPIO_INIT_OR_FREE": {
@@ -1330,14 +1326,12 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "no-op"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548e (ENOTTY), so the call returns -4090"
-   }
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): returns 0 (frames flow, no oopses, stock module restored); QEMU T41 the same; vendor no-op matched (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
+   },
+   "note": "T41: vendor no-op, no function. The stock 1.2.5 module has no handler for the ISP-device ioctls 0xc0045479..7b (LDC) and 0xc004548e/f (GPIO) and answers 0 without any effect; OpenIMP and open-tx-isp do the same (before: ENOTTY). There is no lens-distortion and no GPIO function behind these calls."
   },
   "ISP_SET_GPIO_STA": {
    "area": "ISP tuning",
@@ -1351,14 +1345,12 @@
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "no-op"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548f (ENOTTY), so the call returns -4090"
-   }
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): returns 0 (frames flow, no oopses, stock module restored); QEMU T41 the same; vendor no-op matched (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
+   },
+   "note": "T41: vendor no-op, no function. The stock 1.2.5 module has no handler for the ISP-device ioctls 0xc0045479..7b (LDC) and 0xc004548e/f (GPIO) and answers 0 without any effect; OpenIMP and open-tx-isp do the same (before: ENOTTY). There is no lens-distortion and no GPIO function behind these calls."
   },
   "ISP_SetCameraInputMode": {
    "area": "ISP tuning",
@@ -1502,7 +1494,7 @@
     "T41": "enotsup"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp"
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): -1 with errno ENOTSUP, frames still flow, documented ENOTSUP (no VIC-done callback / RAW exchange path in the open module)"
    }
   },
   "ISP_StartNightMode": {
@@ -1517,13 +1509,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "dev",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "rt"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004542e (ENOTTY), so the call returns -4095"
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): returns 0, frames flow; the module stores the night-start word like the stock module (10 at core+0x1d4+4*vinum), which the next first ISP tuning open consumes; no other visible effect (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
    }
   },
   "ISP_StreamCheck": {
@@ -4699,13 +4688,10 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "host",
-    "T41": "err"
-   },
-   "action": {
-    "T41": "implement"
+    "T41": "rt"
    },
    "ref": {
-    "T41": "QEMU T41 2026-10-31 case t41isp (APITEST_RISKY=1 where it reprograms the ISP): OpenIMP pass-through done (vendor codes, sizes checked); the open-tx-isp T41 module has no handler for the ISP-device ioctl 0xc004548d (ENOTTY), so the call returns -4090"
+    "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): linear start with imode DOL returns 0, frames flow; the module stores the non-zero mode byte like the stock module, mode 0 is refused with EFAULT as stock (-4090); no visible effect on this linear sensor (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
    }
   },
   "ISP_SetAeAlgoFunc": {
