@@ -1181,7 +1181,7 @@ functions:
       only at run time and end with `ENABLE` (issue 129). T21, T23 and T31: `ENABLE` is what a streamer calls at start-up; it
       is a no-op returning 0 and the running pipeline keeps streaming. `DISABLE` (the real bypass) is refused with -1 and
       nothing is touched, like the vendor T21 library; the open drivers have no bypass graph (issues 119 and 126; a working
-      real bypass is issue 129). T40 only stores the flag in the library and sends nothing to the driver. Not in the T41
+      real bypass is issue 129; a vendor reference on a T31 camera shows what it would have to do: with the vendor library and module `DISABLE` before the raw channel is set up delivers raw frames that bypass the ISP core, at run time on a running channel `DISABLE` stops the frames and `ENABLE` does not bring them back until the channel is created again; a bypass graph is an optional, large, long-term item without a consumer). T40 only stores the flag in the library and sends nothing to the driver. Not in the T41
       library under this name (see `ISP_Get/SetISPBypass`).'
   ISP_Tuning_GetISPBypass:
     group: ldc
