@@ -9585,6 +9585,18 @@ int AL_Codec_Encode_SetChangeRef(void *codec, int enable)
     return 0;
 }
 
+#if defined(PLATFORM_T20)
+int AL_Codec_Encode_GetPictureQp(void *codec, int *qp)
+{
+    AL_CodecEncode *enc = (AL_CodecEncode *)codec;
+
+    if (!enc || !qp || !enc->t30_helix)
+        return -1;
+    *qp = OpenIMP_T30_HelixPictureQp(enc->t30_helix);
+    return 0;
+}
+#endif
+
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 /* IMP_Encoder_InsertUserData: queue one payload (SEI in front of the next
  * picture).  -1 when max_cnt payloads are already waiting (the OEM: "no

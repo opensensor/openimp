@@ -288,8 +288,8 @@ P2_T1X_SOURCES := p2_t1x_test.c $(ROOT)/src/t40/openimp_p2_encoder.c \
 P2_T1X_FLAGS = -std=gnu99 -Wno-unused-result '-D_Static_assert(c,m)=' \
 	-I$(ROOT)/include -I$(ROOT)/src -I$(ROOT)/src/t40 -no-pie
 
-p2_t1x_test_t20: $(P2_T1X_SOURCES)
-	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(P2_T1X_SOURCES) -lpthread
+p2_t1x_test_t20: $(P2_T1X_SOURCES) $(ROOT)/src/demask/demask.c
+	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T20 -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(P2_T1X_SOURCES) $(ROOT)/src/demask/demask.c -lpthread
 
 p2_t1x_test_t21: $(P2_T1X_SOURCES)
 	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(P2_T1X_SOURCES) -lpthread
@@ -375,9 +375,9 @@ p2_gap_test_t21: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder
 	$(CC) $(CFLAGS) -DPLATFORM_T21 $(P2_GAP_FLAGS) -o $@ p2_gap_test.c \
 		p2_gap_stubs.c $(ROOT)/src/openimp_profile.c $(ROOT)/src/core/imp_log_emit.c -pthread
 
-p2_gap_test_t20: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder.c
+p2_gap_test_t20: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder.c $(ROOT)/src/demask/demask.c
 	$(CC) $(CFLAGS) -DPLATFORM_T20 -DPLATFORM_T21 $(P2_GAP_FLAGS) -o $@ \
-		p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/openimp_profile.c $(ROOT)/src/core/imp_log_emit.c -pthread
+		p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/openimp_profile.c $(ROOT)/src/core/imp_log_emit.c $(ROOT)/src/demask/demask.c -pthread
 
 p2_gap_test_t30: p2_gap_test.c p2_gap_stubs.c $(ROOT)/src/t40/openimp_p2_encoder.c
 	$(CC) $(CFLAGS) -DPLATFORM_T30 $(P2_GAP_FLAGS) -o $@ p2_gap_test.c \

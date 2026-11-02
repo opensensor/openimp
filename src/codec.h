@@ -129,6 +129,10 @@ int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
                              int scenecut, int black);
 /* T20/T10 IMP_Encoder_SetChangeRef (OEM i264e parameter 12, from the next picture) */
 int AL_Codec_Encode_SetChangeRef(void *codec, int enable);
+/* T20/T10: the QP the encoder gave the last picture (what the OEM i264e_encode
+ * writes into word 0 of the picture record: the controller's QP of the first
+ * try, 0 for a BlackEnhance picture); 0 before the first picture */
+int AL_Codec_Encode_GetPictureQp(void *codec, int *qp);
 /* IMP_Encoder_InsertUserData (T20/T21/T23/T30 native Helix): SEI payload for
  * the next picture; -1 when the queue is full. */
 int AL_Codec_Encode_InsertUserData(void *codec, const void *data,

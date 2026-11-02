@@ -119,6 +119,11 @@ int AL_Codec_Encode_SetHSkip(void *c, uint32_t t, uint32_t m, uint32_t n, int sc
 static int cr_calls = -1;
 int AL_Codec_Encode_SetChangeRef(void *c, int en)
 { (void)c; cr_calls = en; return 0; }
+#if defined(PLATFORM_T20)
+static int sharp_calls, sharp_value, sharp_mode;
+int AL_Codec_Encode_GetPictureQp(void *c, int *qp) { (void)c; *qp = 0; return 0; }
+int IMP_ISP_Tuning_SetSharpness_internal(uint32_t v, int32_t m) { sharp_calls++; sharp_value = (int)v; sharp_mode = m; return 0; }
+#endif
 int AL_Codec_Encode_SetMbRC(void *c, int e) { (void)c; mbrc_calls++; mbrc_value = e; return 0; }
 int AL_Codec_Encode_SetColor2Grey(void *c, int e) { (void)c; c2g_calls++; c2g_value = e; return 0; }
 static uint8_t roi_entry[8][7];
@@ -268,6 +273,23 @@ int main(void)
         CHECK(IMP_Encoder_SetChnHSkipBlackEnhance(0, 0) == 0 && hs_black == 0);
         CHECK(IMP_Encoder_SetChangeRef(0, 0) == 0 && cr_calls == 0);
         CHECK(IMP_Encoder_SetChangeRef(0, 1) == 0 && cr_calls == 1);
+    }
+    {
+        /* T10/T20 SetChnDemask (src/demask): the attribute reads back, enable 1 -> 0 gives
+         * the ISP the application's sharpness back once, the 3.9.0 names are the same functions */
+        IMPEncoderAttrDemask dm;
+
+        memset(&dm, 0, sizeof(dm));
+        CHECK(IMP_Encoder_GetChnDemask(0, &dm) == 0 && !dm.enable);
+        dm.enable = true; dm.demaskCnt = 3; dm.demaskThresd = 30;
+        sharp_calls = 0;
+        CHECK(IMP_Encoder_SetChnDemask(0, &dm) == 0 && sharp_calls == 0);
+        memset(&dm, 0, sizeof(dm));
+        CHECK(IMP_Encoder_GetChnH264Demask(0, &dm) == 0 && dm.enable && dm.demaskCnt == 3 && dm.demaskThresd == 30);
+        dm.enable = false;
+        CHECK(IMP_Encoder_SetChnH264Demask(0, &dm) == 0 && sharp_calls == 1 && sharp_value == 0x80 && sharp_mode == 0);
+        CHECK(IMP_Encoder_SetChnDemask(0, &dm) == 0 && sharp_calls == 1);
+        CHECK(IMP_Encoder_SetChnDemask(0, NULL) == -1 && IMP_Encoder_GetChnDemask(99, &dm) == -1);
     }
 #endif
 

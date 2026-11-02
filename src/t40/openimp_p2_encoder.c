@@ -49,6 +49,9 @@
 #if defined(PLATFORM_T40)
 #include "dma_alloc.h"
 #endif
+#if defined(PLATFORM_T20)
+#include "demask/demask.h"
+#endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #include "t23/openimp_t23_persist.h"
 #endif
@@ -358,6 +361,12 @@ typedef struct {
     IMPEncoderAttrFrmUsed frm_used;
     int fisheye;
     int change_ref;
+#if defined(PLATFORM_T20)
+    /* IMP_Encoder_SetChnDemask: the vendor's per-picture strategy and its
+     * ISP sharpness word (src/demask), zero at CreateChn like the record */
+    DemaskState demask;
+    uint32_t demask_logs;
+#endif
 #endif
     /* rc attribute last set by SetChnAttrRcMode: the OEM read-back then
      * shows the run-time clamps (p2_rc_readback.h) */
@@ -1351,6 +1360,11 @@ extern int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
 extern int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
                                     int scenecut, int black);
 extern int AL_Codec_Encode_SetChangeRef(void *codec, int enable);
+#if defined(PLATFORM_T20)
+extern int AL_Codec_Encode_GetPictureQp(void *codec, int *qp);
+/* src/isp/isp_tseries.c: mode 2 = IMP_ISP_Tuning_SetSharpness, 1 = demask override, 0 = the application's value again */
+extern int IMP_ISP_Tuning_SetSharpness_internal(uint32_t value, int32_t mode);
+#endif
 extern int AL_Codec_Encode_SetMbRC(void *codec, int enable);
 extern int AL_Codec_Encode_SetColor2Grey(void *codec, int enable);
 extern int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
@@ -2551,6 +2565,23 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
     }
 #endif
     ch->attr = *attr;
+#if defined(PLATFORM_T20)
+    /* OEM CreateChn: memset of the channel record, then the attribute is
+     * copied in: the demask state (hold counter, measure, sharpness word)
+     * starts at zero, a demask enabled at create ramps the sharpness up from
+     * 0 to 0x80 over the first pictures (as the vendor) */
+    memset(&ch->demask, 0, sizeof(ch->demask));
+    ch->demask.enable = attr->rcAttr.attrDemask.enable ? 1 : 0;
+    ch->demask.auto_mode = attr->rcAttr.attrDemask.isAutoMode ? 1 : 0;
+    ch->demask.cnt = attr->rcAttr.attrDemask.demaskCnt;
+    ch->demask.thr = attr->rcAttr.attrDemask.demaskThresd;
+    /* channel_i264e_encoder_init (0x4058c): the measure starts as the
+     * encoder's QP parameter, the FixQP value or the i264e default 30
+     * (i264e_param_default), so the first picture can already be "active" */
+    ch->demask.measure = attr->rcAttr.attrRcMode.rcMode == IMP_ENC_RC_MODE_FIXQP
+        ? (int32_t)attr->rcAttr.attrRcMode.attrH264FixQp.qp : DEMASK_QP_DEFAULT;
+    ch->demask_logs = 0;
+#endif
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21)
     ch->denoise = attr->rcAttr.attrDenoise;
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
@@ -3303,6 +3334,36 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
     return ret;
 }
 
+#if defined(PLATFORM_T20)
+/* OEM do_channel_process_h264e after i264e_encode: with the demask enabled
+ * the strategy runs again, the channel's sharpness word steps by 0x14
+ * towards 0 (active) or 0x80 (idle) and goes to the ISP with
+ * IMP_ISP_Tuning_SetSharpness_internal(value, value != 0x80) (mode 1 = demask
+ * override, mode 0 = the application's own sharpness again); then the QP the
+ * encoder reported for this picture becomes the measure of the next one. */
+static void p2_demask_after_picture(P2EncoderChannel *ch, int channel)
+{
+    int qp = 0;
+    int call = 0, mode = 0, active = 0;
+    uint32_t value = 0;
+
+    pthread_mutex_lock(&ch->lock);
+    if (ch->demask.enable) {
+        active = demask_after_picture(&ch->demask, &value, &mode);
+        call = 1;
+    }
+    (void)AL_Codec_Encode_GetPictureQp(ch->codec, &qp);
+    demask_picture_qp(&ch->demask, qp);
+    pthread_mutex_unlock(&ch->lock);
+    if (!call)
+        return;
+    if (ch->demask_logs++ < 16u || ch->demask_logs % 300u == 0u)
+        IMP_TRACE_LOG("Encoder", "ch %d demask: qp %d %s, sharpness 0x%02x (mode %d)",
+                      channel, qp, active ? "active" : "idle", (unsigned int)value, mode);
+    (void)IMP_ISP_Tuning_SetSharpness_internal(value, mode);
+}
+#endif
+
 static int p2_polling_stream(int channel, uint32_t timeout_ms)
 {
     static unsigned int trace_count;
@@ -3629,6 +3690,16 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
 #endif
     ch->enc_start_us = p2_monotonic_us();
     __atomic_store_n(&ch->encoding, 1, __ATOMIC_RELEASE);
+#if defined(PLATFORM_T20)
+    /* OEM do_channel_process_h264e: while SetChnFrmUsedMode is off the demask
+     * strategy runs once before the picture (its result would select the
+     * frame re-use path; it also advances the hold counter) */
+    if (ch->codec_type == IMP_ENC_TYPE_AVC && !ch->frm_used.enable) {
+        pthread_mutex_lock(&ch->lock);
+        (void)demask_strategy(&ch->demask);
+        pthread_mutex_unlock(&ch->lock);
+    }
+#endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T21)
     if (pad_sel > 0) {
         process_result = AL_Codec_Encode_Process(ch->codec, pad.frame, pad.frame);
@@ -3661,6 +3732,10 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
         }
         goto done;
     }
+#if defined(PLATFORM_T20)
+    if (ch->codec_type == IMP_ENC_TYPE_AVC)
+        p2_demask_after_picture(ch, channel);
+#endif
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if (ch->codec_type == IMP_ENC_TYPE_AVC &&
         __sync_add_and_fetch(&t23_avc_trace_count, 1u) <= 16u)
@@ -6022,6 +6097,16 @@ int IMP_Encoder_GetChnDenoise(int channel, IMPEncoderAttrDenoise *config)
     return 0;
 }
 
+#if defined(PLATFORM_T20)
+/* The 3.9.0 libimp exports the same code as IMP_Encoder_Set/GetChnH264Denoise
+ * (0x5ddc8 / 0x5df74 there: i264e parameter 8, the enable of the created
+ * attribute kept, same {enable, dnType, dnIQp, dnPQp} attribute). */
+int IMP_Encoder_SetChnH264Denoise(int channel, const IMPEncoderAttrDenoise *config)
+    __attribute__((alias("IMP_Encoder_SetChnDenoise")));
+int IMP_Encoder_GetChnH264Denoise(int channel, IMPEncoderAttrDenoise *config)
+    __attribute__((alias("IMP_Encoder_GetChnDenoise")));
+#endif
+
 /* The T30 gap code below: PLATFORM_T30 is also defined for the T21 build
  * (line 18 above), so the T21 functions are not lost; T21 is still listed
  * explicitly where it matters for readers. */
@@ -6362,19 +6447,27 @@ int IMP_Encoder_GetChangeRef(int channel, int *enable)
 }
 
 #if defined(PLATFORM_T20)
-/* OEM T20/T10 3.12.0 Set/GetChnDemask (0x49160, 0x492d8): no created check;
- * the three words {enable+isAutoMode, demaskCnt, demaskThresd} are stored in
- * the channel record (SetChnDemask also pokes an i264e flag word of the OEM
- * encoder; the Helix path has no demask stage).  CreateChn copies the same
- * block in from rcAttr.attrDemask, so the record is the channel attribute. */
+/* OEM T20/T10 3.12.0 Set/GetChnDemask (0x49160, 0x492d8; the 3.9.0 library:
+ * Set/GetChnH264Demask, same code): no created check.  The three words
+ * {enable+isAutoMode, demaskCnt, demaskThresd} are the channel record's
+ * attribute (CreateChn copies rcAttr.attrDemask in); enable 0 -> 1 sets the
+ * channel's sharpness word to 0x80, enable 1 -> 0 gives the ISP the
+ * application's sharpness back (IMP_ISP_Tuning_SetSharpness_internal(0x80, 0)).
+ * The per-picture strategy is src/demask (p2_demask_after_picture). */
 int IMP_Encoder_SetChnDemask(int channel, const IMPEncoderAttrDemask *attr)
 {
+    int restore;
+
     if (!p2_valid_channel(channel) || !attr)
         return -1;
     EncoderInit();
     pthread_mutex_lock(&p2_channels[channel].lock);
+    restore = demask_set(&p2_channels[channel].demask, attr->enable, attr->isAutoMode,
+                         attr->demaskCnt, attr->demaskThresd);
     p2_channels[channel].attr.rcAttr.attrDemask = *attr;
     pthread_mutex_unlock(&p2_channels[channel].lock);
+    if (restore)
+        (void)IMP_ISP_Tuning_SetSharpness_internal(0x80u, 0);
     return 0;
 }
 
@@ -6388,6 +6481,14 @@ int IMP_Encoder_GetChnDemask(int channel, IMPEncoderAttrDemask *attr)
     pthread_mutex_unlock(&p2_channels[channel].lock);
     return 0;
 }
+
+/* The 3.9.0 libimp exports the same functions as IMP_Encoder_Set/GetChnH264Demask
+ * (0x5d458 / 0x5d5e0 there, byte for byte the ChnDemask code with a 7-channel
+ * table), with the same {enable, isAutoMode, demaskCnt, demaskThresd} attribute. */
+int IMP_Encoder_SetChnH264Demask(int channel, const IMPEncoderAttrDemask *attr)
+    __attribute__((alias("IMP_Encoder_SetChnDemask")));
+int IMP_Encoder_GetChnH264Demask(int channel, IMPEncoderAttrDemask *attr)
+    __attribute__((alias("IMP_Encoder_GetChnDemask")));
 #endif
 
 int IMP_Encoder_SetChnHSkipBlackEnhance(int channel, const int enable)

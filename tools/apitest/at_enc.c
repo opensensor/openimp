@@ -1,5 +1,6 @@
 /* apitest: Encoder area (H.264 / H.265 / JPEG) and the stream verifier */
 #include <dlfcn.h>
+#include <time.h>
 #include "apitest.h"
 /* T20/T21: OpenIMP refuses (-1) settings its Helix/NVPU encoder cannot apply, instead of storing
  * them without effect (the vendor stores them): report that as N/A, not as a failed function. */
@@ -1638,6 +1639,118 @@ int enc_hskip_run(void)
 }
 #else
 int enc_hskip_run(void) { return -1; }
+#endif
+
+/* ------------------------------------------------------------------------------------------
+ * Explicit case "demask" (APITEST_CASES=demask, issues #3 #5, T10/T20): H.264 chn 0 with IMP_Encoder_SetChnDemask.  The vendor
+ * steps the ISP sharpness per picture from the QP of the previous picture; the per-picture ISP calls are recorded on the host
+ * side (LD_PRELOAD tools/apitest/sctrl_trace.c, VIDIOC_S_CTRL id 0x98091b) and the picture QPs come from the stream dump
+ * (tools/hskip_trace.py --qp).  Every picture is logged as "pic <n> <bytes>", attribute calls as "demask: ...".
+ *   DEMASK_CNT (demaskCnt, default 3)  DEMASK_THR (demaskThresd, default 30)  DEMASK_QP (>0: FIXQP at that QP, else CBR)
+ *   DEMASK_FRAMES (default 90)  DEMASK_RT=1 (enable through SetChnDemask after StartRecvPic instead of at CreateChn)
+ *   DEMASK_SWITCH=<pic>:<cnt>:<thr> (or <pic>/<cnt>/<thr>; SetChnDemask again before picture <pic>)  DEMASK_OFF=<pic> (disable before picture <pic>)
+ *   DEMASK_ON=<pic> (enable again before picture <pic>, DEMASK_CNT/THR)  DEMASK_SHARP (IMP_ISP_Tuning_SetSharpness before the
+ *   stream: the application's own value the vendor restores)  DEMASK_GOP (default 30)  DEMASK_BITRATE (kbit/s)  DEMASK_DUMP=<file>
+ *   DEMASK_OLDNAME=1 (call the 3.9.0 names IMP_Encoder_Set/GetChnH264Demask through dlsym instead; the same functions in OpenIMP)
+ * ------------------------------------------------------------------------------------------ */
+#if !defined(ENC_NEW) && HAS_IMP_Encoder_SetChnDemask
+static int dm_env(const char *n, int d) { const char *v = getenv(n); return v && *v ? atoi(v) : d; }
+
+static int dm_set(int chn, int en, int cnt, int thr, int pic)
+{
+    IMPEncoderAttrDemask d;
+    int (*oldset)(int, const IMPEncoderAttrDemask *) = dm_env("DEMASK_OLDNAME", 0) ?
+        (int (*)(int, const IMPEncoderAttrDemask *))dlsym((void *)0, "IMP_Encoder_SetChnH264Demask") : NULL;
+    int r;
+
+    memset(&d, 0, sizeof(d));
+    d.enable = en != 0; d.isAutoMode = false; d.demaskCnt = cnt; d.demaskThresd = thr;
+    r = oldset ? oldset(chn, &d) : IMP_Encoder_SetChnDemask(chn, &d);
+    printf("demask: SetChnDemask en %d cnt %d thr %d before pic %d -> %d\n", en, cnt, thr, pic, r);
+    return r;
+}
+
+int enc_demask_run(void)
+{
+    G(EAttr, a);
+    int chn = 0, r, k, frames = dm_env("DEMASK_FRAMES", 90), gop = dm_env("DEMASK_GOP", 30), rt = dm_env("DEMASK_RT", 0);
+    int cnt = dm_env("DEMASK_CNT", 3), thr = dm_env("DEMASK_THR", 30), fixqp = dm_env("DEMASK_QP", 0);
+    int sw_pic = -1, sw_cnt = 0, sw_thr = 0, off_pic = dm_env("DEMASK_OFF", -1), on_pic = dm_env("DEMASK_ON", -1);
+    int (*ssharp)(unsigned char) = (int (*)(unsigned char))dlsym((void *)0, "IMP_ISP_Tuning_SetSharpness");
+    int (*gsharp)(unsigned char *) = (int (*)(unsigned char *))dlsym((void *)0, "IMP_ISP_Tuning_GetSharpness");
+    FILE *dump = NULL;
+    unsigned long total = 0;
+
+    if (getenv("DEMASK_SWITCH") && sscanf(getenv("DEMASK_SWITCH"), "%d:%d:%d", &sw_pic, &sw_cnt, &sw_thr) != 3 &&
+        sscanf(getenv("DEMASK_SWITCH"), "%d/%d/%d", &sw_pic, &sw_cnt, &sw_thr) != 3) sw_pic = -1;      /* "/" for qemu_run.py's case:ENV syntax */
+    if (grp_up(0, 0) != 0) { gfree(a); return -1; }
+    if (getenv("DEMASK_SHARP") && ssharp) printf("demask: SetSharpness %d -> %d\n", dm_env("DEMASK_SHARP", 128), ssharp((unsigned char)dm_env("DEMASK_SHARP", 128)));
+    fill_attr(a, CODEC_H264, gop);
+    if (dm_env("DEMASK_BITRATE", 0)) a->rcAttr.attrRcMode.attrH264Cbr.outBitRate = dm_env("DEMASK_BITRATE", 0);
+    if (fixqp > 0) {
+        memset(&a->rcAttr.attrRcMode, 0, sizeof(a->rcAttr.attrRcMode));
+        a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_FIXQP;
+        a->rcAttr.attrRcMode.attrH264FixQp.qp = fixqp;
+    }
+    if (!rt) {
+        a->rcAttr.attrDemask.enable = true; a->rcAttr.attrDemask.isAutoMode = false;
+        a->rcAttr.attrDemask.demaskCnt = cnt; a->rcAttr.attrDemask.demaskThresd = thr;
+    }
+    {
+        struct timespec ts;
+
+        clock_gettime(CLOCK_MONOTONIC, &ts);        /* the ISP controls of this channel come after this time (sctrl_trace.c) */
+        r = IMP_Encoder_CreateChn(chn, a);
+        printf("demask: CreateChn %d (cnt %d thr %d rt %d fixqp %d gop %d frames %d) t=%llu\n", r, cnt, thr, rt, fixqp, gop, frames,
+               (unsigned long long)ts.tv_sec * 1000000ull + (unsigned long long)ts.tv_nsec / 1000ull);
+    }
+    if (r) { gfree(a); grp_down(0); return -1; }
+    r = IMP_Encoder_RegisterChn(GRP, chn);
+    r = IMP_Encoder_StartRecvPic(chn);
+    printf("demask: StartRecvPic %d\n", r);
+    if (rt) dm_set(chn, 1, cnt, thr, 0);
+    if (getenv("DEMASK_DUMP")) dump = fopen(getenv("DEMASK_DUMP"), "wb");
+    if (!g_sbuf) g_sbuf = malloc(STREAMCAP);
+    for (k = 0; k < frames; k++) {
+        G(IMPEncoderStream, s);
+        int trunc = 0;
+        size_t n;
+
+        if (k == sw_pic) dm_set(chn, 1, sw_cnt, sw_thr, k);
+        if (k == off_pic) dm_set(chn, 0, cnt, thr, k);
+        if (k == on_pic) dm_set(chn, 1, cnt, thr, k);
+        if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("demask: poll timeout at picture %d\n", k); break; }
+        if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("demask: GetStream failed at picture %d\n", k); break; }
+        gchk(s);
+        n = gather(s, g_sbuf, STREAMCAP, &trunc);
+        if (dump && !trunc) fwrite(g_sbuf, 1, n, dump);
+        printf("pic %d %zu\n", k, n);
+        total += n;
+        IMP_Encoder_ReleaseStream(chn, s);
+        gchk(s);
+        gfree(s);
+    }
+    if (dump) fclose(dump);
+    if (gsharp) { unsigned char v = 0; r = gsharp(&v); printf("demask: GetSharpness -> %d value %d\n", r, v); }
+    {
+        G(IMPEncoderAttrDemask, g);
+        int (*oldget)(int, IMPEncoderAttrDemask *) = dm_env("DEMASK_OLDNAME", 0) ?
+            (int (*)(int, IMPEncoderAttrDemask *))dlsym((void *)0, "IMP_Encoder_GetChnH264Demask") : NULL;
+
+        r = oldget ? oldget(chn, g) : IMP_Encoder_GetChnDemask(chn, g); gchk(g);
+        printf("demask: %s -> %d en %d auto %d cnt %d thr %d\n", oldget ? "GetChnH264Demask" : "GetChnDemask", r, g->enable, g->isAutoMode, g->demaskCnt, g->demaskThresd);
+        gfree(g);
+    }
+    printf("demask: %d pictures, %lu bytes\n", k, total);
+    IMP_Encoder_StopRecvPic(chn);
+    IMP_Encoder_UnRegisterChn(chn);
+    IMP_Encoder_DestroyChn(chn);
+    gfree(a);
+    grp_down(0);
+    return 0;
+}
+#else
+int enc_demask_run(void) { return -1; }
 #endif
 
 int enc_chain_up(void)          /* H.264 chn 0 + group 0 with an OSD group in between (used by the OSD test) */

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Issues #3/#5/#7 (development aid): reference structure of an H.264 Annex-B stream, one line per picture.
 
-    tools/hskip_trace.py stream.h264 [--sizes log]
+    tools/hskip_trace.py stream.h264 [--sizes log] [--qp]
+
+--qp prints only the slice QP of every picture (PPS pic_init_qp_minus26 + slice_qp_delta), one per line
+(the apitest case demask / tools/demask_check.py).
 
 Runs `ffmpeg -bsf:v trace_headers` and prints per coded picture (first slice):
 nal_ref_idc / nal type, slice_type, frame_num, poc lsb, ref list modification (idc:value ...), MMCO ops,
@@ -22,6 +25,7 @@ def pictures(path):
                           '-f', 'null', '-'], capture_output=True, text=True).stderr
     pics = []
     cur = None
+    pps_qp = 26
     for line in txt.splitlines():
         if '[trace_headers' not in line:
             continue
@@ -37,8 +41,13 @@ def pictures(path):
                     cur = None
             continue
         name, val = m.group(2), int(m.group(4))
+        if name == 'pic_init_qp_minus26':
+            pps_qp = 26 + val
+            continue
         if cur is None or not cur.get('new'):
             continue
+        if name == 'slice_qp_delta' and 'qp' not in cur:
+            cur['qp'] = pps_qp + val
         if name == 'slice_type' and 'slice_type' not in cur:
             cur['slice_type'] = val
         elif name == 'frame_num' and 'frame_num' not in cur:
@@ -91,5 +100,9 @@ if __name__ == '__main__':
             m = re.match(r'pic (\d+) (\d+)', line)
             if m:
                 sizes[int(m.group(1))] = int(m.group(2))
+    if '--qp' in sys.argv:
+        for p in pictures(sys.argv[1]):
+            print(p.get('qp', -1))
+        sys.exit(0)
     for i, p in enumerate(pictures(sys.argv[1])):
         print(fmt(i, p, sizes.get(i)))

@@ -145,7 +145,9 @@ case " $platform_cppflags " in
         compile rc_t20 src/rc_t20/rc_t20.c $hot_flags -Werror -ffp-contract=off
         compile rc_t20_mb src/rc_t20/rc_t20_mb.c $hot_flags -Werror -ffp-contract=off
         compile rc_t10 src/rc_t10/rc_t10.c $hot_flags -Werror -ffp-contract=off
-        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o"
+        # IMP_Encoder_SetChnDemask strategy (src/demask)
+        compile demask src/demask/demask.c -Werror
+        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o $output_dir/demask.o"
         ;;
 esac
 # IMP_Encoder_SetChnHSkip reference structures (src/hskip): T10/T20 and T21
