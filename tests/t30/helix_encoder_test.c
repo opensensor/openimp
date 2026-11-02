@@ -74,7 +74,7 @@ typedef struct {
 
 static FakeAllocation allocations[16];
 #if defined(PLATFORM_T20)
-static uint32_t run_40040, run_50040, run_50060, run_70064;   /* T20: the last command list's QP cap and ME words */
+static uint32_t run_40040, run_50040, run_50060, run_70064, run_5004c;   /* T20: the last command list's QP cap and ME words */
 #endif
 static uint32_t run_raw_c;          /* chroma input address of the last RUN */
 static uint8_t payload[1u << 20];
@@ -358,6 +358,8 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
                 run_50040 = d[i];
             else if (reg == 0x50060u)
                 run_50060 = d[i];
+            else if (reg == 0x5004cu)
+                run_5004c = d[i];
             else if (reg == 0x70064u)
                 run_70064 = d[i];
             else if (reg >= 0xc5800u && reg < 0xc5800u + 4u * 4096u &&
@@ -938,11 +940,33 @@ static void test_t20_fixqp(void)
         if (!info.idr) {
             assert(run_50040 == 0x8f3f5008u);
             assert(run_50060 == ((367u << 16) | 639u));
+            assert(run_5004c == 0u);            /* 40 x 23 macroblocks: below 51 x 39 */
         }
         idrs += info.idr != 0;
     }
     assert(idrs == 3u);
     OpenIMP_T30_HelixDestroy(encoder);
+
+    /* 0x5004c of a P picture (T20 3.12.0 hwicodec_pf_h264e_t20_enc): 0x88080303 from 51 x 39 macroblocks on (1080p), 0 below */
+    {
+        static const struct { unsigned int w, h; uint32_t v; } c5004c[] = {
+            { 1920, 1080, 0x88080303u }, { 816, 624, 0x88080303u }, { 800, 624, 0u }, { 816, 608, 0u }, { 1280, 720, 0x88080303u },
+        };
+        unsigned int k;
+
+        for (k = 0; k < sizeof(c5004c) / sizeof(c5004c[0]); k++) {
+            params.width = c5004c[k].w;
+            params.height = c5004c[k].h;
+            assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+            run_5004c = 0xdeadbeefu;
+            assert(encode(encoder, &info) == 0 && info.idr);
+            assert(encode(encoder, &info) == 0 && !info.idr);
+            assert(run_5004c == c5004c[k].v);
+            OpenIMP_T30_HelixDestroy(encoder);
+        }
+        params.width = 640;
+        params.height = 360;
+    }
 
     /* 0x70064 is clear below slice QP 16: FixQP 18 codes the I pictures at 15 (clear) and the P pictures at 18 */
     params.qp = params.min_qp = params.max_qp = 18;

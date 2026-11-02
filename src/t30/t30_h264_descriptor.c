@@ -186,9 +186,18 @@ static int t30_emit_motion_estimation(T30DescriptorWriter *writer,
                         t30_h264_chroma_interpolation[i][j]);
     }
     MOTION_EMIT(0x50068, 0);
+#if defined(PLATFORM_T20)
+    /* T20 3.12.0 hwicodec_pf_h264e_t20_enc: slice bytes 37..41 = {1, 3, 3, 8, 8}
+     * when the picture is at least 51 x 39 macroblocks (816 x 624), else 0;
+     * H264E_T20_SliceInit packs them into 0x5004c (bit 31 | b41 << 24 |
+     * b40 << 16 | b39 << 8 | b38): 0x88080303 at 1080p, 0 at 640x360 (#191). */
+    MOTION_EMIT(0x5004c, (config->mb_width >= 51u && config->mb_height >= 39u) ?
+                         0x88080303u : 0u);
+#else
     /* Disable the optional frame-size-control padding: OpenIMP owns tightly
      * aligned reconstruction planes and supplies their addresses directly. */
     MOTION_EMIT(0x5004c, 0);
+#endif
     MOTION_EMIT(0x50000, 0x11u);
 
 #undef MOTION_EMIT

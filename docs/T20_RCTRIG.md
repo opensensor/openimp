@@ -21,14 +21,14 @@ T21: the vendor controller does not read the pair (see `docs/T23_EPRC.md`), Open
 - Host: `tools/rc_t20_oracle.py --trig-wide` runs the vendor controller under unicorn with levels 0.5 to 12.5 and new maximum
   QPs 30 to 51 (also below the application maximum): `tests/rc_t20/rc_t20_vectors_trig.txt` (24 scenarios, 7357 decisions) and
   `tests/rc_t10/rc_t10_vectors_trig.txt` (24 scenarios, 6392 decisions), 0 differences.
-- Cameras (T20 and T10 test cameras, vendor library and OpenIMP on the same camera, no flash, no module touched):
-  `apitest` case `rctrig` (`APITEST_CASES=rctrig`, variables `RCTRIG_*` in `tools/apitest/at_enc.c`), CBR 640x360 at 3 kbit/s
-  with maximum QP 36 so that the GOP is starved. QPs are read from the stream with `tools/fisheye_mbqp.py`.
-  - The picture QP stays at the application maximum unless the scene needs more than `level` times the budget; the lift
-    appears with both libraries under the same settings and with the same ceiling (new maximum 45: 45 and 45, 51: 51 and 51,
-    49 and 49), the default pair (3.0 / 51) and a pair with `mode` equal to the maximum never lift beyond it.
-  - A call during the stream (picture 40): both libraries code an IDR at that picture, restart at QP 15 and the next 30 picture
-    QPs are identical (15 ... 23), picture sizes within 10 percent.
-  - Streams decode without errors (ffmpeg, strict flags) and show a real picture (mean luma about 120 on the T20 camera).
-  The lift depends on the live scene (the same pair lifts in some runs and not in others, on both libraries), so camera runs
-  compare ceilings and restart behaviour, not byte counts.
+- Cameras, corrected 2026-11-03: the camera runs of 2026-11-02 that this section described as "vendor library and OpenIMP"
+  used the installed libimp, which is OpenIMP on both test cameras: they compared OpenIMP with itself and are withdrawn.
+  Real A/B (vendor 3.12.0 and OpenIMP next via `LD_LIBRARY_PATH`, the library of every run checked by its log lines:
+  OpenIMP `[KernelIF]` / `[VBM]`, vendor `i264e`; `apitest` case `rctrig`, CBR 640x360, T20 17 and T10 8 scenarios):
+  - A call during the stream (picture 40): the vendor codes on without an IDR and without a size change; OpenIMP restarts its
+    controller with an IDR at QP 15 and then codes much larger P pictures (T20: 188 kB against 38 kB for 120 pictures,
+    T10: 312 kB against 32 kB for 150 pictures). Not vendor-equal (follow-up issue).
+  - Lift ceiling of a starved stream: T10 level 0.5 / 1.5 with new maximum 51: vendor up to 51, OpenIMP 42; T20 level 0.5 /
+    51: vendor 37, OpenIMP 48. The T20 run without any call already differs (mean QP 26 vendor, 34 OpenIMP), so not all of
+    it is the trigger.
+  Vendor equality of the trigger decision itself rests on the host oracle above.
