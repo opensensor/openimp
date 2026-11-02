@@ -524,8 +524,12 @@ static int t30_generate_headers(T30HelixEncoder *encoder);
  * 0x339a8; T21 1.0.33 0x2d9a8): IMP_Encoder_SetH264TransCfg changes the
  * chroma QP offset with the next IDR, in the PPS (i264e_pps_init) and in
  * the command list (0x40120, H264E_T20/T21_SliceInit) together.  The T10
- * list has no such register, so a T10 keeps 0 in both (the OEM would
- * change the PPS alone, a chroma mismatch). */
+ * list has no such register, so a T10 keeps 0 in both.  The OEM T10 library
+ * changes the PPS alone: camera A/B (vendor library on a T10, FixQP 30,
+ * offset 12): chroma mean 154 -> 191 and spread 5 -> 14 from the next IDR,
+ * i.e. a colour shift because the encoder quantises with offset 0 and the
+ * decoder dequantises with 12; writing 0x40120 on the T10 changed nothing
+ * (same shift), so there is no way to code the offset correctly. */
 static void t30_chroma_qp_idr(T30HelixEncoder *encoder)
 {
     int offset = (int)encoder->params.chroma_qp_offset;

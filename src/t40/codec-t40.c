@@ -9690,8 +9690,8 @@ int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
 
 int AL_Codec_Encode_SetChromaQpOffset(void *codec, int offset)
 {
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-    /* T21 1.0.33: any value is accepted and coded as -12..12 */
+#if defined(PLATFORM_T21)
+    /* T21 1.0.33 and T10/T20 3.12.0: any value is accepted and coded as -12..12 */
     if (offset < -12)
         offset = -12;
     else if (offset > 12)

@@ -408,8 +408,8 @@ functions:
     group: h26x
     summary: "Reads or sets the H.264 chroma QP index offset."
     returns: "0 on success, -1 for an invalid or not created channel, a NULL pointer or an offset outside -12 to 12. The T30 build accepts only an offset of 0."
-    notes: "The offset applies from the next IDR picture on (written into the picture parameter set). Stored and read back on all SoCs of the legacy encoder API."
-    diff: "T21 (docs/T21_H264TRANS.md, as the vendor library 1.0.33): a channel number of 6 or more is -1; a channel that does not exist (not created, destroyed, JPEG) answers 0 on Set (nothing happens) and 0 on Get with the structure zeroed; Get returns the offset the encoder codes with now, so a Set shows only after the next IDR picture; a value outside -12..12 is accepted (0) and coded as -12 or 12."
+    notes: "The offset applies from the next IDR picture on (written into the picture parameter set). Stored and read back on T23 and T30; T10, T20 and T21 follow the vendor library (see the SoC notes)."
+    diff: "T21 (docs/T21_H264TRANS.md, as the vendor library 1.0.33): a channel number of 6 or more is -1; a channel that does not exist (not created, destroyed, JPEG) answers 0 on Set (nothing happens) and 0 on Get with the structure zeroed; Get returns the offset the encoder codes with now, so a Set shows only after the next IDR picture; a value outside -12..12 is accepted (0) and coded as -12 or 12. T10 and T20 (docs/T21_H264TRANS.md, as the vendor library 3.12.0): the same Set semantics, but Get never shows the offset (zeroed structure with intraTransMode = interTransMode = 1, returns 0). T10: the PPS keeps offset 0 (the vendor T10 codes the offset in the PPS only and the decoded chroma shifts; the T10 hardware cannot apply it)."
     soc: "T10, T20, T21, T23"
   Encoder_Get/SetH265TransCfg:
     group: h26x
