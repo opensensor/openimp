@@ -43,6 +43,51 @@ uint32_t hskip_buffers(uint32_t type)
     return type == 0 || type == 1 ? 2u : 3u;
 }
 
+uint32_t hskip_buffers_t21(uint32_t type)
+{
+    return type == 0 ? 2u : 3u;
+}
+
+void hskip_init_t21(HSkip *s, uint32_t gop, uint32_t type, uint32_t m, uint32_t n, uint32_t same)
+{
+    hskip_init(s, gop, type, m, n, same);
+    s->t21 = 1;
+    if (type == 0 || type == 1)
+        s->buffers = 3;
+}
+
+void hskip_t21_validate(HSkipAttr *a, int smart, uint32_t gop)
+{
+    int32_t g1 = gop > 0u ? (int32_t)gop - 1 : 0;
+
+    if (!smart) {
+        a->type = a->m = a->n = 0;
+        a->scenecut = a->black = 0;
+        a->same = 1;
+        return;
+    }
+    if ((int32_t)a->type < 0)
+        a->type = 0;
+    else if (a->type > 6u)
+        a->type = 6;
+    a->same = (uint32_t)hs_clip3((int32_t)a->same, 1, 100);
+    a->scenecut = a->scenecut != 0;
+    a->black = a->black != 0;
+    switch (a->type) {
+    case 0: a->m = (uint32_t)g1; a->n = 1; break;
+    case 1: a->m = 1; a->n = 1; break;
+    case 2: a->m = 1; a->n = 2; break;
+    case 3:
+    case 4: a->m = 1; a->n = (uint32_t)g1; break;
+    default: a->m = (uint32_t)g1; a->n = 1; break;
+    }
+}
+
+int hskip_t21_scene_idr(uint32_t counter, uint32_t gop, int not_fixqp, int cls)
+{
+    return not_fixqp && cls == 5 && gop && counter >= gop;
+}
+
 /* the third buffer of a three-buffer structure: the lowest index that is neither the
  * reconstruction of the previous state (x) nor the current one (y) */
 static int32_t hs_pick3(int32_t x, int32_t y)
@@ -246,7 +291,7 @@ int hskip_keep_second(uint32_t second_bytes, uint32_t first_bytes)
 
 int hskip_qp_from_idr(const HSkip *s, const HSkipPic *pic)
 {
-    if (pic->idr)
+    if (pic->idr || s->t21)         /* T21: i264e_decide_slice_qp is an empty function */
         return 0;
     if (pic->ftype == HSKIP_FT_LBASE)
         return !(s->same != 0 && (s->type == 5 || s->type == 6));

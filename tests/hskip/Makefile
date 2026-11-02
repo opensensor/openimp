@@ -10,6 +10,7 @@ H264 := $(PROJECT_DIR)/src/t30/h264enc
 
 check: $(HSKIP_TEST) $(BLACK_TEST)
 	$(HSKIP_TEST) hskip_vectors.txt changeref_vectors.txt scenecut_vectors.txt
+	$(HSKIP_TEST) --t21 hskip_vectors_t21.txt changeref_vectors_t21.txt scenecut_vectors_t21.txt validate_t21.txt sceneidr_t21.txt
 	$(BLACK_TEST) black_vectors.txt
 
 $(HSKIP_TEST): hskip_test.c $(PROJECT_DIR)/src/hskip/hskip.c $(PROJECT_DIR)/src/hskip/hskip.h

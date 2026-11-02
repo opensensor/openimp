@@ -1,5 +1,7 @@
 # T10 / T20: IMP_Encoder_SetChnHSkip, BlackEnhance and ChangeRef (issues #3, #5)
 
+T21 (libimp 1.0.33) carries the same code with differences (SMART only, no class byte, no second try): see `docs/T21_HSKIP.md`.
+
 The vendor libimp 3.12.0 (T10 and T20 are one binary) codes a *reference structure* when the skip
 type of `rcAttr.attrHSkip.hSkipAttr` is not `IMP_Encoder_STYPE_N1X`.  OpenIMP's own H.264 path
 (`src/t30/t30_helix_encoder.c`, T10/T20 build) now does the same; the decisions are `src/hskip`

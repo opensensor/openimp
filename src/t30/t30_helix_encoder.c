@@ -45,6 +45,13 @@
  * (T20, T21, T23). */
 #define HELIX_SMALL_WINDOWS 1
 #endif
+#if defined(PLATFORM_T20) || (defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23))
+/* IMP_Encoder_SetChnHSkip reference structures (src/hskip, docs/T20_HSKIP.md): T10/T20 and T21 */
+#define HELIX_HSKIP 1
+#if defined(HELIX_T21_SYNTAX)
+#define HELIX_T21_HSKIP 1       /* the T21 1.0.33 variant (no T23) */
+#endif
+#endif
 
 #if (defined(HELIX_T21_SYNTAX) && !defined(PLATFORM_T23)) || \
     defined(PLATFORM_T20)
@@ -68,9 +75,11 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #endif
 #if defined(PLATFORM_T20)
 #include "rc_t20/rc_t20.h"
-#include "hskip/hskip.h"
 #include "rc_t10/rc_t10.h"
 
+#endif
+#if defined(HELIX_HSKIP)
+#include "hskip/hskip.h"
 #endif
 
 #if defined(PLATFORM_T23)
@@ -289,7 +298,7 @@ struct T30HelixEncoder {
     IMPDMABufferInfo descriptor;
     IMPDMABufferInfo emc;
     IMPDMABufferInfo temporary;
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
     T30ReferenceFrame reference[3];     /* [2]: only for the HSkip structures with three buffers */
 #else
     T30ReferenceFrame reference[2];
@@ -309,7 +318,7 @@ struct T30HelixEncoder {
     uint32_t gop_position;
     uint32_t idr_pic_id;
     unsigned int reference_index;
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
     /* IMP_Encoder_SetChnHSkip (src/hskip): the OEM reference structure.  hs_on:
      * the structure drives the pictures (skip type != N1X or an IDR period of
      * maxSameSceneCnt GOPs); the applied values are those of the last IDR */
@@ -320,13 +329,15 @@ struct T30HelixEncoder {
     unsigned int ref_sel;               /* reference buffer of the P picture in hand */
     uint32_t hs_black_pics;
     uint32_t hs_idr_pics;
+    uint32_t hs_scenecuts;
+    uint32_t hs_idr_qp, hs_idr_bits;    /* QP and size (bits) of the last IDR picture (T20: OEM E+0x90450, E+0x9044c; T21: E+0x8e4) */
+#endif
+#if defined(PLATFORM_T20)
     /* SetChangeRef second try (hskip_prev_frame): the kept try of the picture in hand, header and payload */
     uint8_t *cr_buf;
     size_t cr_cap;
     uint32_t cr_tries, cr_second_kept, cr_first_kept;
-    uint32_t hs_scenecuts;
     int cr_inited;                      /* the T10 controller was set up once (SetChangeRef counts from the next set-up) */
-    uint32_t hs_idr_qp, hs_idr_bits;    /* QP and size (bits) of the last IDR picture (OEM E+0x90450, E+0x9044c) */
 #endif
     int have_reference;
     int force_idr;
@@ -949,7 +960,7 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
         slice->raw[1] = encoder->grey.phys_addr;
 #endif
     if (!idr) {
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
         slice->reference_y = encoder->reference[encoder->ref_sel].y;
         slice->reference_c = encoder->reference[encoder->ref_sel].c;
 #else
@@ -1686,7 +1697,10 @@ static uint32_t helix_eprc_idr_gops(const HWEncoderParams *hp, int smart)
     if (smart && env)
         gops = (uint32_t)strtoul(env, NULL, 0);
 #else
-    (void)smart;
+    /* T21 1.0.33 i264e_validate_parameters: maxSameSceneCnt counts in SMART rate control only, every other mode
+     * sets it to 1 (hskip_t21_validate) */
+    if (!smart)
+        gops = 0;
 #endif
     return gops > 100u ? 100u : gops;
 }
@@ -2795,37 +2809,74 @@ uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder)
 }
 #endif
 
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
 /* ---- IMP_Encoder_SetChnHSkip: the OEM reference structure (src/hskip) ----
  * i264e_reconfig_hskip_set only marks the new skip header pending;
  * i264e_idr_reconfig applies it with the next IDR picture (no extra IDR).
  * The structure runs when the skip type is not N1X or when maxSameSceneCnt
- * asks for an IDR period (skip types N1X, H1M); otherwise the plain GOP
- * logic of this file is unchanged.  Black enhancement and ChangeRef are
- * applied from the next picture (i264e_reconfig). */
+ * asks for an IDR period (skip types N1X, H1M; T21: N1X keeps the plain GOP
+ * logic of this file, the structure of N1X is the same chain of P pictures);
+ * otherwise the plain GOP logic of this file is unchanged.  Black enhancement
+ * is applied from the next picture.
+ *
+ * T10/T20 take the skip attributes as given.  The T21 1.0.33 library runs
+ * them through i264e_validate_parameters (hskip_t21_validate): in SMART rate
+ * control only, with m and n of its own. */
+
+#if defined(HELIX_T21_SYNTAX)
+static int hs_is_smart(const HWEncoderParams *hp)
+{
+    return hp->rc_mode == HW_RC_MODE_VBR && (hp->rc_flags & HW_RC_FLAG_SMART) != 0u;
+}
+#endif
+
+/* the attributes the OEM encoder runs, from the application's values */
+static void hs_attr(const HWEncoderParams *hp, HSkipAttr *a)
+{
+#if defined(HELIX_T21_SYNTAX)
+    a->type = hp->hskip_type;
+    a->m = hp->hskip_m;
+    a->n = hp->hskip_n;
+    a->same = hp->same_scene_gops;
+    a->scenecut = (hp->hskip_flags & HW_HSKIP_SCENECUT) != 0u;
+    a->black = (hp->hskip_flags & HW_HSKIP_BLACK) != 0u;
+    hskip_t21_validate(a, hs_is_smart(hp), hp->gop_length);
+#else
+    uint32_t t = hp->hskip_type;
+
+    a->type = t;
+    a->m = hp->hskip_m;
+    a->n = hp->hskip_n;
+    /* the effective IDR period of the OEM: maxSameSceneCnt counts for N1X and H1M only */
+    a->same = (t == 0u || t == 5u || t == 6u) ? hp->same_scene_gops : 0u;
+    a->scenecut = (hp->hskip_flags & HW_HSKIP_SCENECUT) != 0u;
+    a->black = (hp->hskip_flags & HW_HSKIP_BLACK) != 0u;
+#endif
+}
 
 static int t20_hs_wanted(const HWEncoderParams *hp)
 {
+#if defined(HELIX_T21_SYNTAX)
+    HSkipAttr a;
+
+    hs_attr(hp, &a);
+    return a.type != 0u;
+#else
     return hp->hskip_type != 0u ||
            (hp->same_scene_gops > 1u && (hp->hskip_flags & HW_HSKIP_SET));
-}
-
-/* the effective IDR period of the OEM: maxSameSceneCnt counts for N1X and H1M only */
-static uint32_t t20_hs_same(const HWEncoderParams *hp)
-{
-    uint32_t t = hp->hskip_type;
-
-    return (t == 0u || t == 5u || t == 6u) ? hp->same_scene_gops : 0u;
+#endif
 }
 
 static int t20_hs_differs(const T30HelixEncoder *e)
 {
     const HWEncoderParams *hp = &e->params;
+    HSkipAttr a;
 
-    return e->hs_type != hp->hskip_type || e->hs_m != hp->hskip_m ||
-           e->hs_n != hp->hskip_n || e->hs_same != t20_hs_same(hp) ||
+    hs_attr(hp, &a);
+    return e->hs_type != a.type || e->hs_m != a.m ||
+           e->hs_n != a.n || e->hs_same != a.same ||
            e->hs_gop != hp->gop_length ||
-           e->hs_scenecut != ((hp->hskip_flags & HW_HSKIP_SCENECUT) != 0);
+           e->hs_scenecut != a.scenecut;
 }
 
 /* the third reconstruction buffer (skip types with three buffers) */
@@ -2836,6 +2887,7 @@ static int t20_hs_alloc3(T30HelixEncoder *e)
 
     if (r->dma.phys_addr)
         return 0;
+#if defined(PLATFORM_T20)
     if (e->t10) {
         uint32_t luma = (uint32_t)T10_H264_ReferencePlaneSize((uint8_t)mbw, (uint8_t)mbh, 0);
         uint32_t chroma = (uint32_t)T10_H264_ReferencePlaneSize((uint8_t)mbw, (uint8_t)mbh, 1);
@@ -2844,7 +2896,33 @@ static int t20_hs_alloc3(T30HelixEncoder *e)
             return -1;
         r->y = r->dma.phys_addr;
         r->c = r->dma.phys_addr + luma;
-    } else {
+    } else
+#endif
+    {
+        uint32_t luma = ((e->params.width + 15u) & ~15u) * ((e->params.height + 15u) & ~15u);
+
+        (void)mbw;
+        (void)mbh;
+        if (t30_dma_allocate(&r->dma, luma + luma / 2u, "t30-helix-ref") != 0)
+            return -1;
+        r->y = r->dma.phys_addr;
+        r->c = r->y + luma;
+    }
+    return 0;
+}
+
+#if defined(HELIX_T21_SYNTAX)
+/* The skip structures predict from up to three separate reconstruction pictures; the one reference ring
+ * (t21_ref_ring.h) keeps only the previous picture.  The ring allocation in reference[0] serves as the plain
+ * buffer 0 (the planes keep their addresses: the luma ring is larger than a picture, the chroma ring follows
+ * it), buffer 1 is added when the encoder was created with the ring.  Done at an IDR picture. */
+static int t21_hs_plain(T30HelixEncoder *e)
+{
+    T30ReferenceFrame *r = &e->reference[1];
+
+    if (r->dma.phys_addr)
+        return 0;
+    {
         uint32_t luma = ((e->params.width + 15u) & ~15u) * ((e->params.height + 15u) & ~15u);
 
         if (t30_dma_allocate(&r->dma, luma + luma / 2u, "t30-helix-ref") != 0)
@@ -2854,6 +2932,7 @@ static int t20_hs_alloc3(T30HelixEncoder *e)
     }
     return 0;
 }
+#endif
 
 /* Take the requested structure over at an IDR.  Returns 0 and sets hs_on, or -1 (the
  * structure is not started: the picture is then coded by the plain GOP logic). */
@@ -2861,15 +2940,31 @@ static int t20_hs_apply(T30HelixEncoder *e)
 {
     const HWEncoderParams *hp = &e->params;
     int want = t20_hs_wanted(hp);
+    HSkipAttr a;
 
+    hs_attr(hp, &a);
     if (want) {
-        uint32_t same = t20_hs_same(hp);
-        int refs2 = hskip_buffers(hp->hskip_type) == 2u ? 0 : 1;
+        int refs3 = 0;
         int need_sps = e->sps.i_num_ref_frames < 2;
 
-        if (refs2 && t20_hs_alloc3(e) != 0) {
+#if defined(HELIX_T21_SYNTAX)
+        refs3 = hskip_buffers_t21(a.type) == 3u;
+        if (e->ref_share) {
+            if (t21_hs_plain(e) != 0) {
+                IMP_LOG_ERR("Encoder", "Helix: no memory for the reconstruction pictures of HSkip type %u; "
+                            "the plain GOP is kept", a.type);
+                e->hs_on = 0;
+                return -1;
+            }
+            e->ref_share = 0;
+            IMP_LOG_INFO("Encoder", "Helix: reference sharing off, HSkip type %u predicts from separate pictures", a.type);
+        }
+#else
+        refs3 = hskip_buffers(a.type) != 2u;
+#endif
+        if (refs3 && t20_hs_alloc3(e) != 0) {
             IMP_LOG_ERR("Encoder", "Helix: no memory for the third reference picture of HSkip type %u; "
-                        "the plain GOP is kept", hp->hskip_type);
+                        "the plain GOP is kept", a.type);
             e->hs_on = 0;
             return -1;
         }
@@ -2881,32 +2976,43 @@ static int t20_hs_apply(T30HelixEncoder *e)
             if (t30_generate_headers(e) != 0)
                 return -1;
         }
-        hskip_init(&e->hs, hp->gop_length, hp->hskip_type, hp->hskip_m, hp->hskip_n, same);
-        e->hs_type = hp->hskip_type;
-        e->hs_m = hp->hskip_m;
-        e->hs_n = hp->hskip_n;
-        e->hs_same = same;
+#if defined(HELIX_T21_SYNTAX)
+        hskip_init_t21(&e->hs, hp->gop_length, a.type, a.m, a.n, a.same);
+#else
+        hskip_init(&e->hs, hp->gop_length, a.type, a.m, a.n, a.same);
+#endif
+        e->hs_type = a.type;
+        e->hs_m = a.m;
+        e->hs_n = a.n;
+        e->hs_same = a.same;
         e->hs_gop = hp->gop_length;
-        e->hs_scenecut = (hp->hskip_flags & HW_HSKIP_SCENECUT) != 0;
+        e->hs_scenecut = a.scenecut;
         e->hs_on = 1;
         IMP_LOG_INFO("Encoder", "Helix: HSkip structure type %u m %u n %u same %u gop %u (%u buffers)",
-                     hp->hskip_type, hp->hskip_m, hp->hskip_n, same, hp->gop_length, e->hs.buffers);
+                     a.type, a.m, a.n, a.same, hp->gop_length, e->hs.buffers);
     } else {
         e->hs_on = 0;
-        e->hs_type = 0;
-        e->hs_m = e->hs_n = e->hs_same = 0;
+        e->hs_type = a.type;
+        e->hs_m = a.m;
+        e->hs_n = a.n;
+        e->hs_same = a.same;
         e->hs_gop = hp->gop_length;
         e->hs_scenecut = 0;
+#if !defined(HELIX_T21_SYNTAX)
+        e->hs_type = 0;
+        e->hs_m = e->hs_n = e->hs_same = 0;
         if (e->sps.i_num_ref_frames != 1) {
             e->sps.i_num_ref_frames = 1;
             e->sps.b_gaps_in_frame_num_value_allowed = 0;
             if (t30_generate_headers(e) != 0)
                 return -1;
         }
+#endif
     }
     return 0;
 }
 
+#if defined(PLATFORM_T20)
 /* i264e_ratecontrol_start tells the OEM controller whether the picture opens a GOP
  * (counter % gop == 0): with an IDR period of several GOPs also a picture that is not
  * an IDR does */
@@ -2936,14 +3042,37 @@ static int t20_hs_cond(const T30HelixEncoder *e)
 {
     return e->hs_on && hskip_rc_cond(&e->hs, &e->hs_pic, e->t10);
 }
+#else
+/* T21 1.0.33 i264e_decide_slice_type_and_rd: the class the controller gave the previous picture is 5 (scene change) */
+static int t20_scene_idr(const T30HelixEncoder *e)
+{
+    return e->eprc_on && e->hs_on &&
+           hskip_t21_scene_idr(e->hs.counter, e->hs.gop, e->params.rc_mode != HW_RC_MODE_FIXQP,
+                               (int)EPRC21_PictureClass(&e->eprc));
+}
+#endif
+
+/* The plain GOP logic ping-pongs between the buffers 0 and 1: when a structure ends at an IDR picture the last
+ * reconstruction may sit in the third buffer */
+static void hs_plain_ref(T30HelixEncoder *e)
+{
+    if (!e->hs_on && e->reference_index > 1u)
+        e->reference_index = 0;
+}
 
 /* The IDR decision of one picture.  Returns 1 for an IDR picture. */
 static int t20_hs_idr(T30HelixEncoder *e, int extra_force)
 {
     int force = e->force_idr || !e->have_reference || extra_force;
-    int legacy = force || e->gop_position >= e->params.gop_length;
+    uint32_t period = e->params.gop_length;
+    int legacy;
     int pending = t20_hs_differs(e) || (e->hs_on != t20_hs_wanted(&e->params));
 
+#if defined(HELIX_T21_SYNTAX)
+    if (e->eprc_on && e->eprc_idr_gops)
+        period *= e->eprc_idr_gops;
+#endif
+    legacy = force || e->gop_position >= period;
     if (!e->hs_on) {
         /* the plain GOP logic runs; a new structure starts with an IDR */
         if (legacy && pending && t20_hs_wanted(&e->params) && t20_hs_apply(e) == 0) {
@@ -2957,10 +3086,13 @@ static int t20_hs_idr(T30HelixEncoder *e, int extra_force)
         /* i264e_idr_reconfig: new skip header with the IDR */
         if (t20_hs_apply(e) != 0) {
             e->hs_on = 0;
+            hs_plain_ref(e);
             return 1;
         }
         if (e->hs_on)
             hskip_decide(&e->hs, 1, 0, &e->hs_pic);
+        else
+            hs_plain_ref(e);
         return 1;
     }
     return e->hs_pic.idr;
@@ -2988,7 +3120,7 @@ int OpenIMP_T30_HelixEncode(T30HelixEncoder *encoder,
      * the window, so cache maintenance and the length check cover the
      * window and not the whole (2 MB) buffer */
     encoder->temporary.size = t30_bitstream_bytes(encoder);
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
     {
         /* a picture that fails leaves the reference structure where it was (the contract of
          * this function: nothing is committed); the decision for it is taken back */
@@ -3056,16 +3188,23 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     unsigned int output_index;
     int idr;
     size_t descriptor_pairs;
-#if defined(PLATFORM_T20)
-    uint32_t t20_reencodes;
+#if defined(HELIX_HSKIP)
     int hs_black = 0;           /* BlackEnhance: an all-skip slice instead of the encoder */
     uint8_t black_buf[256];
     const uint8_t *payload = NULL;
+    int sc_force = 0;           /* bEnableScenecut: the picture is coded again as an IDR picture */
+#if defined(PLATFORM_T20)
+    uint32_t sc_qp = 0;
+#endif
+#endif
+#if defined(HELIX_T21_HSKIP)
+    uint32_t hs_tries = 0;      /* T21: re-encodes of the picture in hand (the scene cut is judged on the first try) */
+#endif
+#if defined(PLATFORM_T20)
+    uint32_t t20_reencodes;
     /* SetChangeRef second try (i264e_slice_write): cr_second: this run is the second try; the kept try of the
      * picture is in cr_buf once the second try ran and was not smaller */
     int cr_second = 0;
-    int sc_force = 0;           /* bEnableScenecut: the picture is coded again as an IDR picture */
-    uint32_t sc_qp = 0;
     HSkipPic cr_pic;
     int32_t cr_ref = -1;
     uint32_t cr_hdr = 0, cr_len = 0;
@@ -3117,7 +3256,7 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     }
     t30_pad_input_rows(encoder, frame);
 #endif
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
 t20_picture:
     idr = t20_hs_idr(encoder, sc_force);        /* the plain GOP logic unless an HSkip structure runs */
 #else
@@ -3130,7 +3269,11 @@ t20_picture:
           ;
 #endif
 #if defined(HELIX_T21_SYNTAX)
-    if (!idr && helix_eprc_scene_cut(encoder)) {
+    if (!idr
+#if defined(HELIX_HSKIP)
+        && !encoder->hs_on
+#endif
+        && helix_eprc_scene_cut(encoder)) {
         idr = 1;
         encoder->eprc_scene_idrs++;
         if (encoder->eprc_scene_idrs <= 3u ||
@@ -3217,15 +3360,18 @@ t20_again:
 #endif
     output_index = encoder->have_reference
         ? (encoder->reference_index ^ 1u) : 0u;
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
     encoder->ref_sel = encoder->reference_index;
+    hs_black = 0;
     if (encoder->hs_on) {
         /* the structure names the reference and the reconstruction buffer */
         output_index = (unsigned int)encoder->hs_pic.recon;
         encoder->ref_sel = encoder->hs_pic.ref < 0 ? output_index
                                                     : (unsigned int)encoder->hs_pic.ref;
+#if defined(PLATFORM_T20)
         if (cr_second)          /* the second try predicts from the third buffer (i264e_get_prev_fram_dec) */
             encoder->ref_sel = (unsigned int)cr_ref;
+#endif
         hs_black = !idr && encoder->hs_pic.ftype == HSKIP_FT_ENHANCE &&
                    (encoder->params.hskip_flags & HW_HSKIP_BLACK);
         if (hs_black)
@@ -3243,7 +3389,7 @@ again:
     h264e_slice_header_init(&encoder->slice_header, &encoder->sps,
                             &encoder->pps,
                             idr ? (int)(encoder->idr_pic_id & 1u) : -1,
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
                             idr ? 0 : (int)((encoder->hs_on ? encoder->hs_pic.counter
                                                             : encoder->gop_position) & 1023u),
 #else
@@ -3251,11 +3397,15 @@ again:
 #endif
                             (int)qp);
     encoder->slice_header.i_type = idr ? SLICE_TYPE_I : SLICE_TYPE_P;
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
     if (encoder->hs_on) {
         /* the long-term base layer of the skip structures (OEM slice header; the second try of
-         * SetChangeRef has the commands of i264e_dec_ref_pic_remark) */
+         * SetChangeRef (T10/T20) has the commands of i264e_dec_ref_pic_remark) */
+#if defined(PLATFORM_T20)
         const HSkipPic *hsp = cr_second ? &cr_pic : &encoder->hs_pic;
+#else
+        const HSkipPic *hsp = &encoder->hs_pic;
+#endif
 
         if (idr) {
             encoder->slice_header.b_long_term_reference_flag = hsp->ltr_flag;
@@ -3506,7 +3656,7 @@ again:
     /* Never let a RUN that returns without reporting a length republish the
      * previous picture's size over stale bitstream bytes. */
     encoder->channel.output_len = 0;
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
     if (hs_black) {
         /* BlackEnhance: the OEM i264e_icodec_black writes the slice data of an
          * all-skip P picture in software and the encoder does not run; the
@@ -3533,13 +3683,33 @@ again:
 #endif
         return -1;
     }
-#if defined(HELIX_T21_SYNTAX)
-    if (encoder->eprc_on && helix_eprc_end(encoder, idr, &qp))
+#if defined(HELIX_T21_HSKIP)
+    /* T21 1.0.33 i264e_slice_write: i264e_decide_reset_slice_to_idr judges the first try of a picture before the
+     * re-encode judge; a black picture reaches neither the judge nor FRAME_END (i264e_icodec_black) */
+    if (encoder->hs_on && !hs_black && !sc_force && hs_tries == 0u && !idr &&
+        hskip_scenecut(&encoder->hs, &encoder->hs_pic, (int)encoder->hs_scenecut, encoder->params.fps_num,
+                       encoder->params.fps_den, encoder->channel.output_len * 8u, encoder->hs_idr_bits)) {
+        /* this base picture is larger than the last IDR picture at a whole second: the rate controller starts again
+         * from the QP of this try, the picture is coded as an IDR picture */
+        sc_force = 1;
+        encoder->hs_scenecuts++;
+        if (encoder->hs_scenecuts <= 3u || encoder->hs_scenecuts % 100u == 0u)
+            IMP_LOG_INFO("Encoder", "Helix: frame=%u scene cut, %u bytes at qp=%u, coded again as an IDR picture (%u so far)",
+                         encoder->frame_number, encoder->channel.output_len, qp, encoder->hs_scenecuts);
+        encoder->eprc_qp = (int)qp;     /* i264e_ratecontrol_init(E, ctx+0x2e4) */
+        encoder->eprc_restarting = 1;
+        helix_eprc_start(encoder);
+        encoder->eprc_restarting = 0;
+        goto t20_picture;
+    }
+    if (encoder->eprc_on && !hs_black && helix_eprc_end(encoder, idr, &qp)) {
+        hs_tries++;
         goto again;
+    }
 #endif
 #endif
     if (
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
         !hs_black &&
 #endif
         DMA_RmemFlushCache(temporary + T30_SLICE_OFFSET,
@@ -3548,6 +3718,13 @@ again:
                   strerror(errno));
         return -1;
     }
+#if defined(HELIX_T21_HSKIP)
+    if (idr) {
+        /* i264e_ratecontrol_end of an IDR picture: its size (E+0x8e4) */
+        encoder->hs_idr_qp = qp;
+        encoder->hs_idr_bits = encoder->channel.output_len * 8u;
+    }
+#endif
 #if defined(PLATFORM_T20)
     if (encoder->hs_on && !sc_force && !cr_second && t20_reencodes == 0u && !idr &&
         hskip_scenecut(&encoder->hs, &encoder->hs_pic, (int)encoder->hs_scenecut, encoder->params.fps_num,
@@ -3723,7 +3900,7 @@ again:
 #endif
                           temporary, header_length) != 0 ||
         t30_annexb_append(&writer,
-#if defined(PLATFORM_T20)
+#if defined(HELIX_HSKIP)
                           payload ? payload :
 #endif
                           temporary + T30_SLICE_OFFSET,
@@ -4080,6 +4257,12 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
 #if defined(HELIX_T21_SYNTAX)
     next.same_scene_gops = requested->same_scene_gops;
 #endif
+#if defined(HELIX_T21_HSKIP)
+    next.hskip_type = requested->hskip_type;
+    next.hskip_m = requested->hskip_m;
+    next.hskip_n = requested->hskip_n;
+    next.hskip_flags = requested->hskip_flags;
+#endif
 #if defined(PLATFORM_T20)
     /* IMP_Encoder_SetChnHSkip / SetChangeRef (src/hskip): the structure starts with
      * the next IDR (t20_hs_idr), black enhancement and ChangeRef with the next picture */
@@ -4138,6 +4321,18 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
             encoder->params.hskip_flags = next.hskip_flags;
             encoder->params.change_ref_off = next.change_ref_off;
             t20_change_ref_apply(encoder);
+            return 0;
+        }
+    }
+#endif
+#if defined(HELIX_T21_HSKIP)
+    {
+        /* IMP_Encoder_SetChnHSkipBlackEnhance: i264e_reconfig applies the flag with the next picture, no restart */
+        HWEncoderParams cmp = next;
+
+        cmp.hskip_flags = (cmp.hskip_flags & ~HW_HSKIP_BLACK) | (encoder->params.hskip_flags & HW_HSKIP_BLACK);
+        if (!memcmp(&cmp, &encoder->params, sizeof(cmp)) && cmp.hskip_flags != next.hskip_flags) {
+            encoder->params.hskip_flags = next.hskip_flags;
             return 0;
         }
     }
@@ -4226,6 +4421,9 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
     /* the shared descriptor stays open, see t30_vpu_fd */
     for (i = 0; i < 2u; i++)
         t30_dma_release(&encoder->reference[i].dma);
+#if defined(HELIX_HSKIP)
+    t30_dma_release(&encoder->reference[2].dma);
+#endif
     t30_dma_release(&encoder->temporary);
 #if defined(PLATFORM_T23)
     if (encoder->shared_bs)

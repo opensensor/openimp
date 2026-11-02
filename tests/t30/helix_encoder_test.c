@@ -507,7 +507,12 @@ typedef struct {
     uint32_t level;
     uint32_t qp;                /* 26 (pic_init_qp) + slice_qp_delta */
     uint32_t slice_bytes;       /* slice header and payload (RBSP) */
+    int reorder, mmco, ltr;     /* hs_parse: list modification, MMCO, long_term_reference_flag */
 } PictureInfo;
+
+/* 1: the pictures may carry the HSkip commands (reference list modification, MMCO, long-term flag) and a payload of
+ * their own (BlackEnhance): parsed into PictureInfo instead of asserted away */
+static int hs_parse;
 
 /* Encode one picture and check its layout.  Returns 0 on success. */
 static int encode(T30HelixEncoder *encoder, PictureInfo *info)
@@ -546,6 +551,7 @@ static int encode(T30HelixEncoder *encoder, PictureInfo *info)
     split_access_unit((const uint8_t *)(uintptr_t)stream->virt_addr,
                       stream->length);
     info->idr = stream->frame_type == HW_FRAME_TYPE_I;
+    info->reorder = info->mmco = info->ltr = 0;
     if (info->idr) {
         assert(au.count == 3u && au.types[0] == 7 && au.types[1] == 8 &&
                au.types[2] == 5);
@@ -558,9 +564,9 @@ static int encode(T30HelixEncoder *encoder, PictureInfo *info)
     slice_length = au.rbsp_length[slice_index];
 
     /* The VPU payload must follow the escaped header unchanged. */
-    assert(slice_length > payload_length);
-    assert(!memcmp(slice + slice_length - payload_length, payload,
-                   payload_length));
+    assert(hs_parse || slice_length > payload_length);
+    assert(hs_parse || !memcmp(slice + slice_length - payload_length, payload,
+                               payload_length));
 
     bits.data = slice;
     bits.offset = 0;
@@ -577,15 +583,34 @@ static int encode(T30HelixEncoder *encoder, PictureInfo *info)
     if (!info->idr) {
         if (bits_read(&bits, 1))                    /* num_ref_idx override */
             (void)bits_ue(&bits);
-        assert(!bits_read(&bits, 1));               /* no list reordering */
-        assert(!bits_read(&bits, 1));               /* no MMCO */
+        info->reorder = (int)bits_read(&bits, 1);   /* list reordering */
+        if (info->reorder) {
+            uint32_t idc;
+
+            assert(hs_parse);
+            while ((idc = bits_ue(&bits)) != 3u) {
+                assert(idc == 2u);                  /* long_term_pic_num */
+                assert(bits_ue(&bits) == 0u);
+            }
+        }
+        info->mmco = (int)bits_read(&bits, 1);      /* MMCO */
+        if (info->mmco) {
+            uint32_t op;
+
+            assert(hs_parse);
+            while ((op = bits_ue(&bits)) != 0u) {
+                assert(op == 1u || op == 6u);
+                (void)bits_ue(&bits);               /* difference_of_pic_nums / long_term_frame_idx */
+            }
+        }
         (void)bits_ue(&bits);                       /* cabac_init_idc */
     } else {
-        (void)bits_read(&bits, 2);                  /* IDR marking flags */
+        (void)bits_read(&bits, 1);                  /* no_output_of_prior_pics */
+        info->ltr = (int)bits_read(&bits, 1);       /* long_term_reference_flag */
     }
     info->qp = (uint32_t)(26 + bits_se(&bits));
     info->slice_bytes = slice_length;
-    assert(bits.offset <= (slice_length - payload_length) * 8u);
+    assert(hs_parse || bits.offset <= (slice_length - payload_length) * 8u);
     assert(stream->timestamp == (uint64_t)frame.timeStamp);
 
     free((void *)(uintptr_t)stream->virt_addr);
@@ -1327,20 +1352,23 @@ static void test_failure_count_and_input_size(void)
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 /* OPENIMP_T21_EPRC unset: the OEM picture rate controller (src/eprc) with
  * the statistics registers read after every picture; the IDR period follows
- * maxSameSceneCnt (same_scene_gops); =0: the GOP controller, no reads. */
+ * maxSameSceneCnt (same_scene_gops) in SMART rate control only (T21 1.0.33
+ * i264e_validate_parameters sets it to 1 in every other mode, k = 4);
+ * =0: the GOP controller, no reads. */
 static void test_eprc(void)
 {
-    static const uint32_t modes[3] = { HW_RC_MODE_CBR, HW_RC_MODE_VBR,
+    static const uint32_t modes[5] = { HW_RC_MODE_CBR, HW_RC_MODE_VBR,
+                                       HW_RC_MODE_VBR, HW_RC_MODE_CBR,
                                        HW_RC_MODE_VBR };
     unsigned int k, frame, reads, pictures;
 
-    for (k = 0; k < 4u; k++) {
+    for (k = 0; k < 5u; k++) {
         HWEncoderParams params;
         T30HelixEncoder *encoder = NULL;
         PictureInfo info;
         unsigned int idrs = 0;
 
-        if (k < 3u)
+        if (k != 3u)
             unsetenv("OPENIMP_T21_EPRC");
         else
             setenv("OPENIMP_T21_EPRC", "0", 1);
@@ -1350,13 +1378,13 @@ static void test_eprc(void)
         params.fps_num = 15;
         params.fps_den = 1;
         params.gop_length = 5;
-        params.rc_mode = k < 3u ? modes[k] : HW_RC_MODE_CBR;
+        params.rc_mode = modes[k];
         params.bitrate = 500000;
         params.qp = 30;
         params.min_qp = 20;
         params.max_qp = 51;
-        params.rc_flags = HW_RC_FLAG_APP | (k == 2u ? HW_RC_FLAG_SMART : 0u);
-        params.same_scene_gops = k == 1u ? 2u : 0u;
+        params.rc_flags = HW_RC_FLAG_APP | (k == 1u || k == 2u ? HW_RC_FLAG_SMART : 0u);
+        params.same_scene_gops = k == 1u || k == 4u ? 2u : 0u;
         assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
         reads = reg_reads;
         pictures = runs;
@@ -1370,47 +1398,188 @@ static void test_eprc(void)
         assert(idrs == (k == 1u ? 2u : 4u));
         pictures = runs - pictures;
         assert(pictures >= 20u);
-        assert(reg_reads - reads == (k < 3u ? 25u * pictures : 0u));
+        assert(reg_reads - reads == (k < 3u || k == 4u ? 25u * pictures : 0u));
         OpenIMP_T30_HelixDestroy(encoder);
     }
     unsetenv("OPENIMP_T21_EPRC");
 }
 
+/* IMP_Encoder_SetChnHSkip, T21 (docs/T21_HSKIP.md): in SMART rate control the pictures follow the OEM structure of
+ * tests/hskip/hskip_vectors_t21.txt (frame_num, IDR, long-term flag, list modification, MMCO); BlackEnhance writes the
+ * ENHANCE pictures in software (no VPU run, QP 0); every other rate-control mode keeps the plain GOP. */
+static int hskip_vectors(unsigned int gop, unsigned int type, unsigned int *cnt, unsigned int *idr, unsigned int *ft,
+                         unsigned int *ltr, unsigned int *reo, unsigned int *mm, unsigned int n)
+{
+    FILE *f = fopen("../hskip/hskip_vectors_t21.txt", "r");
+    char line[256];
+    unsigned int g, t, m, nn, same, i = 0;
+    int ref, rec, idc;
+
+    if (!f)
+        return -1;
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == 'S') {
+            if (sscanf(line, "S %u %u %u %u %u", &g, &t, &m, &nn, &same) == 5 && g == gop && t == type &&
+                m == gop - 1u && nn == 1u && same == 0u) {
+                for (i = 0; i < n && fgets(line, sizeof(line), f); i++)
+                    if (sscanf(line, "%u %u %u %d %d %u %u %d %u", &cnt[i], &idr[i], &ft[i], &ref, &rec, &ltr[i],
+                               &reo[i], &idc, &mm[i]) != 9)
+                        break;
+                fclose(f);
+                return i == n ? 0 : -1;
+            }
+        }
+    }
+    fclose(f);
+    return -1;
+}
+
+static void test_t21_hskip(void)
+{
+    static const unsigned int types[4] = { 1u, 2u, 5u, 6u };
+    unsigned int k, smart, black, frame;
+
+    unsetenv("OPENIMP_T21_EPRC");
+    hs_parse = 1;
+    for (k = 0; k < 4u; k++) {
+        for (smart = 0; smart < 2u; smart++) {
+            for (black = 0; black < 2u; black++) {
+                HWEncoderParams params;
+                T30HelixEncoder *encoder = NULL;
+                PictureInfo info;
+                unsigned int cnt[24], idr[24], ft[24], ltr[24], reo[24], mm[24], runs0, blacks = 0;
+
+                assert(hskip_vectors(8u, types[k], cnt, idr, ft, ltr, reo, mm, 24u) == 0);
+                memset(&params, 0, sizeof(params));
+                params.width = 640;
+                params.height = 360;
+                params.fps_num = 15;
+                params.fps_den = 1;
+                params.gop_length = 8;
+                params.rc_mode = smart ? HW_RC_MODE_VBR : HW_RC_MODE_CBR;
+                params.bitrate = 500000;
+                params.qp = 30;
+                params.min_qp = 20;
+                params.max_qp = 51;
+                params.rc_flags = HW_RC_FLAG_APP | (smart ? HW_RC_FLAG_SMART : 0u);
+                params.hskip_type = types[k];
+                params.hskip_m = 4;
+                params.hskip_n = 1;
+                params.hskip_flags = HW_HSKIP_SET | (black ? HW_HSKIP_BLACK : 0u);
+                assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+                runs0 = runs;
+                for (frame = 0; frame < 24u; frame++) {
+                    fill_payload(200u + frame, 20u);
+                    assert(encode(encoder, &info) == 0);
+                    if (smart) {
+                        assert(info.idr == (int)idr[frame]);
+                        assert(info.frame_num == cnt[frame]);
+                        assert(info.ltr == (int)ltr[frame]);
+                        assert(info.reorder == (int)reo[frame]);
+                        assert(info.mmco == (mm[frame] == 2u));
+                        if (black && ft[frame] == 3u) {
+                            assert(info.qp == 0u && info.slice_bytes < 60u);        /* the all-skip slice */
+                            blacks++;
+                        } else {
+                            assert(info.slice_bytes > 200u);
+                        }
+                    } else {
+                        assert(info.idr == (frame % 8u == 0u));
+                        assert(info.frame_num == frame % 8u && !info.reorder && !info.mmco && info.slice_bytes > 200u);
+                    }
+                }
+                assert(runs - runs0 == 24u - blacks);   /* a black picture does not reach the VPU */
+                assert(!smart || !black || types[k] == 5u || types[k] == 6u || blacks > 0u);
+                OpenIMP_T30_HelixDestroy(encoder);
+            }
+        }
+    }
+    {
+        /* 1080p: the encoder is created with the shared reference ring; the structure switches to separate pictures at its IDR */
+        HWEncoderParams params;
+        T30HelixEncoder *encoder = NULL;
+        PictureInfo info;
+        unsigned int cnt[24], idr[24], ft[24], ltr[24], reo[24], mm[24];
+
+        assert(hskip_vectors(8u, 5u, cnt, idr, ft, ltr, reo, mm, 24u) == 0);
+        memset(&params, 0, sizeof(params));
+        params.width = 1920;
+        params.height = 1080;
+        params.fps_num = 15;
+        params.fps_den = 1;
+        params.gop_length = 8;
+        params.rc_mode = HW_RC_MODE_VBR;
+        params.bitrate = 500000;
+        params.qp = 30;
+        params.min_qp = 20;
+        params.max_qp = 51;
+        params.rc_flags = HW_RC_FLAG_APP | HW_RC_FLAG_SMART;
+        assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+        for (frame = 0; frame < 24u; frame++) {
+            fill_payload(300u + frame, 20u);
+            assert(encode(encoder, &info) == 0);
+            assert(info.idr == (frame % 8u == 0u));
+            if (frame == 11u) {
+                /* IMP_Encoder_SetChnHSkip at run time: waits for the next IDR (frame 16) */
+                params.hskip_type = 5;
+                params.hskip_m = 7;
+                params.hskip_n = 1;
+                params.hskip_flags = HW_HSKIP_SET;
+                assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
+            }
+            if (frame >= 16u) {
+                assert(info.frame_num == cnt[frame - 16u] && info.reorder == (int)reo[frame - 16u] &&
+                       info.mmco == (mm[frame - 16u] == 2u) && info.ltr == (int)ltr[frame - 16u]);
+            } else {
+                assert(!info.reorder && !info.mmco && !info.ltr);
+            }
+        }
+        OpenIMP_T30_HelixDestroy(encoder);
+    }
+    hs_parse = 0;
+}
+
 /* IMP_Encoder_SetChnHSkip at run time (same_scene_gops): as the OEM
  * i264e_idr_reconfig the change waits for the next IDR, which follows the
- * old period, then the new period counts (no extra IDR). */
+ * old period, then the new period counts (no extra IDR).  SMART rate control
+ * only (T21 1.0.33 i264e_validate_parameters); CBR keeps the plain GOP. */
 static void test_eprc_runtime_hskip(void)
 {
     HWEncoderParams params;
     T30HelixEncoder *encoder = NULL;
     PictureInfo info;
-    unsigned int frame;
+    unsigned int frame, smart;
 
     unsetenv("OPENIMP_T21_EPRC");
-    memset(&params, 0, sizeof(params));
-    params.width = 640;
-    params.height = 360;
-    params.fps_num = 15;
-    params.fps_den = 1;
-    params.gop_length = 5;
-    params.rc_mode = HW_RC_MODE_CBR;
-    params.bitrate = 500000;
-    params.qp = 30;
-    params.min_qp = 20;
-    params.max_qp = 51;
-    params.rc_flags = HW_RC_FLAG_APP;
-    assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
-    for (frame = 0; frame < 7u; frame++) {
-        assert(encode(encoder, &info) == 0);
-        assert(info.idr == (frame % 5u == 0u));
+    for (smart = 0; smart < 2u; smart++) {
+        memset(&params, 0, sizeof(params));
+        params.width = 640;
+        params.height = 360;
+        params.fps_num = 15;
+        params.fps_den = 1;
+        params.gop_length = 5;
+        params.rc_mode = smart ? HW_RC_MODE_VBR : HW_RC_MODE_CBR;
+        params.bitrate = 500000;
+        params.qp = 30;
+        params.min_qp = 20;
+        params.max_qp = 51;
+        params.rc_flags = HW_RC_FLAG_APP | (smart ? HW_RC_FLAG_SMART : 0u);
+        assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+        for (frame = 0; frame < 7u; frame++) {
+            assert(encode(encoder, &info) == 0);
+            assert(info.idr == (frame % 5u == 0u));
+        }
+        params.same_scene_gops = 2;
+        assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
+        for (; frame < 31u; frame++) {
+            assert(encode(encoder, &info) == 0);
+            if (smart)
+                assert(info.idr == (frame == 10u || frame == 20u || frame == 30u));
+            else
+                assert(info.idr == (frame % 5u == 0u));
+        }
+        OpenIMP_T30_HelixDestroy(encoder);
     }
-    params.same_scene_gops = 2;
-    assert(OpenIMP_T30_HelixUpdateParams(encoder, &params) == 0);
-    for (; frame < 31u; frame++) {
-        assert(encode(encoder, &info) == 0);
-        assert(info.idr == (frame == 10u || frame == 20u || frame == 30u));
-    }
-    OpenIMP_T30_HelixDestroy(encoder);
 }
 #endif
 
@@ -1698,6 +1867,7 @@ int main(void)
     test_t21_pps_rewrite();
     test_eprc();
     test_eprc_runtime_hskip();
+    test_t21_hskip();
     test_eprc_mbrc();
 #endif
 #if defined(PLATFORM_T20)
