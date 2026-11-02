@@ -1165,7 +1165,7 @@ features:
       text: frames also recycled for callback pools
     T30:
       sym: 🔧
-      text: FrameSource ran as the source of the contributor's H.264 gate; host test `fs_lifecycle_test`; not run by us
+      text: 'FrameSource ran as the source of the contributor''s H.264 gate; host test `fs_lifecycle_test`; not run by us. 2026-11-03, QEMU only (no T30 camera): the format ioctl is the 0x5c-byte form of the vendor libimp (#178), the apitest `fs` area passes 39/0 against the open driver in the QEMU T30 machine, 6 driver reload cycles with the second-channel start clean under `slub_debug`'
     T31:
       sym: ✅
       text: 'device-tested: concurrent streams ok'

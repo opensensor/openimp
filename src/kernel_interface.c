@@ -76,10 +76,16 @@ static long long ki_mono_us(void)
 #define VIDIOC_SET_CROP     0x8014563c
 #define VIDIOC_GET_SCALERCAP 0xc00856c3
 #define VIDIOC_SET_SCALER   0x800456c4
-#elif defined(PLATFORM_T21) || defined(PLATFORM_T30)
-/* T21 and T30 use the original 0x4c-byte frame-channel format ABI. */
+#elif defined(PLATFORM_T21)
+/* T21 uses the original 0x4c-byte frame-channel format ABI. */
 #define VIDIOC_GET_FMT      0x404c56c4  /* Get format */
 #define VIDIOC_SET_FMT      0xc04c56c3  /* Set format */
+#elif defined(PLATFORM_T30)
+/* T30: the vendor libimp sends the 0x5c-byte form (12-word pix header, crop,
+ * scaler, rate; no front-crop words).  The open driver also accepts the old
+ * 0x4c-byte form 0xc04c56c3/0x404c56c4 (Lu-Fi/openimp#178). */
+#define VIDIOC_GET_FMT      0x405c56c4  /* Get format */
+#define VIDIOC_SET_FMT      0xc05c56c3  /* Set format */
 #else
 #define VIDIOC_GET_FMT      0x407056c4  /* Get format */
 #define VIDIOC_SET_FMT      0xc07056c3  /* Set format */
@@ -115,13 +121,13 @@ struct fs_ioctl_format70 {
     uint32_t sizeimage;        /* 0x18 */
     uint32_t colorspace;       /* 0x1c */
     uint32_t priv;             /* 0x20 */
-#if !defined(PLATFORM_T21) && !defined(PLATFORM_T30)
+#if !defined(PLATFORM_T21)
     uint32_t flags;            /* 0x24 */
     uint32_t ycbcr_enc;        /* 0x28 */
     uint32_t quantization;     /* 0x2c */
     uint32_t xfer_func;        /* 0x30 */
 #endif
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21)
     uint32_t crop_enable;      /* 0x24 */
     uint32_t crop_top;         /* 0x28 */
     uint32_t crop_left;        /* 0x2c */
@@ -143,11 +149,13 @@ struct fs_ioctl_format70 {
     uint32_t scaler_outheight; /* 0x50 */
     uint32_t rate_bits;        /* 0x54 */
     uint32_t rate_mask;        /* 0x58 */
+#if !defined(PLATFORM_T30)
     uint32_t fcrop_enable;     /* 0x5c */
     uint32_t fcrop_top;        /* 0x60 */
     uint32_t fcrop_left;       /* 0x64 */
     uint32_t fcrop_width;      /* 0x68 */
     uint32_t fcrop_height;     /* 0x6c */
+#endif
 #endif
 };
 
@@ -206,9 +214,12 @@ _Static_assert(sizeof(struct t20_v4l2_cropcap) == 0x2c,
                "T20 v4l2_cropcap size");
 #endif
 
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21)
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x4c,
                "legacy fs ioctl format size");
+#elif defined(PLATFORM_T30)
+_Static_assert(sizeof(struct fs_ioctl_format70) == 0x5c,
+               "T30 fs ioctl format size");
 #else
 _Static_assert(sizeof(struct fs_ioctl_format70) == 0x70,
                "fs ioctl format size");

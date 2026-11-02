@@ -35,8 +35,11 @@ produces a magenta band at the top of the decoded image.
 
 ## Kernel and hardware ABI
 
-- FrameSource uses the measured 0x4c-byte T30 format descriptor and ioctls
-  `0xc04c56c3`/`0x404c56c4`.
+- FrameSource sets and gets the frame-channel format with the 0x5c-byte
+  object of the vendor libimp, ioctls `0xc05c56c3`/`0x405c56c4` (type, the
+  48-byte pix header of a 4.x kernel, crop, scaler, rate words). The 0x4c-byte
+  form of the first open driver (`0xc04c56c3`/`0x404c56c4`) differs only by the
+  four extra pix words and is still accepted by the open driver (#178).
 - The legacy VPU interface uses a 56-byte `channel_node` with request,
   release, and run ioctls on `/dev/soc_vpu`.
 - `src/t30/t30_h264_descriptor.c` programs the T30 Helix VDMA command list
