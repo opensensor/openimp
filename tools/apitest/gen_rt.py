@@ -2,9 +2,9 @@
 """Generate at_isp_rt.c: same-value Get -> Set -> Get round trips for every IMP_ISP_*Get<X>/Set<X> pair of the vendor
 headers that takes exactly one struct pointer (plus IMPVI_NUM on T40/T41) and that the hand-written at_isp.c does not
 already round-trip.  Type-agnostic: a 16 KB guarded buffer holds the struct, the second Get must read back the same bytes.
-Usage: gen_rt.py > at_isp_rt.c   (HDR = timps/include)"""
+Usage: gen_rt.py > at_isp_rt.c   (HDR = vendor SDK include root)"""
 import glob, os, re, sys
-HDR = os.environ.get("HDR", "/mnt/NVMe/git/timps/include")
+HDR = os.environ.get("HDR") or sys.exit("set HDR=<vendor SDK include root>")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SETS = [("T10", "T10/3.12.0/zh"), ("T20", "T20/3.12.0/zh"), ("T21", "T21/1.0.33/zh"), ("T23", "T23/1.3.0/zh"), ("T31", "T31/1.1.6/en"),
         ("T40", "T40/1.3.1/en"), ("T41", "T41/1.2.6/en")]

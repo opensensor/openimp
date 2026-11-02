@@ -3,9 +3,9 @@
 # Usage: build.sh [SOC...]   (default: all)   OUT=<dir> for the binaries (default tools/apitest/build)
 # The binaries link dynamically against the libimp of the camera they run on (the flashed one); the build
 # only needs a toolchain and a libimp.so to link against: taken from a thingino-out tree of the SoC.
-# Vendor headers: timps/include (ingenic-headers copies). T40 = T41 API family: -DPLATFORM_T41 -DAPITEST_T40.
-HDR=${HDR:-/mnt/NVMe/git/timps/include}
-TO=${TO:-/mnt/NVMe/git/thingino-out}
+# Vendor headers: HDR (vendor SDK include root). T40 = T41 API family: -DPLATFORM_T41 -DAPITEST_T40.
+HDR=${HDR:?set HDR=<vendor SDK include root>}
+TO=${TO:?set TO=<thingino build output dir>}
 GEN=${GEN:-agg46}
 D=$(cd "$(dirname "$0")" && pwd)
 OUT=${OUT:-$D/build}
