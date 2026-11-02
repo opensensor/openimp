@@ -9,7 +9,7 @@ H264 := $(PROJECT_DIR)/src/t30/h264enc
 .PHONY: check clean
 
 check: $(HSKIP_TEST) $(BLACK_TEST)
-	$(HSKIP_TEST) hskip_vectors.txt
+	$(HSKIP_TEST) hskip_vectors.txt changeref_vectors.txt scenecut_vectors.txt
 	$(BLACK_TEST) black_vectors.txt
 
 $(HSKIP_TEST): hskip_test.c $(PROJECT_DIR)/src/hskip/hskip.c $(PROJECT_DIR)/src/hskip/hskip.h

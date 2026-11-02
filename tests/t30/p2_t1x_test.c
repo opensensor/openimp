@@ -116,6 +116,9 @@ int AL_Codec_Encode_SetSameSceneGops(void *c, uint32_t g) { (void)c; (void)g; re
 static int hs_calls, hs_type = -1, hs_m, hs_n, hs_scene, hs_black;
 int AL_Codec_Encode_SetHSkip(void *c, uint32_t t, uint32_t m, uint32_t n, int sc, int bl)
 { (void)c; hs_calls++; hs_type = (int)t; hs_m = (int)m; hs_n = (int)n; hs_scene = sc; hs_black = bl; return 0; }
+static int cr_calls = -1;
+int AL_Codec_Encode_SetChangeRef(void *c, int en)
+{ (void)c; cr_calls = en; return 0; }
 int AL_Codec_Encode_SetMbRC(void *c, int e) { (void)c; mbrc_calls++; mbrc_value = e; return 0; }
 int AL_Codec_Encode_SetColor2Grey(void *c, int e) { (void)c; c2g_calls++; c2g_value = e; return 0; }
 static uint8_t roi_entry[8][7];
@@ -254,6 +257,7 @@ int main(void)
         /* T10/T20: HSkip structure, black enhancement and ChangeRef reach the encoder (src/hskip) */
         IMPEncoderAttrHSkip hsk;
         extern int IMP_Encoder_SetChnHSkipBlackEnhance(int, const int);
+        extern int IMP_Encoder_SetChangeRef(int, int);
 
         memset(&hsk, 0, sizeof(hsk));
         CHECK(IMP_Encoder_GetChnHSkip(0, &hsk) == 0);
@@ -262,6 +266,8 @@ int main(void)
         CHECK(IMP_Encoder_SetChnHSkip(0, &hsk) == 0 && hs_calls == 1 && hs_type == 0);
         CHECK(IMP_Encoder_SetChnHSkipBlackEnhance(0, 1) == 0 && hs_black == 1);
         CHECK(IMP_Encoder_SetChnHSkipBlackEnhance(0, 0) == 0 && hs_black == 0);
+        CHECK(IMP_Encoder_SetChangeRef(0, 0) == 0 && cr_calls == 0);
+        CHECK(IMP_Encoder_SetChangeRef(0, 1) == 0 && cr_calls == 1);
     }
 #endif
 

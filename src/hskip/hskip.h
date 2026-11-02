@@ -72,6 +72,29 @@ void hskip_decide(HSkip *s, int force_idr, int scene_idr, HSkipPic *pic);
 /* t10: the T10 branch of the OEM controller call has no case for the skip type N1X. */
 int hskip_rc_cond(const HSkip *s, const HSkipPic *pic, int t10);
 
+/* The SetChangeRef second try (i264e_slice_write, libimp 3.12.0).  Only the pictures H1M_FALSE SBASE and
+ * H1M_TRUE LBASE (the classes of hskip_rc_cond for the types 5 and 6) get it.
+ * hskip_prev_frame (i264e_get_prev_fram_dec): the reference buffer of the second try, the one buffer that is
+ * neither the reference nor the reconstruction buffer of the picture; -1 for every other picture (no second try
+ * of this kind).  hskip_remark (i264e_dec_ref_pic_remark): the slice header commands of the kept second try:
+ * no reference list modification; an SBASE picture without MMCO and as frame type ENHANCE, an LBASE picture with
+ * its MMCO.  hskip_keep_second (i264e_ratecontrol_is_reenc_end): the second try is kept when it is smaller. */
+int32_t hskip_prev_frame(const HSkip *s, const HSkipPic *pic);
+void hskip_remark(const HSkip *s, HSkipPic *pic);
+int hskip_keep_second(uint32_t second_bytes, uint32_t first_bytes);
+
+/* i264e_decide_slice_qp: 1 when the picture is coded at the QP of the last IDR picture instead of the
+ * controller's QP: LBASE pictures (unless an IDR period of several GOPs runs with the H1M types), and the SBASE
+ * pictures of H1M_FALSE without an IDR period of several GOPs. */
+int hskip_qp_from_idr(const HSkip *s, const HSkipPic *pic);
+
+/* bEnableScenecut (i264e_decide_reset_slice_to_idr, run after the first try of a picture): a base picture
+ * (LBASE / SBASE) of the H1M types at a whole second of the frame rate (counter * fps_den % fps_num == 0) that
+ * is larger than the last IDR picture (bits against the bits of the last IDR) is coded again as an IDR picture.
+ * enable: the flag; returns 1 for that. */
+int hskip_scenecut(const HSkip *s, const HSkipPic *pic, int enable, uint32_t fps_num, uint32_t fps_den, uint32_t bits,
+                   uint32_t last_idr_bits);
+
 /* Number of reconstruction buffers a skip type needs (2 for N1X/N2X). */
 uint32_t hskip_buffers(uint32_t type);
 

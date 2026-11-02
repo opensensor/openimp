@@ -320,6 +320,13 @@ struct T30HelixEncoder {
     unsigned int ref_sel;               /* reference buffer of the P picture in hand */
     uint32_t hs_black_pics;
     uint32_t hs_idr_pics;
+    /* SetChangeRef second try (hskip_prev_frame): the kept try of the picture in hand, header and payload */
+    uint8_t *cr_buf;
+    size_t cr_cap;
+    uint32_t cr_tries, cr_second_kept, cr_first_kept;
+    uint32_t hs_scenecuts;
+    int cr_inited;                      /* the T10 controller was set up once (SetChangeRef counts from the next set-up) */
+    uint32_t hs_idr_qp, hs_idr_bits;    /* QP and size (bits) of the last IDR picture (OEM E+0x90450, E+0x9044c) */
 #endif
     int have_reference;
     int force_idr;
@@ -1989,12 +1996,10 @@ static void t20_rc_start(T30HelixEncoder *encoder)
         p.super_p_bits = INT32_MAX;
     }
     p.method = hp->rc_mode == HW_RC_MODE_CBR ? 1u : smart ? 3u : 2u;
-    /* IMP_Encoder_SetChangeRef (i264e parameter 12 -> controller E+216, default on): with it the OEM codes a
-     * SMART picture of an H1M / long IDR period structure again with another reference
-     * (i264e_get_prev_fram_dec, i264e_ratecontrol_is_reenc_end, i264e_dec_ref_pic_remark) and keeps the
-     * smaller try.  OpenIMP does not code that second try, so the controller is kept from asking
-     * for it (docs/T20_HSKIP.md); the OEM controller decisions are tested with the flag on and off. */
-    p.mb_rc2 = 0u;
+    /* IMP_Encoder_SetChangeRef (i264e parameter 12 -> controller E+216, default on, read when the controller is
+     * set up): with it the OEM judge asks for a second try of a SMART picture of an H1M structure; the second
+     * try is coded with another reference and the smaller try is kept (docs/T20_HSKIP.md, src/hskip). */
+    p.mb_rc2 = hp->change_ref_off ? 0u : 1u;   /* IMP_Encoder_SetChangeRef: default on */
     p.width = hp->width;
     p.height = hp->height;
     p.gop = hp->gop_length;
@@ -2043,7 +2048,11 @@ static void t20_rc_start(T30HelixEncoder *encoder)
          * macroblock rate control */
         RCT10_DefaultParams(&q);
         q.method = p.method;
-        q.mb_rc2 = 0u;                  /* see t20_rc_start above */
+        /* see t20_rc_start above; the OEM T10 sets its controller up when the channel is created (i264e_open), before
+         * the application can call SetChangeRef, so the first set-up has the default (on) and a new value counts from
+         * the next restart; the native encoder is created with the first picture, after SetChangeRef */
+        q.mb_rc2 = encoder->cr_inited ? p.mb_rc2 : 1u;
+        encoder->cr_inited = 1;
         q.width = p.width;
         q.height = p.height;
         q.gop = p.gop;
@@ -2908,6 +2917,15 @@ static int t20_rc_gopstart(const T30HelixEncoder *e, int idr)
     return idr;
 }
 
+/* IMP_Encoder_SetChangeRef: T20 i264e_ratecontrol_start copies the flag into the controller state of every picture
+ * (E+216); the T10 branch reads it only when the controller is set up (i264e_ratecontrol_init, E+225), so on T10 a
+ * new value counts from the next controller restart (t20_rc_start) */
+static void t20_change_ref_apply(T30HelixEncoder *e)
+{
+    if (e->t20rc_on)
+        e->t20rc.params.mb_rc2 = e->params.change_ref_off ? 0u : 1u;
+}
+
 /* T20 only (the OEM tests its CPU id): the controller reports a scene cut */
 static int t20_scene_idr(const T30HelixEncoder *e)
 {
@@ -2920,9 +2938,9 @@ static int t20_hs_cond(const T30HelixEncoder *e)
 }
 
 /* The IDR decision of one picture.  Returns 1 for an IDR picture. */
-static int t20_hs_idr(T30HelixEncoder *e)
+static int t20_hs_idr(T30HelixEncoder *e, int extra_force)
 {
-    int force = e->force_idr || !e->have_reference;
+    int force = e->force_idr || !e->have_reference || extra_force;
     int legacy = force || e->gop_position >= e->params.gop_length;
     int pending = t20_hs_differs(e) || (e->hs_on != t20_hs_wanted(&e->params));
 
@@ -3043,6 +3061,15 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     int hs_black = 0;           /* BlackEnhance: an all-skip slice instead of the encoder */
     uint8_t black_buf[256];
     const uint8_t *payload = NULL;
+    /* SetChangeRef second try (i264e_slice_write): cr_second: this run is the second try; the kept try of the
+     * picture is in cr_buf once the second try ran and was not smaller */
+    int cr_second = 0;
+    int sc_force = 0;           /* bEnableScenecut: the picture is coded again as an IDR picture */
+    uint32_t sc_qp = 0;
+    HSkipPic cr_pic;
+    int32_t cr_ref = -1;
+    uint32_t cr_hdr = 0, cr_len = 0;
+    const uint8_t *hdr_ptr = NULL;
 #endif
 
     if (!encoder || !frame || !stream_out || !frame->phyAddr)
@@ -3091,7 +3118,8 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
     t30_pad_input_rows(encoder, frame);
 #endif
 #if defined(PLATFORM_T20)
-    idr = t20_hs_idr(encoder);          /* the plain GOP logic unless an HSkip structure runs */
+t20_picture:
+    idr = t20_hs_idr(encoder, sc_force);        /* the plain GOP logic unless an HSkip structure runs */
 #else
     idr = encoder->force_idr || !encoder->have_reference ||
           encoder->gop_position >= encoder->params.gop_length
@@ -3172,8 +3200,15 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         RCT10_Start(&encoder->t10rc, t20_rc_gopstart(encoder, idr), &pic);
         qp = pic.qp;
     }
+    /* i264e_decide_slice_qp: base pictures of the skip structures take the QP of the last IDR picture */
+    if (encoder->hs_on && hskip_qp_from_idr(&encoder->hs, &encoder->hs_pic))
+        qp = encoder->hs_idr_qp;
+    if (sc_force && qp < sc_qp)
+        qp = sc_qp;             /* i264e_decide_reset_slice_to_idr: not below the QP of the first try */
     t20_reencodes = 0u;
 t20_again:
+    payload = NULL;             /* this try's bitstream is in the window */
+    hdr_ptr = NULL;
 #endif
 #if defined(PLATFORM_T23)
     if (!encoder->eprc_on)
@@ -3189,6 +3224,8 @@ t20_again:
         output_index = (unsigned int)encoder->hs_pic.recon;
         encoder->ref_sel = encoder->hs_pic.ref < 0 ? output_index
                                                     : (unsigned int)encoder->hs_pic.ref;
+        if (cr_second)          /* the second try predicts from the third buffer (i264e_get_prev_fram_dec) */
+            encoder->ref_sel = (unsigned int)cr_ref;
         hs_black = !idr && encoder->hs_pic.ftype == HSKIP_FT_ENHANCE &&
                    (encoder->params.hskip_flags & HW_HSKIP_BLACK);
         if (hs_black)
@@ -3216,16 +3253,19 @@ again:
     encoder->slice_header.i_type = idr ? SLICE_TYPE_I : SLICE_TYPE_P;
 #if defined(PLATFORM_T20)
     if (encoder->hs_on) {
-        /* the long-term base layer of the skip structures (OEM slice header) */
+        /* the long-term base layer of the skip structures (OEM slice header; the second try of
+         * SetChangeRef has the commands of i264e_dec_ref_pic_remark) */
+        const HSkipPic *hsp = cr_second ? &cr_pic : &encoder->hs_pic;
+
         if (idr) {
-            encoder->slice_header.b_long_term_reference_flag = encoder->hs_pic.ltr_flag;
+            encoder->slice_header.b_long_term_reference_flag = hsp->ltr_flag;
         } else {
-            if (encoder->hs_pic.reorder) {
+            if (hsp->reorder) {
                 encoder->slice_header.b_ref_pic_list_reordering[0] = 1;
                 encoder->slice_header.ref_pic_list_order[0][0].idc = 2;     /* long_term_pic_num */
                 encoder->slice_header.ref_pic_list_order[0][0].arg = 0;
             }
-            if (encoder->hs_pic.mmco) {
+            if (hsp->mmco) {
                 encoder->slice_header.i_mmco_command_count = 1;
                 encoder->slice_header.mmco[0].i_difference_of_pic_nums = 1;  /* the previous picture */
                 encoder->slice_header.b_mmco_assign_long_term = 1;
@@ -3509,6 +3549,43 @@ again:
         return -1;
     }
 #if defined(PLATFORM_T20)
+    if (encoder->hs_on && !sc_force && !cr_second && t20_reencodes == 0u && !idr &&
+        hskip_scenecut(&encoder->hs, &encoder->hs_pic, (int)encoder->hs_scenecut, encoder->params.fps_num,
+                       encoder->params.fps_den, encoder->channel.output_len * 8u, encoder->hs_idr_bits)) {
+        /* i264e_decide_reset_slice_to_idr: this base picture is larger than the last IDR picture at a whole
+         * second: rate control starts again, the picture is coded as an IDR picture (QP not below this try's) */
+        sc_force = 1;
+        sc_qp = qp;
+        encoder->hs_scenecuts++;
+        if (encoder->hs_scenecuts <= 3u || encoder->hs_scenecuts % 100u == 0u)
+            IMP_LOG_INFO("Encoder", "Helix: frame=%u scene cut, %u bytes at qp=%u, coded again as an IDR picture (%u so far)",
+                         encoder->frame_number, encoder->channel.output_len, qp, encoder->hs_scenecuts);
+        t20_rc_start(encoder);
+        goto t20_picture;
+    }
+    if (idr) {
+        /* i264e_ratecontrol_end of an IDR picture: its QP and size */
+        encoder->hs_idr_qp = qp;
+        encoder->hs_idr_bits = encoder->channel.output_len * 8u;
+    }
+    if (cr_second) {
+        /* i264e_ratecontrol_is_reenc_end: the second try is kept when it is smaller, else the first one
+         * (its header and payload, saved when the second try started) is the picture */
+        cr_second = 0;
+        if (encoder->cr_tries <= 3u || encoder->cr_tries % 100u == 0u)
+            IMP_LOG_INFO("Encoder", "Helix: frame=%u second try (reference buffer %u) %u bytes at qp=%u against %u: %s kept (%u so far)",
+                         encoder->frame_number, encoder->ref_sel, encoder->channel.output_len, qp, cr_len,
+                         hskip_keep_second(encoder->channel.output_len, cr_len) ? "second" : "first", encoder->cr_tries);
+        if (hskip_keep_second(encoder->channel.output_len, cr_len)) {
+            encoder->cr_second_kept++;
+        } else {
+            encoder->cr_first_kept++;
+            hdr_ptr = encoder->cr_buf;
+            payload = encoder->cr_buf + cr_hdr;
+            header_length = cr_hdr;
+            encoder->channel.output_len = cr_len;
+        }
+    }
     if (encoder->t20rc_on || encoder->t10rc_on) {
         uint32_t new_qp = qp;
         int again;
@@ -3547,6 +3624,38 @@ again:
                              qp, new_qp, encoder->t20rc_reencodes);
             qp = new_qp;
             t20_reencodes++;
+            /* i264e_slice_write: a picture of the classes of hskip_prev_frame (H1M_FALSE SBASE, H1M_TRUE LBASE) is
+             * coded again with the third buffer as reference (any re-encode, also the super-frame one); the
+             * kept try is saved first */
+            if (encoder->hs_on && !idr) {
+                cr_pic = encoder->hs_pic;
+                cr_ref = hskip_prev_frame(&encoder->hs, &cr_pic);
+                if (cr_ref >= 0) {
+                    size_t need = (size_t)header_length + encoder->channel.output_len;
+                    const uint8_t *src_h = hdr_ptr ? hdr_ptr : temporary;
+                    const uint8_t *src_p = payload ? payload : temporary + T30_SLICE_OFFSET;
+
+                    if (need > encoder->cr_cap) {
+                        uint8_t *nb = malloc(need + 4096u);
+
+                        if (!nb)
+                            return -1;
+                        memcpy(nb, src_h, header_length);
+                        memcpy(nb + header_length, src_p, encoder->channel.output_len);
+                        free(encoder->cr_buf);
+                        encoder->cr_buf = nb;
+                        encoder->cr_cap = need + 4096u;
+                    } else {
+                        memmove(encoder->cr_buf, src_h, header_length);
+                        memmove(encoder->cr_buf + header_length, src_p, encoder->channel.output_len);
+                    }
+                    cr_hdr = header_length;
+                    cr_len = encoder->channel.output_len;
+                    hskip_remark(&encoder->hs, &cr_pic);
+                    cr_second = 1;
+                    encoder->cr_tries++;
+                }
+            }
             goto t20_again;
         }
     }
@@ -3608,10 +3717,14 @@ again:
                          idr ? NAL_SLICE_IDR : NAL_SLICE,
                          idr ? NAL_PRIORITY_HIGHEST :
                                NAL_PRIORITY_HIGH) != 0 ||
-        t30_annexb_append(&writer, temporary, header_length) != 0 ||
         t30_annexb_append(&writer,
 #if defined(PLATFORM_T20)
-                          hs_black ? payload :
+                          hdr_ptr ? hdr_ptr :
+#endif
+                          temporary, header_length) != 0 ||
+        t30_annexb_append(&writer,
+#if defined(PLATFORM_T20)
+                          payload ? payload :
 #endif
                           temporary + T30_SLICE_OFFSET,
                           encoder->channel.output_len) != 0) {
@@ -3975,6 +4088,7 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
     next.hskip_m = requested->hskip_m;
     next.hskip_n = requested->hskip_n;
     next.hskip_flags = requested->hskip_flags;
+    next.change_ref_off = requested->change_ref_off;
     /* IMP_Encoder_SetMbRC: a change restarts the OEM controller with or
      * without the macroblock QP table (the OEM re-runs
      * i264e_ratecontrol_init on a parameter change) */
@@ -4015,12 +4129,15 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
         cmp.hskip_n = encoder->params.hskip_n;
         cmp.same_scene_gops = encoder->params.same_scene_gops;
         cmp.hskip_flags = encoder->params.hskip_flags;
+        cmp.change_ref_off = encoder->params.change_ref_off;
         if (!memcmp(&cmp, &encoder->params, sizeof(cmp)) && !t20_range_changed) {
             encoder->params.hskip_type = next.hskip_type;
             encoder->params.hskip_m = next.hskip_m;
             encoder->params.hskip_n = next.hskip_n;
             encoder->params.same_scene_gops = next.same_scene_gops;
             encoder->params.hskip_flags = next.hskip_flags;
+            encoder->params.change_ref_off = next.change_ref_off;
+            t20_change_ref_apply(encoder);
             return 0;
         }
     }
@@ -4125,6 +4242,7 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
 #endif
 #if defined(PLATFORM_T20)
     t20_rc_stop(encoder);
+    free(encoder->cr_buf);
 #endif
     free(encoder);
 }
