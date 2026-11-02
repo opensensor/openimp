@@ -16,9 +16,10 @@ build() { # soc headerdir camdir defs
   local lc=$(echo $soc | tr A-Z a-z)
   [ -d "$cam" ] || { echo "FAIL $soc: no thingino-out tree $3-$GEN-*"; return; }
   local cc=$cam/host/bin/mipsel-linux-gcc
-  local l="-L$cam/target/usr/lib -limp -lm -ldl -lpthread -lrt -Wl,-rpath-link,$cam/target/usr/lib"
+  local ld=${LIBDIR:-$cam/target/usr/lib}
+  local l="-L$ld -limp -lm -ldl -lpthread -lrt -Wl,-rpath-link,$ld $EXTRA_LDFLAGS"
   local f="-O2 -Wall -Wno-unused-function -Wno-address -Wno-format-zero-length -Wno-dangling-else $defs -I$inc -I$inc/imp -I$D/../../include"
-  nice $cc $f -I"$D" -o "$OUT/apitest_$lc" $SRC $l && echo "OK apitest_$lc" || echo "FAIL apitest_$lc"
+  nice $cc $f -I"$D" $EXTRA_SRC -o "$OUT/apitest_$lc" $SRC $l && echo "OK apitest_$lc" || echo "FAIL apitest_$lc"
 }
 ARGS=("$@")
 w() { [ ${#ARGS[@]} -eq 0 ] && return 0; for a in "${ARGS[@]}"; do [ "$a" = "$1" ] && return 0; done; return 1; }

@@ -1646,11 +1646,18 @@ void RCT20_Start(RcT20 *rc, int idr, const uint8_t *luma, uint32_t stride,
         RU32(E, 252) = ((r0 >> 16) & 0x7fff) + (r0 & 0x7fff);
         RU32(E, 256) = (r2 & 0x7ffffff) + (r1 & 0x7ffffff);
     }
-    RI8(E, RX(384)) = 0;
+    if (rc->hs_cond)
+        RI8(E, RX(384)) = 2;
     RCT20_FrameRc(E, rc->p, rc->s, luma);
+    RI8(E, RX(384)) = rc->hs_cond ? 1 : 0;
     pic->idr = RU8(E, 236) == 1;
     pic->qp = RU8(E, 217);
     rc->frames++;
+}
+
+void RCT20_HSkipClass(RcT20 *rc, int cond)
+{
+    rc->hs_cond = cond != 0;
 }
 
 /* i264e_ratecontrol_is_reenc (0x3d300) */

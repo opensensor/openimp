@@ -14,6 +14,11 @@ OpenIMP; it is read from the path you pass.
     tools/rc_t20_oracle.py T20/lib/3.12.0/uclibc/4.7.2/libimp.so > tests/rc_t20/rc_t20_vectors.txt
     tools/rc_t20_oracle.py --t10 T20/lib/3.12.0/uclibc/4.7.2/libimp.so 16 120 > tests/rc_t10/rc_t10_vectors.txt
 
+--hskip adds an HSkip structure to every scenario (K and H lines: the skip type and the OEM picture decision; the
+controller is told counter and frame type like i264e_encode does) for the class byte of the controller (src/hskip,
+RCT20_HSkipClass); --changeref-off sets i264e parameter [272] (IMP_Encoder_SetChangeRef) to 0 for tests/rc_t20, tests/rc_t10 (--changeref-off
+before --t10); the SMART controller then never codes an IDR again (JZ_VPU_RC_FRAME_REPEATE_JUDGE_T20 reads it as E+216).
+
 --t10 runs the T10 branch of the same library (param[0] = 1, what
 get_cpu_id selects on a T10: JZ_VPU_RC_VIDEO_CFG / JZ_VPU_RC_FRAME_RC /
 JZ_VPU_RC_FRAME_REPEATE_JUDGE) for tests/rc_t10; no macroblock scenarios.
@@ -182,6 +187,8 @@ class Lib:
         uc.reg_write(UC_MIPS_REG_RA, END)
         for r, v in zip(A, args):
             uc.reg_write(r, v & 0xffffffff)
+        for i, v in enumerate(args[4:]):          # o32: further arguments from sp+16
+            uc.mem_write(STACK - 64 + 16 + 4 * i, struct.pack('<I', v & 0xffffffff))
         uc.emu_start(fn, END, count=200_000_000)
         if uc.reg_read(UC_MIPS_REG_PC) != END:
             raise RuntimeError('no return pc=%x' % uc.reg_read(UC_MIPS_REG_PC))
@@ -224,7 +231,7 @@ class Oem:
     def __init__(self, lib, cfg):
         L = self.L = lib
         self.cfg = cfg
-        P = self.param = L.alloc(RX + 0x1000)
+        P = self.param = L.alloc(RX + 0x2400)     # up to the context pointer at +0x921e8 (i264e_decide_slice_type_and_rd)
         self.h = L.alloc(0x2000)
         self.stats = [L.alloc(256), L.alloc(256)]
         self.regs = L.alloc(32)
@@ -239,7 +246,7 @@ class Oem:
         w32(P + 232, cfg['frm']); w32(P + 236, cfg['gopstep']); L.w8(P + 241, cfg['gopRel'])
         w32(P + 244, cfg['static']); w32(P + 248, cfg['maxbr']); w32(P + 252, cfg['chg'])
         w32(P + 256, cfg['qual']); w32(P + 260, fb(cfg['trig'])); w32(P + 264, cfg['newmax'])
-        w32(P + 268, cfg['mbrc']); w32(P + 272, 1)    # macroblock rate control
+        w32(P + 268, cfg['mbrc']); w32(P + 272, 0 if CHANGEREF_OFF else 1)    # macroblock rate control; [272] = IMP_Encoder_SetChangeRef (default on)
         w32(P + 280, cfg['superI']); w32(P + 284, cfg['superP'])
         w32(P + 396, cfg['fpsn']); w32(P + 400, cfg['fpsd'])
         w32(P + RX + 1156, (cfg['w'] + 15) >> 4); w32(P + RX + 1160, (cfg['h'] + 15) >> 4)
@@ -255,13 +262,32 @@ class Oem:
         w32(self.h + 2936, self.regs)
         L.call('i264e_ratecontrol_init', P, 0xffffffff)
         self.frame = 0
+        self.hs = cfg.get('hs')
+        if self.hs:
+            # HSkip structure (tools/hskip_oracle.py): the skip header at P+0x905f4, the decision per picture in a
+            # picture context of its own; the controller then sees the counter and the frame type like the OEM
+            typ, m, n, same = self.hs
+            L.call('i264e_init_skip_header', P + 0x905f4, cfg['gop'], typ, m, n, same, 2, L.alloc(16))
+            self.c2 = L.alloc(0x2000)
+            L.w32(self.c2 + 4 * 0xe0, L.alloc(256))
+            L.w32(self.c2, 0xffffffff)
+            L.w32(P + 0x921e8, self.c2)         # h->ctx: the decision reads the picture counter through it
 
     def start(self):
         L, h, f = self.L, self.h, self.frame
         if self.cfg['mbrc']:
             L.uc.mem_write(self.luma, picture(f, self.stride, ((self.cfg['h'] + 15) & ~15) + 16))
         idr = f % self.cfg['gop'] == 0
-        L.w32(h + 0, f)
+        cnt = f
+        self.real_idr = idr
+        if self.hs:
+            self.scene = L.r32(self.param + 0x90428)
+            L.call('i264e_decide_slice_type_and_rd', self.param, self.c2)
+            cnt = L.r32(self.c2)
+            self.real_idr = L.r32(self.c2 + 4 * 0xb8) == 1
+            self.hdec = (cnt, int(self.real_idr), L.r32(self.c2 + 4 * 0x45e))
+            idr = cnt % self.cfg['gop'] == 0
+        L.w32(h + 0, cnt)
         L.w32(h + 904, self.stats[(f + 1) & 1]); L.w32(h + 908, self.stats[f & 1])
         L.call('i264e_ratecontrol_start', h)
         return idr, L.r32(h + 740)
@@ -287,7 +313,7 @@ class Oem:
 def scenario(lib_path, seed, frames, out):
     rnd = random.Random(seed)
     method = (1, 2, 3, 0)[seed % 4]
-    mbrc = 1 if seed >= 12 and not T10 else 0
+    mbrc = 1 if seed >= 12 and not T10 and not HSKIP else 0
     w, hh = rnd.choice([(320, 240), (256, 160), (176, 144)] if mbrc else
                        [(1920, 1080), (1280, 720), (640, 360), (320, 240)])
     mx = rnd.randint(36, 51); mn = rnd.randint(0, 30)
@@ -299,15 +325,22 @@ def scenario(lib_path, seed, frames, out):
                superI=0x12c0000, superP=0xd64925, mbrc=mbrc)
     if seed % 3 == 2:   # small super-frame thresholds: re-encodes
         cfg['superI'] = rnd.randint(200000, 900000); cfg['superP'] = rnd.randint(60000, 300000)
+    if HSKIP:
+        cfg['hs'] = HS_CONFIGS[(seed // 4) % len(HS_CONFIGS)](cfg['gop'])
     oem = Oem(Lib(lib_path), cfg)
     out.write('S %s\n' % ' '.join(repr(cfg[k]) if k == 'trig' else str(cfg[k]) for k in KEYS))
+    if HSKIP:
+        out.write('K %d %d %d %d\n' % cfg['hs'])
     mbs = ((w + 15) >> 4) * ((hh + 15) >> 4)
     cplx = rnd.uniform(0.3, 3.0)
     for f in range(frames):
         if rnd.random() < 0.06:
             cplx = rnd.uniform(0.2, 4.0)
         idr, qp = oem.start()
+        if HSKIP:
+            out.write('H %d %d %d\n' % oem.hdec)
         out.write('F %d %d %d\n' % (f, int(idr), qp))
+        idr = oem.real_idr
         if mbrc:
             out.write('T %d %d %d\n' % oem.table())
         moving = rnd.randint(0, mbs) if rnd.random() < 0.7 else rnd.randint(0, mbs // 10)
@@ -328,11 +361,22 @@ def scenario(lib_path, seed, frames, out):
 
 
 T10 = False
+CHANGEREF_OFF = False
+HSKIP = False
+# IMP_Encoder_SetChnHSkip configurations of the --hskip scenarios: (skip type, m, n, maxSameSceneCnt)
+HS_CONFIGS = (lambda g: (0, g - 1, 1, 3), lambda g: (5, 4, 1, 0), lambda g: (6, 4, 1, 0), lambda g: (5, g - 1, 1, 2),
+              lambda g: (6, 2, 1, 5), lambda g: (1, g - 1, 1, 0), lambda g: (2, g - 1, 1, 0))
 
 
 def main():
-    global T10
+    global T10, CHANGEREF_OFF, HSKIP
     args = sys.argv[1:]
+    if args and args[0] == '--hskip':
+        HSKIP = True
+        args = args[1:]
+    if args and args[0] == '--changeref-off':
+        CHANGEREF_OFF = True
+        args = args[1:]
     if args and args[0] == '--t10':
         T10 = True
         args = args[1:]

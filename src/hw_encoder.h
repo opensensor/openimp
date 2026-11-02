@@ -109,7 +109,18 @@ typedef struct {
      * OEM defaults 3.0 / 51) */
     uint32_t rc_trig_bits;
     uint32_t rc_new_max_qp;     /* 0x6c */
+    /* 0x70: T20/T10 IMP_Encoder_SetChnHSkip (OEM i264e skip header,
+     * src/hskip): skip type, m, n (maxSameSceneCnt is same_scene_gops),
+     * HW_HSKIP_* flags; 0 = N1X without extras */
+    uint32_t hskip_type;
+    uint32_t hskip_m;
+    uint32_t hskip_n;
+    uint32_t hskip_flags;
 } HWEncoderParams;
+
+#define HW_HSKIP_SCENECUT 1u    /* bEnableScenecut */
+#define HW_HSKIP_BLACK    2u    /* bBlackEnhance */
+#define HW_HSKIP_SET      4u    /* the block was given (hskip_n 0 and m 0 are valid values) */
 
 #define HW_MBRC_DEFAULT 0u
 #define HW_MBRC_OFF     1u
@@ -119,7 +130,7 @@ typedef struct {
 #define HW_SUPERFRM_NONE     1u
 #define HW_SUPERFRM_REENCODE 2u
 
-_Static_assert(sizeof(HWEncoderParams) == 0x70, "HWEncoderParams size");
+_Static_assert(sizeof(HWEncoderParams) == 0x80, "HWEncoderParams size");
 _Static_assert(offsetof(HWEncoderParams, static_time) == 0x30 &&
                offsetof(HWEncoderParams, rc_flags) == 0x48,
                "HWEncoderParams rate-control extras layout");

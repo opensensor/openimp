@@ -145,7 +145,10 @@ case " $platform_cppflags " in
         compile rc_t20 src/rc_t20/rc_t20.c $hot_flags -Werror -ffp-contract=off
         compile rc_t20_mb src/rc_t20/rc_t20_mb.c $hot_flags -Werror -ffp-contract=off
         compile rc_t10 src/rc_t10/rc_t10.c $hot_flags -Werror -ffp-contract=off
-        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o"
+        # IMP_Encoder_SetChnHSkip reference structures (src/hskip)
+        compile hskip src/hskip/hskip.c -Werror
+        compile hskip_black src/hskip/hskip_black.c -Werror
+        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o $output_dir/hskip.o $output_dir/hskip_black.o"
         ;;
 esac
 # T21 only: the Helix eprc controllers (HELIX_T21_SYNTAX in

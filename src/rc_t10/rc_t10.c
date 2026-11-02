@@ -1409,8 +1409,10 @@ void RCT10_Start(RcT10 *rc, int idr, RcT10Picture *pic)
         RU32(E, 188) = rc->last.cmpx;
         RU32(E, 192) = rc->last.bits;
     }
+    if (rc->hs_cond)
+        RU8(E, 224) = 2;
     RCT10_FrameRc(E, rc->p, rc->s);
-    RU8(E, 224) = 0;
+    RU8(E, 224) = rc->hs_cond ? 1 : 0;
     pic->qp = RU8(E, 177);
     rc->frames++;
 }
@@ -1426,4 +1428,10 @@ int RCT10_End(RcT10 *rc, const RcT10Stats *stats, RcT10Picture *pic)
         return 0;
     pic->qp = RU8(rc->e, 177);
     return 1;
+}
+
+
+void RCT10_HSkipClass(RcT10 *rc, int cond)
+{
+    rc->hs_cond = cond != 0;
 }

@@ -42,3 +42,4 @@ tools/rawcheck/rawana
 tools/testpattern/tbmotion
 tools/testpattern/tbcmp
 tools/motiontest/motiontest_t*
+tools/apitest/build-v/

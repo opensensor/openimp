@@ -9561,6 +9561,22 @@ int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops)
     return 0;
 }
 
+int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
+                             int scenecut, int black)
+{
+    HWEncoderParams *hp;
+
+    if (codec == NULL)
+        return -1;
+    hp = &((AL_CodecEncode *)codec)->hw_params;
+    hp->hskip_type = type;
+    hp->hskip_m = m;
+    hp->hskip_n = n;
+    hp->hskip_flags = HW_HSKIP_SET | (scenecut ? HW_HSKIP_SCENECUT : 0u) |
+                      (black ? HW_HSKIP_BLACK : 0u);
+    return 0;
+}
+
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 /* IMP_Encoder_InsertUserData: queue one payload (SEI in front of the next
  * picture).  -1 when max_cnt payloads are already waiting (the OEM: "no

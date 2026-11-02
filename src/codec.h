@@ -122,6 +122,12 @@ int AL_Codec_Encode_SetRcExtras(void *codec, const void *rcMode);
 /* rcAttr.attrHSkip.hSkipAttr.maxSameSceneCnt as the OEM i264e uses it: the
  * IDR period in GOPs (skip types N1X, H1M only; else 0) */
 int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
+/* T20/T10 rcAttr.attrHSkip.hSkipAttr / IMP_Encoder_SetChnHSkip: the OEM reference
+ * structure (src/hskip) from the next IDR on; black = SetChnHSkipBlackEnhance
+ * (from the next picture).  maxSameSceneCnt goes through SetSameSceneGops. */
+int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
+                             int scenecut, int black);
+
 /* IMP_Encoder_InsertUserData (T20/T21/T23/T30 native Helix): SEI payload for
  * the next picture; -1 when the queue is full. */
 int AL_Codec_Encode_InsertUserData(void *codec, const void *data,

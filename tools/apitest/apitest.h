@@ -170,6 +170,7 @@ void t_system_exit(int ret);
 int enc_chain_up(void);
 void enc_chain_down(void);
 int enc_pull_h264(int n);
+int enc_hskip_run(void);     /* case "hskip" (explicit only) */
 
 /* fetch one NV12 frame from FS ch1 (for IVS/encoder-less users) */
 int fs_peek(int ch, int *w, int *h, int64_t *ts);

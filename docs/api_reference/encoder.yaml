@@ -293,17 +293,17 @@ functions:
     group: gop
     summary: "Reads or sets the switch for changing the reference picture."
     returns: "The setter returns 0 for a created channel and -1 for one that does not exist (T20: -1 also for a started channel). The getter returns 0, also for a channel that does not exist (T20: -1)."
-    notes: "OpenIMP keeps the value; only the vendor encoder's reference-structure code reads it, so there is no visible effect on the Helix encoder."
+    notes: "OpenIMP keeps the value. On T10 and T20 the vendor uses it for a second, smaller try of SMART pictures inside a skip structure (previous-frame reference); that second try is not coded (docs/T20_HSKIP.md), so there is no visible effect."
   Encoder_Get/SetChnHSkip:
     group: gop
     summary: "Reads or sets the hierarchical skip attribute (skip type, same-scene count and related words) of a channel."
     returns: "0 on success, -1 for an invalid channel, a NULL pointer, a skip type above the channel's `maxHSkipType`, or (T20 and T10 only) a channel that was never created."
-    notes: "On T21 and T23 the value is also used for the key frame period: the same-scene count sets the IDR period in GOPs for the skip types N1X and H1M, and a change makes the encoder code a new IDR and restart rate control. The skip reference structure itself is not coded on the Helix path of these SoCs. On T10, T20 and T30 the value is only stored. On an idle channel Get answers all zero (T21, T30). Reading before the channel exists is an error on T20."
+    notes: "T10 and T20 code the vendor reference structure (skip types N2X, N4X, HN1, H1M): base pictures predict from a long-term picture, the pictures in between are drop-able (a client that drops them still decodes), and for N1X and H1M the same-scene count sets the IDR period in GOPs. A new value starts with the next IDR picture (as the vendor), the structure needs three picture buffers for the types above N2X, and `bEnableScenecut` is only stored (docs/T20_HSKIP.md). On T21 and T23 the same-scene count sets the IDR period in GOPs for the skip types N1X and H1M, and a change makes the encoder code a new IDR and restart rate control; the skip reference structure itself is not coded there. On T30 the value is only stored. On an idle channel Get answers all zero (T21, T30). Reading before the channel exists is an error on T20."
   Encoder_SetChnHSkipBlackEnhance:
     group: gop
     summary: "Sets the black enhancement flag of the skip mode."
-    returns: "-1 for an invalid channel, otherwise 0 (the flag is kept; the Helix path codes no skip structure)."
-    notes: "Vendor T21 1.0.33 hands the flag to its closed encoder (parameter 10, H.264 channel only) and keeps a copy in the channel record; OpenIMP keeps the flag in the channel attribute only, because the Helix path codes no skip structure, so there is no visible effect."
+    returns: "-1 for an invalid channel, otherwise 0."
+    notes: "T10 and T20: with a skip structure running, the drop-able pictures are coded as all-skip slices at QP 0 (21 bytes at 640x360, the decoder repeats the reference picture), from the next picture on, as the vendor. Vendor T21 1.0.33 hands the flag to its closed encoder (parameter 10, H.264 channel only); on T21 and the other SoCs OpenIMP keeps the flag in the channel attribute only, because the Helix path codes no skip structure there."
   Encoder_Get/SetChnFrmUsedMode:
     group: gop
     summary: "Stores or reads the frame use mode (enable, mode, times). The vendor encoder uses it to reuse or skip input frames when the source is slower than the encoder."
