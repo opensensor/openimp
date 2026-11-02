@@ -196,6 +196,7 @@ int main(int argc, char **argv)
     FILE *f = fopen(path, "r");
     char line[512];
     RcT20 rc;
+    RcT20Params cur;
     RcT20Picture pic;
     int active = 0, scenario = -1, frame = 0;
     unsigned hs_gop = 0;
@@ -233,6 +234,7 @@ int main(int argc, char **argv)
             p.max_bitrate = mbr; p.change_pos = chg; p.quality = q;
             p.new_max_qp_trig = trig; p.new_max_qp = nmq; p.mb_rc = mbrc;
             p.mb_rc2 = mb_rc2; p.super_i_bits = si; p.super_p_bits = sp;
+            cur = p;
             if (RCT20_Init(&rc, &p) != 0) {
                 fprintf(stderr, "init failed\n");
                 return 1;
@@ -244,6 +246,21 @@ int main(int argc, char **argv)
             free(luma);
             luma = mbrc ? malloc(stride * lines + 64u) : NULL;
             hs_gop = gop;
+        } else if (line[0] == 'R' && active) {
+            /* i264e_idr_reconfig: new trigger pair, controller set up again at this IDR */
+            float rt;
+            unsigned rn;
+
+            if (sscanf(line + 1, "%f %u", &rt, &rn) != 2)
+                return 2;
+            RCT20_Free(&rc);
+            cur.new_max_qp_trig = rt;
+            cur.new_max_qp = rn;
+            RCT20_ClampTrig(&cur);        /* what i264e_validate_parameters does at the IDR */
+            if (RCT20_Init(&rc, &cur) != 0) {
+                fprintf(stderr, "re-init failed\n");
+                return 1;
+            }
         } else if (line[0] == 'K' && active) {
             unsigned t, hm, hn, same;
 

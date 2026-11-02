@@ -80,6 +80,9 @@ typedef struct {
 } RcT20Params;
 
 void RCT20_DefaultParams(RcT20Params *params);
+/* i264e_validate_parameters on a trigger pair taken over by i264e_idr_reconfig (IMP_Encoder_SetChnRcTrigLevel): the level becomes an
+ * integer 2..10, the new max QP is raised to the application's max QP and capped at 51 */
+void RCT20_ClampTrig(RcT20Params *params);
 
 /* Statistics of a coded picture (OEM i264e_ratecontrol_end 0x3d1c0). */
 typedef struct {

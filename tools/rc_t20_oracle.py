@@ -16,6 +16,8 @@ OpenIMP; it is read from the path you pass.
 
 --trig-wide (first option) draws the trigger level (IMP_Encoder_SetChnRcTrigLevel, raw float at run time) from 0.5 to 12.5 and the new max QP from 30 to 51,
 also below the application's max QP (tests/rc_t20/rc_t20_vectors_trig.txt, tests/rc_t10/rc_t10_vectors_trig.txt).
+--trig-restart (first option) takes a new trigger pair over at a natural IDR in the middle of each stream (R line: the OEM
+i264e_idr_reconfig copies the pair into the parameters and runs i264e_ratecontrol_init again on the used controller; tests/rc_t20/rc_t20_vectors_trigrestart.txt, tests/rc_t10/...).
 --hskip adds an HSkip structure to every scenario (K and H lines: the skip type and the OEM picture decision; the
 controller is told counter and frame type like i264e_encode does) for the class byte of the controller (src/hskip,
 RCT20_HSkipClass); --changeref-off sets i264e parameter [272] (IMP_Encoder_SetChangeRef) to 0 for tests/rc_t20, tests/rc_t10 (--changeref-off
@@ -275,6 +277,18 @@ class Oem:
             L.w32(self.c2, 0xffffffff)
             L.w32(P + 0x921e8, self.c2)         # h->ctx: the decision reads the picture counter through it
 
+    def restart(self, trig, newmax):
+        """i264e_idr_reconfig after IMP_Encoder_SetChnRcTrigLevel: the pair goes into the parameters [260]/[264] and
+        i264e_ratecontrol_init runs again on the used controller memory (no new allocation, nothing cleared)."""
+        L, P = self.L, self.param
+        # i264e_validate_parameters (0x30df8, runs in i264e_idr_reconfig before the controller is set up again) clamps the pair with
+        # the library's clip helper (0x1bf90): level = (float)clip((int)level, 2, 10), new max QP = clip(newmax, maxQp [200], 51)
+        lv = L.call(CLIP, int(trig), 2, 10)
+        nm = L.call(CLIP, newmax, L.r32(P + 200), 51)
+        L.w32(P + 260, struct.unpack('<I', struct.pack('<f', float(lv)))[0]); L.w32(P + 264, nm)
+        L.call('i264e_ratecontrol_init', P, 0xffffffff)
+        self.last = (struct.unpack('<f', struct.pack('<I', L.r32(P + 260)))[0], L.r32(P + 264), L.r32(P + 200))
+
     def start(self):
         L, h, f = self.L, self.h, self.frame
         if self.cfg['mbrc']:
@@ -335,9 +349,18 @@ def scenario(lib_path, seed, frames, out):
         out.write('K %d %d %d %d\n' % cfg['hs'])
     mbs = ((w + 15) >> 4) * ((hh + 15) >> 4)
     cplx = rnd.uniform(0.3, 3.0)
+    rframe = gop_restart = None
+    if TRIGRESTART:
+        # a run-time SetChnRcTrigLevel: the pair is taken over by the first natural IDR after the call (picture rframe)
+        rframe = cfg['gop'] * rnd.randint(1, max(1, (frames - 1) // cfg['gop']))
     for f in range(frames):
         if rnd.random() < 0.06:
             cplx = rnd.uniform(0.2, 4.0)
+        if f == rframe:
+            rt, rn = rnd.choice(TRIGS), rnd.choice(NEWMAX)
+            oem.restart(rt, rn)
+            out.write('R %r %d\n' % (rt, rn))
+            print('# R requested %r %d -> validated %r %d (max %d)' % ((rt, rn) + oem.last), file=sys.stderr)
         idr, qp = oem.start()
         if HSKIP:
             out.write('H %d %d %d\n' % oem.hdec)
@@ -363,6 +386,8 @@ def scenario(lib_path, seed, frames, out):
 
 
 T10 = False
+TRIGRESTART = False
+CLIP = 0x1bf90          # the clip helper of validate_parameters in the T10/T20 3.12.0 libimp (GOT -32540)
 CHANGEREF_OFF = False
 HSKIP = False
 TRIGS = [3.0, 2.0, 1.5]
@@ -373,9 +398,15 @@ HS_CONFIGS = (lambda g: (0, g - 1, 1, 3), lambda g: (5, 4, 1, 0), lambda g: (6, 
 
 
 def main():
-    global T10, CHANGEREF_OFF, HSKIP, TRIGS, NEWMAX
+    global T10, CHANGEREF_OFF, HSKIP, TRIGS, NEWMAX, TRIGRESTART
     args = sys.argv[1:]
     if args and args[0] == '--trig-wide':
+        TRIGS = [3.0, 2.0, 1.5, 1.0, 0.5, 1.9, 5.5, 9.0, 12.5]
+        NEWMAX = [51, 48, 44, 40, 36, 30]
+        args = args[1:]
+    if args and args[0] == '--trig-restart':
+        # trigger pair taken over at a natural IDR in the middle of the stream (the observed run-time call), wide pairs
+        TRIGRESTART = True
         TRIGS = [3.0, 2.0, 1.5, 1.0, 0.5, 1.9, 5.5, 9.0, 12.5]
         NEWMAX = [51, 48, 44, 40, 36, 30]
         args = args[1:]

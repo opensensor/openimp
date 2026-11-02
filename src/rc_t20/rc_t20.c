@@ -1399,6 +1399,19 @@ static const int32_t rct20_mb_thr[12] = {
     200, 350, 500, 1500, 2500, 4500, 180, 310, 450, 1200, 2200, 4200,
 };
 
+void RCT20_ClampTrig(RcT20Params *p)
+{
+    int32_t lv = (int32_t)p->new_max_qp_trig;       /* trunc.w.s */
+    int32_t nm = (int32_t)p->new_max_qp;
+    int32_t mx = (int32_t)p->max_qp;
+
+    lv = lv < 2 ? 2 : lv > 10 ? 10 : lv;
+    nm = nm < mx ? mx : nm;
+    nm = nm > 51 ? 51 : nm;
+    p->new_max_qp_trig = (float)lv;
+    p->new_max_qp = (uint32_t)nm;
+}
+
 /* i264e_param_default (0x2ff10) values of the fields the controller reads. */
 void RCT20_DefaultParams(RcT20Params *p)
 {

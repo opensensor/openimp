@@ -346,6 +346,12 @@ struct T30HelixEncoder {
 #endif
     int have_reference;
     int force_idr;
+#if defined(PLATFORM_T20)
+    /* IMP_Encoder_SetChnRcTrigLevel: i264e_reconfig_rc_trig_set only stores the pair; i264e_idr_reconfig copies it into
+     * the controller parameters with the next natural IDR and sets the controller up again there (no IDR of its own) */
+    uint32_t rc_trig_pend_bits, rc_new_max_pend;
+    int rc_trig_pending;
+#endif
     OpenIMPT31RateController rate_control;
     int rate_control_enabled;
 #if defined(PLATFORM_T20)
@@ -2068,11 +2074,10 @@ static void t20_rc_start(T30HelixEncoder *encoder)
 
         memcpy(&trig, &hp->rc_trig_bits, sizeof(trig));
         p.new_max_qp_trig = trig;
-        /* the OEM stores the raw pair at run time; a value below the max QP
-         * would wrap the controller's byte difference, so it is raised to
-         * the max QP (no lift) */
-        p.new_max_qp = hp->rc_new_max_qp < p.max_qp ? p.max_qp
-                                                    : hp->rc_new_max_qp;
+        p.new_max_qp = hp->rc_new_max_qp;
+        /* i264e_idr_reconfig runs i264e_validate_parameters on the pair it takes over: level 2..10 as an integer,
+         * new max QP from the max QP to 51 (docs/T20_RCTRIG.md) */
+        RCT20_ClampTrig(&p);
     }
     if (app) {
         p.i_bias = (int32_t)t20_rc_clip((uint32_t)hp->bias_level, -3, 3);
@@ -2273,6 +2278,26 @@ static void t20_rc_report(T30HelixEncoder *encoder, uint32_t qp, int idr,
                      : *(const uint32_t *)(encoder->t20rc.s + 176),
                  encoder->t20rc_reencodes);
     encoder->t20rc_frames = 0u;
+}
+#endif
+
+#if defined(PLATFORM_T20)
+/* i264e_idr_reconfig: a pair stored by SetChnRcTrigLevel counts from the first natural IDR after the call; the controller is set
+ * up again with it.  Camera A/B with the vendor library: on a T20 the IDR picture itself is coded with the new controller (QP =
+ * the start QP); on a T10 the IDR picture keeps the QP of the old controller and the first P picture starts at the start QP
+ * (the T10 branch of the encode path below). */
+static void t20_trig_apply(T30HelixEncoder *encoder)
+{
+    encoder->rc_trig_pending = 0;
+    encoder->params.rc_trig_bits = encoder->rc_trig_pend_bits;
+    encoder->params.rc_new_max_qp = encoder->rc_new_max_pend;
+    t20_rc_start(encoder);
+}
+
+static void t20_trig_idr(T30HelixEncoder *encoder, int idr)
+{
+    if (encoder->rc_trig_pending && idr && !encoder->t10)
+        t20_trig_apply(encoder);
 }
 #endif
 
@@ -3341,6 +3366,9 @@ t20_picture:
         encoder->eprc_restarting = 0;
     }
 #endif
+#if defined(PLATFORM_T20)
+    t20_trig_idr(encoder, idr);
+#endif
     qp = encoder->rate_control_enabled
         ? openimp_t31_rate_controller_qp(&encoder->rate_control)
         : encoder->params.qp;
@@ -3897,6 +3925,17 @@ again:
             }
             goto t20_again;
         }
+        if (idr && encoder->t10 && encoder->rc_trig_pending) {
+            /* T10 (vendor camera A/B): the IDR picture is coded and judged by the old controller; the new pair then restarts
+             * it, set up as for an IDR (the first P picture starts at the start QP) */
+            RcT10Picture sp;
+
+            t20_trig_apply(encoder);
+            if (encoder->t10rc_on) {
+                RCT10_HSkipClass(&encoder->t10rc, t20_hs_cond(encoder));
+                RCT10_Start(&encoder->t10rc, 1, &sp);
+            }
+        }
     }
 #endif
 
@@ -4344,11 +4383,16 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
      * i264e_ratecontrol_init on a parameter change) */
     if (requested->mb_rc == HW_MBRC_ON || requested->mb_rc == HW_MBRC_OFF)
         next.mb_rc = requested->mb_rc;
-    /* IMP_Encoder_SetChnRcTrigLevel: the trigger and the new max QP of the
-     * OEM controller (restarts it like the other parameters) */
-    if (requested->rc_new_max_qp) {
-        next.rc_trig_bits = requested->rc_trig_bits;
-        next.rc_new_max_qp = requested->rc_new_max_qp;
+    /* IMP_Encoder_SetChnRcTrigLevel: the OEM keeps the pair and takes it over with the next natural IDR
+     * (i264e_idr_reconfig, t20_trig_idr): no restart and no IDR here */
+    if (requested->rc_new_max_qp &&
+        (requested->rc_trig_bits != encoder->params.rc_trig_bits ||
+         requested->rc_new_max_qp != encoder->params.rc_new_max_qp)) {
+        encoder->rc_trig_pend_bits = requested->rc_trig_bits;
+        encoder->rc_new_max_pend = requested->rc_new_max_qp;
+        encoder->rc_trig_pending = 1;
+    } else if (requested->rc_new_max_qp) {
+        encoder->rc_trig_pending = 0;
     }
     /* IMP_Encoder_SetSuperFrameCfg: new thresholds restart the controller */
     if (requested->super_mode != HW_SUPERFRM_DEFAULT) {

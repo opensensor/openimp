@@ -136,6 +136,7 @@ int main(int argc, char **argv)
     FILE *f = fopen(path, "r");
     char line[512];
     RcT10 rc;
+    RcT10Params cur;
     RcT10Picture pic;
     int active = 0, scenario = -1, frame = 0;
     long checked = 0, failed = 0;
@@ -171,6 +172,7 @@ int main(int argc, char **argv)
             p.max_bitrate = mbr; p.change_pos = chg; p.quality = q;
             p.new_max_qp_trig = trig; p.new_max_qp = nmq; p.mb_rc2 = mb_rc2;
             p.super_i_bits = si; p.super_p_bits = sp;
+            cur = p;
             if (RCT10_Init(&rc, &p) != 0) {
                 fprintf(stderr, "init failed\n");
                 return 1;
@@ -178,6 +180,20 @@ int main(int argc, char **argv)
             active = 1;
             scenario++;
             hs_gop = gop;
+        } else if (line[0] == 'R' && active) {
+            /* i264e_idr_reconfig: new trigger pair, controller set up again at this IDR */
+            float rt;
+            unsigned rn;
+
+            if (sscanf(line + 1, "%f %u", &rt, &rn) != 2)
+                return 2;
+            cur.new_max_qp_trig = rt;
+            cur.new_max_qp = rn;
+            RCT10_ClampTrig(&cur);        /* what i264e_validate_parameters does at the IDR */
+            if (RCT10_Init(&rc, &cur) != 0) {
+                fprintf(stderr, "re-init failed\n");
+                return 1;
+            }
         } else if (line[0] == 'K' && active) {
             unsigned t, hm, hn, same;
 

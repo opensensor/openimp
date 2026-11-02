@@ -1227,6 +1227,19 @@ out:
     return (RU8(E, 226) == 1) ? 1 : r;
 }
 
+void RCT10_ClampTrig(RcT10Params *p)
+{
+    int32_t lv = (int32_t)p->new_max_qp_trig;       /* trunc.w.s */
+    int32_t nm = (int32_t)p->new_max_qp;
+    int32_t mx = (int32_t)p->max_qp;
+
+    lv = lv < 2 ? 2 : lv > 10 ? 10 : lv;
+    nm = nm < mx ? mx : nm;
+    nm = nm > 51 ? 51 : nm;
+    p->new_max_qp_trig = (float)lv;
+    p->new_max_qp = (uint32_t)nm;
+}
+
 /* ------------------------------------------------------------ the glue */
 
 void RCT10_DefaultParams(RcT10Params *p)

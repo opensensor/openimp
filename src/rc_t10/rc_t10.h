@@ -50,6 +50,9 @@ typedef struct {
 } RcT10Params;
 
 void RCT10_DefaultParams(RcT10Params *params);
+/* i264e_validate_parameters on a trigger pair taken over by i264e_idr_reconfig (IMP_Encoder_SetChnRcTrigLevel): the level becomes an
+ * integer 2..10, the new max QP is raised to the application's max QP and capped at 51 */
+void RCT10_ClampTrig(RcT10Params *params);
 
 typedef struct {
     uint32_t cmpx;              /* soc_vpu channel node +44 */
