@@ -5,9 +5,11 @@
  * the same inputs through RCT10_Init/Start/End and compares every picture
  * QP, picture type and re-encode decision. */
 #include "rc_t10/rc_t10.h"
+#include "hskip/hskip.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* OpenIMP extra superfrm_bits: off (the default) must keep the OEM
@@ -137,6 +139,9 @@ int main(int argc, char **argv)
     RcT10Picture pic;
     int active = 0, scenario = -1, frame = 0;
     long checked = 0, failed = 0;
+    HSkip hs;
+    unsigned hs_gop = 0;
+    unsigned mb_rc2 = getenv("RC_MB_RC2") ? (unsigned)atoi(getenv("RC_MB_RC2")) : 1u;
 
     if (!f) {
         perror(path);
@@ -164,7 +169,7 @@ int main(int argc, char **argv)
             p.max_qp = mx; p.bitrate = br; p.i_bias = bias; p.frm_qp_step = frm;
             p.gop_qp_step = gs; p.gop_relation = rel; p.static_time = st;
             p.max_bitrate = mbr; p.change_pos = chg; p.quality = q;
-            p.new_max_qp_trig = trig; p.new_max_qp = nmq; p.mb_rc2 = 1;
+            p.new_max_qp_trig = trig; p.new_max_qp = nmq; p.mb_rc2 = mb_rc2;
             p.super_i_bits = si; p.super_p_bits = sp;
             if (RCT10_Init(&rc, &p) != 0) {
                 fprintf(stderr, "init failed\n");
@@ -172,6 +177,27 @@ int main(int argc, char **argv)
             }
             active = 1;
             scenario++;
+            hs_gop = gop;
+        } else if (line[0] == 'K' && active) {
+            unsigned t, hm, hn, same;
+
+            if (sscanf(line + 1, "%u %u %u %u", &t, &hm, &hn, &same) != 4)
+                return 2;
+            hskip_init(&hs, hs_gop, t, hm, hn, same);   /* IMP_Encoder_SetChnHSkip structure */
+        } else if (line[0] == 'H' && active) {
+            unsigned cnt, cls, ft;
+            HSkipPic hp;
+
+            if (sscanf(line + 1, "%u %u %u", &cnt, &cls, &ft) != 3)
+                return 2;
+            hskip_decide(&hs, 0, 0, &hp);               /* T10: no scene-cut rule */
+            RCT10_HSkipClass(&rc, hskip_rc_cond(&hs, &hp, 1));
+            checked++;
+            if (hp.counter != cnt || hp.idr != (int)cls || hp.ftype != ft) {
+                if (failed++ < 10)
+                    fprintf(stderr, "scenario %d: hskip counter %u idr %d type %u, expected %u %u %u\n",
+                            scenario, hp.counter, hp.idr, hp.ftype, cnt, cls, ft);
+            }
         } else if (line[0] == 'F' && active) {
             unsigned idr, qp;
 

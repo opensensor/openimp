@@ -1525,6 +1525,98 @@ void t_enc(void)
     (void)r;
 }
 
+
+/* ------------------------------------------------------------------------------------------
+ * Explicit case "hskip" (APITEST_CASES=hskip, issues #3 #5 #7): H.264 chn 0 with IMP_Encoder_SetChnHSkip / SetChangeRef /
+ * SetChnHSkipBlackEnhance from the environment; every picture is logged as "pic <n> <bytes> <nal type:ref_idc ...>" and the
+ * whole stream is dumped for the host (ffmpeg -bsf:v trace_headers shows frame_num, ref list modification, MMCO).
+ *   HSKIP_TYPE (0..6, default 0)  HSKIP_M  HSKIP_N  HSKIP_SAME (maxSameSceneCnt)  HSKIP_SCENECUT  HSKIP_BLACK  HSKIP_REF (ChangeRef)
+ *   HSKIP_MAXTYPE (maxHSkipType at CreateChn, default 6)  HSKIP_RT=1 (set through IMP_Encoder_SetChnHSkip after the first IDR
+ *   instead of at CreateChn)  HSKIP_GOP (default 30)  HSKIP_FRAMES (default 240)  HSKIP_DUMP=<file>  HSKIP_BITRATE (kbit/s)
+ * ------------------------------------------------------------------------------------------ */
+#if !defined(ENC_NEW) && HAS_IMP_Encoder_SetChnHSkip
+static int hs_env(const char *n, int d) { const char *v = getenv(n); return v && *v ? atoi(v) : d; }
+
+static void hs_nals(const unsigned char *b, size_t n, char *out, size_t cap)
+{
+    size_t i, o = 0;
+
+    out[0] = 0;
+    for (i = 0; i + 4 < n; i++) {
+        if (b[i] == 0 && b[i + 1] == 0 && (b[i + 2] == 1 || (b[i + 2] == 0 && b[i + 3] == 1))) {
+            size_t h = i + (b[i + 2] == 1 ? 3 : 4);
+
+            if (h < n && o + 12 < cap) o += snprintf(out + o, cap - o, " %d:%d", b[h] & 31, (b[h] >> 5) & 3);
+        }
+    }
+}
+
+int enc_hskip_run(void)
+{
+    G(EAttr, a);
+    int chn = 0, r, k, frames = hs_env("HSKIP_FRAMES", 240), gop = hs_env("HSKIP_GOP", 30), rt = hs_env("HSKIP_RT", 0);
+    IMPEncoderAttrHSkip hs;
+    FILE *dump = NULL;
+    char nals[96];
+    unsigned long total = 0;
+
+    if (grp_up(0, 0) != 0) { gfree(a); return -1; }
+    fill_attr(a, CODEC_H264, gop);
+    if (hs_env("HSKIP_BITRATE", 0)) a->rcAttr.attrRcMode.attrH264Cbr.outBitRate = hs_env("HSKIP_BITRATE", 0);
+    memset(&hs, 0, sizeof(hs));
+    hs.skipType = (IMPSkipType)hs_env("HSKIP_TYPE", 0);
+    hs.m = hs_env("HSKIP_M", gop - 1);
+    hs.n = hs_env("HSKIP_N", 1);
+    hs.maxSameSceneCnt = hs_env("HSKIP_SAME", 0);
+    hs.bEnableScenecut = hs_env("HSKIP_SCENECUT", 0);
+    hs.bBlackEnhance = hs_env("HSKIP_BLACK", 0);
+    a->rcAttr.attrHSkip.maxHSkipType = (IMPSkipType)hs_env("HSKIP_MAXTYPE", IMP_Encoder_STYPE_H1M_TRUE);
+    a->rcAttr.attrHSkip.hSkipAttr = rt ? a->rcAttr.attrHSkip.hSkipAttr : hs;
+    r = IMP_Encoder_CreateChn(chn, a);
+    printf("hskip: CreateChn %d (type %d m %d n %d same %d scenecut %d black %d, maxtype %d, rt %d, gop %d)\n", r, hs.skipType, hs.m, hs.n,
+           hs.maxSameSceneCnt, hs.bEnableScenecut, hs.bBlackEnhance, a->rcAttr.attrHSkip.maxHSkipType, rt, gop);
+    if (r) { gfree(a); grp_down(0); return -1; }
+    r = IMP_Encoder_RegisterChn(GRP, chn);
+    if (rt) {
+        r = IMP_Encoder_SetChnHSkip(chn, &hs);
+        printf("hskip: SetChnHSkip %d\n", r);
+    }
+    if (getenv("HSKIP_BLACK") && IMP_Encoder_SetChnHSkipBlackEnhance) printf("hskip: SetChnHSkipBlackEnhance %d\n", IMP_Encoder_SetChnHSkipBlackEnhance(chn, hs.bBlackEnhance));
+    if (getenv("HSKIP_REF") && IMP_Encoder_SetChangeRef) printf("hskip: SetChangeRef %d\n", IMP_Encoder_SetChangeRef(chn, hs_env("HSKIP_REF", 0)));
+    r = IMP_Encoder_StartRecvPic(chn);
+    printf("hskip: StartRecvPic %d\n", r);
+    if (getenv("HSKIP_DUMP")) dump = fopen(getenv("HSKIP_DUMP"), "wb");
+    if (!g_sbuf) g_sbuf = malloc(STREAMCAP);
+    for (k = 0; k < frames; k++) {
+        G(IMPEncoderStream, s);
+        int trunc = 0;
+        size_t n;
+
+        if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("hskip: poll timeout at picture %d\n", k); break; }
+        if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("hskip: GetStream failed at picture %d\n", k); break; }
+        gchk(s);
+        n = gather(s, g_sbuf, STREAMCAP, &trunc);
+        if (dump && !trunc) fwrite(g_sbuf, 1, n, dump);
+        hs_nals(g_sbuf, n, nals, sizeof(nals));
+        printf("pic %d %zu%s\n", k, n, nals);
+        total += n;
+        IMP_Encoder_ReleaseStream(chn, s);
+        gchk(s);
+        gfree(s);
+    }
+    if (dump) fclose(dump);
+    printf("hskip: %d pictures, %lu bytes\n", k, total);
+    IMP_Encoder_StopRecvPic(chn);
+    IMP_Encoder_UnRegisterChn(chn);
+    IMP_Encoder_DestroyChn(chn);
+    gfree(a);
+    grp_down(0);
+    return 0;
+}
+#else
+int enc_hskip_run(void) { return -1; }
+#endif
+
 int enc_chain_up(void)          /* H.264 chn 0 + group 0 with an OSD group in between (used by the OSD test) */
 {
     if (grp_up(1, 0) != 0) return -1;

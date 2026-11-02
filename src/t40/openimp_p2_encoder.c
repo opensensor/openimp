@@ -1348,6 +1348,9 @@ extern int AL_Codec_Encode_SetRcParam(void *codec, void *rc_attr);
     defined(PLATFORM_T30)
 extern int AL_Codec_Encode_SetRcExtras(void *codec, const void *rc_mode);
 extern int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
+extern int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
+                                    int scenecut, int black);
+extern int AL_Codec_Encode_SetChangeRef(void *codec, int enable);
 extern int AL_Codec_Encode_SetMbRC(void *codec, int enable);
 extern int AL_Codec_Encode_SetColor2Grey(void *codec, int enable);
 extern int AL_Codec_Encode_SetRoi(void *codec, uint32_t index,
@@ -2325,6 +2328,24 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
      * rate-control attribute.  T20: the OEM CreateChn runs SMART as i264e
      * method 3 (its own SMART controller), not as VBR. */
     (void)AL_Codec_Encode_SetRcExtras(ch->codec, &attr->rcAttr.attrRcMode);
+#endif
+#if defined(PLATFORM_T20)
+    {
+        /* OEM T10/T20 3.12.0 CreateChn: hSkipAttr -> i264e param +172..+192 ->
+         * i264e_init_skip_header: the reference structure (src/hskip) and,
+         * for the skip types N1X and H1M, an IDR every maxSameSceneCnt GOPs */
+        const IMPEncoderAttrHSkip *hs = &attr->rcAttr.attrHSkip.hSkipAttr;
+        int ok = hs->skipType == IMP_Encoder_STYPE_N1X ||
+                 hs->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
+                 hs->skipType == IMP_Encoder_STYPE_H1M_TRUE;
+
+        (void)AL_Codec_Encode_SetHSkip(ch->codec, (uint32_t)hs->skipType,
+                                       (uint32_t)hs->m, (uint32_t)hs->n,
+                                       hs->bEnableScenecut, hs->bBlackEnhance);
+        (void)AL_Codec_Encode_SetSameSceneGops(
+            ch->codec, ok && hs->maxSameSceneCnt > 0 ?
+                           (uint32_t)hs->maxSameSceneCnt : 0u);
+    }
 #endif
 #if defined(PLATFORM_T23) || \
     (defined(PLATFORM_T21) && !defined(PLATFORM_T20))
@@ -6077,6 +6098,22 @@ int IMP_Encoder_SetChnHSkip(int channel, const IMPEncoderAttrHSkip *attr)
         return -1;
     }
     ch->attr.rcAttr.attrHSkip.hSkipAttr = *attr;
+#if defined(PLATFORM_T20)
+    /* i264e_reconfig_hskip_set: pending until the next IDR picture, then the
+     * new skip header (src/hskip) and the IDR period of maxSameSceneCnt */
+    if (ch->codec) {
+        int ok = attr->skipType == IMP_Encoder_STYPE_N1X ||
+                 attr->skipType == IMP_Encoder_STYPE_H1M_FALSE ||
+                 attr->skipType == IMP_Encoder_STYPE_H1M_TRUE;
+
+        (void)AL_Codec_Encode_SetHSkip(ch->codec, (uint32_t)attr->skipType,
+                                       (uint32_t)attr->m, (uint32_t)attr->n,
+                                       attr->bEnableScenecut, attr->bBlackEnhance);
+        (void)AL_Codec_Encode_SetSameSceneGops(
+            ch->codec, ok && attr->maxSameSceneCnt > 0 ?
+                           (uint32_t)attr->maxSameSceneCnt : 0u);
+    }
+#endif
 #if !defined(PLATFORM_T20) && defined(PLATFORM_T21)
     /* T30 build: the value is only stored.  Its CreateChn does not hand the
      * IDR period to the Helix encoder (T21 does), so changing it here would
@@ -6291,6 +6328,12 @@ int IMP_Encoder_SetChangeRef(int channel, int enable)
     pthread_mutex_lock(&p2_channels[channel].lock);
     if (p2_channels[channel].created) {
         p2_channels[channel].change_ref = enable != 0;
+#if defined(PLATFORM_T20)
+        /* i264e_change_ref_set: the rate controller's "change reference" flag
+         * (the SMART controller codes an oversized IDR again), next picture */
+        if (p2_channels[channel].codec)
+            (void)AL_Codec_Encode_SetChangeRef(p2_channels[channel].codec, enable != 0);
+#endif
         ret = 0;
     }
     pthread_mutex_unlock(&p2_channels[channel].lock);
@@ -6362,9 +6405,23 @@ int IMP_Encoder_SetChnHSkipBlackEnhance(int channel, const int enable)
         return -1;
     EncoderInit();
     pthread_mutex_lock(&p2_channels[channel].lock);
-    if (p2_channels[channel].created)
+    if (p2_channels[channel].created) {
         p2_channels[channel].attr.rcAttr.attrHSkip.hSkipAttr.bBlackEnhance =
             enable != 0;
+#if defined(PLATFORM_T20)
+        /* i264e_reconfig_black_enhance_set (applied by i264e_reconfig at the next
+         * picture, not only at an IDR): drop-able pictures coded as all-skip slices */
+        if (p2_channels[channel].codec) {
+            const IMPEncoderAttrHSkip *hs =
+                &p2_channels[channel].attr.rcAttr.attrHSkip.hSkipAttr;
+
+            (void)AL_Codec_Encode_SetHSkip(p2_channels[channel].codec,
+                                           (uint32_t)hs->skipType, (uint32_t)hs->m,
+                                           (uint32_t)hs->n, hs->bEnableScenecut,
+                                           hs->bBlackEnhance);
+        }
+#endif
+    }
     pthread_mutex_unlock(&p2_channels[channel].lock);
     return 0;
 }

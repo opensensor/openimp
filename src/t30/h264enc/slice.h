@@ -74,6 +74,10 @@ typedef struct
 		int i_poc;
 	} mmco[X264_REF_MAX];
 
+	int b_long_term_reference_flag;     /* IDR: dec_ref_pic_marking long_term_reference_flag (OEM HSkip) */
+	int b_mmco_assign_long_term;        /* P: MMCO 6, assign the current picture long-term index i_mmco_long_term_idx */
+	int i_mmco_long_term_idx;
+
 	int i_cabac_init_idc;
 
 	int i_qp;

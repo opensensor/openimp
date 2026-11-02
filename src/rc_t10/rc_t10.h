@@ -68,9 +68,12 @@ typedef struct RcT10 {
     RcT10Params params;
     uint32_t frames;
     RcT10Stats last;
+    int hs_cond;                /* RCT10_HSkipClass */
 } RcT10;
 
 int RCT10_Init(RcT10 *rc, const RcT10Params *params);
+/* as RCT20_HSkipClass (the state byte E+224 of the T10 branch) */
+void RCT10_HSkipClass(RcT10 *rc, int cond);
 void RCT10_Start(RcT10 *rc, int idr, RcT10Picture *pic);
 /* Returns 1 when the picture is to be coded again with pic->qp. */
 int RCT10_End(RcT10 *rc, const RcT10Stats *stats, RcT10Picture *pic);

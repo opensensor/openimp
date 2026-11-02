@@ -96,6 +96,7 @@ typedef struct RcT20 {
     RcT20Params params;
     uint32_t frames;            /* pictures started */
     RcT20Stats last;            /* statistics of the last coded picture */
+    int hs_cond;                /* RCT20_HSkipClass */
 } RcT20;
 
 /* Picture decision. */
@@ -110,6 +111,12 @@ uint32_t RCT20_ESize(const RcT20Params *params);
  * else NULL. */
 int RCT20_Init(RcT20 *rc, const RcT20Params *params);
 void RCT20_Free(RcT20 *rc);
+/* i264e_ratecontrol_start (0x3caa8) marks a picture of an HSkip structure for the controller:
+ * cond = ((skip type N1X and the picture opens a GOP) or H1M_FALSE) and frame type SBASE, or
+ * H1M_TRUE and frame type LBASE (src/hskip).  The byte is 2 while the controller plans the
+ * picture and 1 afterwards (the re-encode judge, SetChangeRef), else it keeps the value of the
+ * last picture.  Call before RCT20_Start; 0 (default) is a plain GOP. */
+void RCT20_HSkipClass(RcT20 *rc, int cond);
 
 /* idr: the GOP position says IDR.  luma/stride: the picture's luma plane
  * (macroblock rate control reads it; may be NULL when E+215 is 0). */

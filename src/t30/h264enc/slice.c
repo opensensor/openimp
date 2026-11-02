@@ -39,6 +39,12 @@ void h264e_slice_header_init(h264_slice_header_t *sh,
 	/*不做重排序了，重排序有什么好处?，软件去做的.*/
 	sh->b_ref_pic_list_reordering[0] = 0;
 	sh->b_ref_pic_list_reordering[1] = 0;
+	sh->ref_pic_list_order[0][0].idc = 0;
+	sh->ref_pic_list_order[0][0].arg = 0;
+	sh->i_mmco_command_count = 0;
+	sh->b_long_term_reference_flag = 0;
+	sh->b_mmco_assign_long_term = 0;
+	sh->i_mmco_long_term_idx = 0;
 
 
 	/* TODO : value to be */
@@ -139,16 +145,23 @@ void h264e_slice_header_write(bs_t *s, h264_slice_header_t *sh, int i_nal_ref_id
 	if(i_nal_ref_idc != 0) {
 		if(sh->i_idr_pic_id >= 0) {
 			bs_write1(s, 0);
-			bs_write1(s, 0);
+			bs_write1(s, sh->b_long_term_reference_flag != 0);
 		} else {
-			bs_write1( s, sh->i_mmco_command_count > 0 ); /* adaptive_ref_pic_marking_mode_flag */
-			if( sh->i_mmco_command_count > 0 )
+			int adaptive = sh->i_mmco_command_count > 0 || sh->b_mmco_assign_long_term;
+
+			bs_write1( s, adaptive ); /* adaptive_ref_pic_marking_mode_flag */
+			if( adaptive )
 			{
 				int i = 0;
 				for(i = 0; i < sh->i_mmco_command_count; i++ )
 				{
 					bs_write_ue( s, 1 ); /* mark short term ref as unused */
 					bs_write_ue( s, sh->mmco[i].i_difference_of_pic_nums - 1 );
+				}
+				if( sh->b_mmco_assign_long_term )
+				{
+					bs_write_ue( s, 6 ); /* assign a long-term frame index to the current picture */
+					bs_write_ue( s, sh->i_mmco_long_term_idx );
 				}
 				bs_write_ue( s, 0 ); /* end command list */
 			}
