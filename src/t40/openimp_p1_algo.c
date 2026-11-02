@@ -23,7 +23,7 @@
  *   IMP_ISP_Tuning_SetSensorFPS    notify(priv, 0 = FPS_CHANGE, NULL) of an active AE record.
  *
  * Switch: on by default (the callback results reach the sensor and the white balance, shown on the T40 test camera); OPENIMP_ISP_ALGO_FUNC=0
- * makes the calls answer -1 / ENOTSUP again (see algo_enabled()).  Needs an open-tx-isp T40 / T41 module with the #65 / #76 fixes.
+ * makes the calls answer -1 / ENOTSUP again (see algo_enabled()).  Needs an open-tx-isp T40 / T41 module with the #65 / #76 fixes (T41 AWB library: #195, an extra beyond the vendor, whose T41 module has no AWB library path).
  *
  * Differences (documented): NULL pointers and sensors above 3 are refused with -1 (the vendor
  * dereferences them); a missing callback is skipped instead of called; the close waits at most

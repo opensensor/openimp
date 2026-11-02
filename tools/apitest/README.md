@@ -37,7 +37,7 @@ motion results.
 
 FS ch0 = sensor size W x H (as in imgfx), FS ch1 = 640x360 scaled; all encoders
 and IVS/OSD use ch1. Env: `APITEST_MODE=night` (ISP running mode night),
-`APITEST_AIDEV=n` (audio input device, default 1, T23 0), `APITEST_QEMU=1` (set by `qemu_run.py`) turns the picture verdicts of `customalgo_t41` into N/A (the QEMU test pattern does not respond to the exposure) and a refused `SetSensorFPS` of the QEMU sensor model into N/A, `APITEST_AO=1` enables the (off by default, no-sound rule)
+`APITEST_AIDEV=n` (audio input device, default 1, T23 0), `APITEST_QEMU=1` (set by `qemu_run.py`) turns the picture verdicts of `customalgo_t41` (AE and AWB effect) into N/A (the QEMU test pattern does not respond to the exposure) and a refused `SetSensorFPS` of the QEMU sensor model into N/A, `APITEST_AO=1` enables the (off by default, no-sound rule)
 AO return-code checks.
 
 ## What is exercised

@@ -3467,6 +3467,7 @@ api_links:
 - soc: T41
   issues:
   - 76
+  - 195
   functions:
   - ISP_SetAeAlgoFunc
   - ISP_SetAwbAlgoFunc

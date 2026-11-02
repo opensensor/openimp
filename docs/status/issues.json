@@ -4,7 +4,7 @@
   {
    "number": 2,
    "title": "T31 + SC2336: AE limit-cycles between anti-flicker IT steps (analog gain has no usable authority)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/2",
    "labels": [
     "area:AE-AWB",
@@ -21,7 +21,7 @@
   {
    "number": 3,
    "title": "[T10] Backlog: Encoder (and decoder) API, 15 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/3",
    "labels": [
     "area:Encoder",
@@ -38,7 +38,7 @@
   {
    "number": 4,
    "title": "[T10] Backlog: System / sysutils / log API, 3 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/4",
    "labels": [
     "area:System",
@@ -55,7 +55,7 @@
   {
    "number": 5,
    "title": "[T20] Backlog: Encoder (and decoder) API, 14 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/5",
    "labels": [
     "area:Encoder",
@@ -72,7 +72,7 @@
   {
    "number": 6,
    "title": "[T20] Backlog: System / sysutils / log API, 3 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/6",
    "labels": [
     "area:System",
@@ -89,7 +89,7 @@
   {
    "number": 7,
    "title": "[T21] Backlog: Encoder (and decoder) API, 7 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/7",
    "labels": [
     "area:Encoder",
@@ -106,7 +106,7 @@
   {
    "number": 8,
    "title": "[T21] Backlog: System / sysutils / log API, 3 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/8",
    "labels": [
     "area:System",
@@ -123,7 +123,7 @@
   {
    "number": 9,
    "title": "[T23] Backlog: ISP tuning API, 2 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/9",
    "labels": [
     "area:ISP",
@@ -140,7 +140,7 @@
   {
    "number": 10,
    "title": "[T23] Backlog: AE / AWB / AF API, 1 function that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/10",
    "labels": [
     "area:AE-AWB",
@@ -157,7 +157,7 @@
   {
    "number": 11,
    "title": "[T23] Backlog: Encoder (and decoder) API, 8 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/11",
    "labels": [
     "area:Encoder",
@@ -174,7 +174,7 @@
   {
    "number": 12,
    "title": "[T23] Backlog: OSD API, 5 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/12",
    "labels": [
     "area:OSD",
@@ -191,7 +191,7 @@
   {
    "number": 13,
    "title": "[T23] Backlog: System / sysutils / log API, 14 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/13",
    "labels": [
     "area:System",
@@ -446,7 +446,7 @@
   {
    "number": 28,
    "title": "[T31] Backlog: Encoder (and decoder) API, 2 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/28",
    "labels": [
     "area:Encoder",
@@ -463,7 +463,7 @@
   {
    "number": 29,
    "title": "[T31] Backlog: FrameSource API, 3 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/29",
    "labels": [
     "area:FrameSource",
@@ -480,7 +480,7 @@
   {
    "number": 30,
    "title": "[T31] Backlog: System / sysutils / log API, 14 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/30",
    "labels": [
     "area:System",
@@ -1071,7 +1071,7 @@
   {
    "number": 65,
    "title": "[T40] Backlog: AE / AWB / AF API, 2 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/65",
    "labels": [
     "area:AE-AWB",
@@ -1088,7 +1088,7 @@
   {
    "number": 66,
    "title": "[T40] Backlog: Encoder (and decoder) API, 2 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/66",
    "labels": [
     "area:Encoder",
@@ -1105,7 +1105,7 @@
   {
    "number": 67,
    "title": "[T40] Backlog: FrameSource API, 1 function that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/67",
    "labels": [
     "area:FrameSource",
@@ -1122,7 +1122,7 @@
   {
    "number": 68,
    "title": "[T40] Backlog: OSD API, 1 function that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/68",
    "labels": [
     "area:OSD",
@@ -1139,7 +1139,7 @@
   {
    "number": 69,
    "title": "[T40] Backlog: Audio API, 12 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/69",
    "labels": [
     "area:Audio",
@@ -1156,7 +1156,7 @@
   {
    "number": 70,
    "title": "[T40] Backlog: System / sysutils / log API, 26 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/70",
    "labels": [
     "area:System",
@@ -1237,7 +1237,7 @@
   {
    "number": 75,
    "title": "[T41] Backlog: ISP tuning API, 12 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/75",
    "labels": [
     "area:ISP",
@@ -1254,7 +1254,7 @@
   {
    "number": 76,
    "title": "[T41] Backlog: AE / AWB / AF API, 11 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/76",
    "labels": [
     "area:AE-AWB",
@@ -1271,7 +1271,7 @@
   {
    "number": 77,
    "title": "[T41] Backlog: Encoder (and decoder) API, 9 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/77",
    "labels": [
     "area:Encoder",
@@ -1288,7 +1288,7 @@
   {
    "number": 78,
    "title": "[T41] Backlog: FrameSource API, 1 function that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/78",
    "labels": [
     "area:FrameSource",
@@ -1305,7 +1305,7 @@
   {
    "number": 79,
    "title": "[T41] Backlog: OSD API, 2 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/79",
    "labels": [
     "area:OSD",
@@ -1322,7 +1322,7 @@
   {
    "number": 80,
    "title": "[T41] Backlog: System / sysutils / log API, 6 functions that no streamer calls",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/80",
    "labels": [
     "area:System",
@@ -1737,7 +1737,7 @@
   {
    "number": 104,
    "title": "[T31] Linux 7.2: build breaks on cpu_has_mxu_v2, warning patches, s_stream pairing",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/104",
    "labels": [
     "area:Driver",
@@ -2285,7 +2285,7 @@
   {
    "number": 141,
    "title": "T40: ISP OSD Set calls return 0 but show no picture (SetOSDAttr, SetSingleOSDAttr)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/141",
    "labels": [
     "area:OSD",
@@ -2302,7 +2302,7 @@
   {
    "number": 144,
    "title": "T10/T20: EnableAllNCUDenoise is real hardware (NCU reg 0x13380040), OpenIMP has no NCU integration",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/144",
    "labels": [
     "area:Encoder",
@@ -2337,7 +2337,7 @@
   {
    "number": 146,
    "title": "T20/T10: IMP_Encoder_SetPoolSize and the shared vpuBs bitstream buffer (per-encoder 2x frame buffer today)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/146",
    "labels": [
     "area:Encoder",
@@ -2372,7 +2372,7 @@
   {
    "number": 148,
    "title": "T40: ISP picture under apitest init at night is about 8x darker than the vendor (Y 4.5 vs 35)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/148",
    "labels": [
     "area:AE-AWB",
@@ -2406,7 +2406,7 @@
   {
    "number": 150,
    "title": "T40: ISP top block 'main' is not zero after ISP open (the boot clear of tisp_tstp_main_init is lost); sec holds the same hardware defaults on the vendor",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/150",
    "labels": [
     "area:ISP",
@@ -2423,7 +2423,7 @@
   {
    "number": 151,
    "title": "T10/T20/T21/T23: encoder frame wait is a 1 ms sleep loop (VBMGetFrame + p2_sleep_us(1000)), about 20-25 probes per frame",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/151",
    "labels": [
     "area:Encoder",
@@ -2443,7 +2443,7 @@
   {
    "number": 152,
    "title": "T40: tx-isp-t40 never gates the ISP clock (CLKGR bit 23) or stops the sensor MCLK at rmmod; compare with the vendor",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/152",
    "labels": [
     "area:Driver",
@@ -2460,7 +2460,7 @@
   {
    "number": 153,
    "title": "T41: camera check of the +0x4c deinit alignment (claude/isp-stats-deinit) and the maintainer's silicon test",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/153",
    "labels": [
     "area:Driver",
@@ -2545,7 +2545,7 @@
   {
    "number": 158,
    "title": "T40: T40 OSD setters: pointer-scaled counter index and missing NULL checks",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/158",
    "labels": [
     "area:Driver",
@@ -2562,7 +2562,7 @@
   {
    "number": 160,
    "title": "T40: T40 `tisp_s_osd_attr` (cf0fafd7) keeps OEM edge cases that are cheap to make safe",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/160",
    "labels": [
     "area:Driver",
@@ -2579,7 +2579,7 @@
   {
    "number": 161,
    "title": "T40: Lifted code that would oops if reached (compiled NULL-based stores), same bug class as #139",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/161",
    "labels": [
     "area:Driver",
@@ -2596,7 +2596,7 @@
   {
    "number": 162,
    "title": "T41: T41 #134 barrier does not cover the user sensor-register ioctl",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/162",
    "labels": [
     "area:Driver",
@@ -2613,7 +2613,7 @@
   {
    "number": 163,
    "title": "T40: Bit-exactness and alignment proofs are not in `make check`",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/163",
    "labels": [
     "area:Driver",
@@ -2630,7 +2630,7 @@
   {
    "number": 164,
    "title": "T40: `t40_tisp_par=1` exposes physical-memory read/write",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/164",
    "labels": [
     "area:Driver",
@@ -2647,7 +2647,7 @@
   {
    "number": 165,
    "title": "T40: Swept T40 handlers still share no lock",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/165",
    "labels": [
     "area:Driver",
@@ -2664,7 +2664,7 @@
   {
    "number": 166,
    "title": "T40: Dead-but-armed DPC twin of C1",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/166",
    "labels": [
     "area:Driver",
@@ -2732,7 +2732,7 @@
   {
    "number": 170,
    "title": "Review leftovers L6/L8-L11: behaviour vs stock unverified",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/170",
    "labels": [
     "area:System",
@@ -2745,6 +2745,157 @@
     "type:bug"
    ],
    "created": "2026-10-31T09:59:21Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 174,
+   "title": "[T30] open-tx-isp: IMP_ISP_GetSensorRegister oopses the driver (NULL dereference)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/174",
+   "labels": [
+    "area:Driver",
+    "prio:streamer",
+    "repo:open-tx-isp",
+    "severity:critical",
+    "soc:T30",
+    "type:bug"
+   ],
+   "created": "2026-11-01T00:26:27Z",
+   "closed": null,
+   "milestone": "RC3"
+  },
+  {
+   "number": 175,
+   "title": "[T30] open-tx-isp: fatal oops in the ISP IRQ path on start of the second FrameSource channel (about 1 run in 7, LIST_POISON2)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/175",
+   "labels": [
+    "area:Driver",
+    "prio:streamer",
+    "repo:open-tx-isp",
+    "severity:critical",
+    "soc:T30",
+    "type:bug"
+   ],
+   "created": "2026-11-01T00:27:25Z",
+   "closed": null,
+   "milestone": "RC3"
+  },
+  {
+   "number": 176,
+   "title": "[T30] open-tx-isp: hvflip case oopses in the ISP state initialisation (reproducible)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/176",
+   "labels": [
+    "area:Driver",
+    "prio:streamer",
+    "repo:open-tx-isp",
+    "severity:critical",
+    "soc:T30",
+    "type:bug"
+   ],
+   "created": "2026-11-01T00:28:22Z",
+   "closed": null,
+   "milestone": "RC3"
+  },
+  {
+   "number": 177,
+   "title": "[T30] open-tx-isp: many ISP getters and controls are not served by tx-isp-t30 (32 err cells)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/177",
+   "labels": [
+    "area:Driver",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T30",
+    "type:gap"
+   ],
+   "created": "2026-11-01T00:29:19Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 178,
+   "title": "[T30] FrameSource format ioctl: vendor sends 0x5c-byte form (0xc05c56c3/0x405c56c4), OpenIMP uses the 0x4c-byte form of the open driver; difference unexplained",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/178",
+   "labels": [
+    "area:FrameSource",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "repo:openimp",
+    "severity:low",
+    "soc:T30",
+    "type:wip"
+   ],
+   "created": "2026-11-01T00:30:16Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 189,
+   "title": "Lifted T40/T41 drivers: typed-pointer byte offsets (x4 steps, counters that never meet their bound)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/189",
+   "labels": [
+    "prio:streamer",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "soc:T40",
+    "soc:T41",
+    "type:bug"
+   ],
+   "created": "2026-11-01T11:22:35Z",
+   "closed": null,
+   "milestone": "RC3"
+  },
+  {
+   "number": 191,
+   "title": "Helix vs VPU picture-size and RD parity on T10/T20 (HSkip second-try rate)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/191",
+   "labels": [],
+   "created": "2026-11-02T14:23:37Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 192,
+   "title": "Review leftovers: imp_log set-id env override, PadFrame release at encode completion (T23/T21)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/192",
+   "labels": [],
+   "created": "2026-11-02T19:33:30Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 193,
+   "title": "T40 lifted code: lost call arguments (ARITY) still present on next (from old #140)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/193",
+   "labels": [],
+   "created": "2026-11-02T19:33:31Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 195,
+   "title": "T41: functional SetAwbAlgoFunc (extra beyond vendor)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/195",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "repo:openimp",
+    "severity:low",
+    "soc:T41",
+    "type:gap"
+   ],
+   "created": "2026-11-02T21:27:05Z",
    "closed": null,
    "milestone": null
   }
