@@ -3,7 +3,7 @@
 # only, no picture leaves the camera), T40: area t40dev (former t40_devtest) - ONE binary apitest_<soc>.  Restores the camera (streamer restarted, /tmp clean).
 #
 #   build first:  tools/apitest/build.sh            (binaries in tools/apitest/build, or BIN=<dir>)
-#   example:      tools/apitest/run_cam.sh 192.168.10.34 T41
+#   example:      tools/apitest/run_cam.sh <cam-ip> T41
 #
 # Rules it follows (brief RC2 1024 + addenda): cam lock held for the WHOLE run, STATUS "start" / "done, free",
 # ssh keep-alive, nothing large in /tmp (binaries < 1 MB, output streamed to the host), refuses to run while
@@ -14,7 +14,7 @@
 #      bypass/FPS cases)  NOIMG=1 (skip imgfx)  T40_MASK (t40_devtest phases, hex)  TAG (label, default agg47)
 #      SENSOR I2C W H (override the table)  DRY=1 (print what would run)
 #      IMGFX_FILTER=name (picture area: only the cases whose name contains it, e.g. exp-; the base cases always run)
-S=${S:-/mnt/NVMe/git/scratch-clones/session-110bf918}
+S=${S:?set S=<scratch dir with audit/ and locks/>}
 D=$(cd "$(dirname "$0")" && pwd)
 BIN=${BIN:-$D/build}
 IP=$1; SOC=$(echo "$2" | tr a-z A-Z); NN=${IP##*.}

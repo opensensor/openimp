@@ -30,7 +30,7 @@ import datetime as dt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import status_data as sd
 
-S = "/mnt/NVMe/git/scratch-clones/session-110bf918"
+S = os.environ.get("LUFI_SCRATCH") or sys.exit("set LUFI_SCRATCH=<scratch dir with audit/ and locks/>")
 OUT = os.path.join(sd.SDIR, "soak.json")
 FMT = "%Y-%m-%d %H:%M:%S"
 BOOT_TOL = 150          # s: boot times closer than this are the same boot

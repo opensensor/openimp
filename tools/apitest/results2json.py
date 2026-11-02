@@ -10,7 +10,7 @@ Output (--out): {"soc","ip","date","image","funcs":{key:{"v":"PASS|FAIL|PART|SKI
 Keys are the function keys of docs/api_evidence.json (IMP_ prefix removed, Get/Set pairs joined).  A key with
 several member functions (Get/Set) is PASS only when every member reported PASS; a FAIL of any member is FAIL;
 PASS + (N/A|SKIP) members is PART.  imgfx cases are mapped through IMGFX_CASES below.
-Usage: results2json.py --soc T41 --ip 192.168.10.34 --image agg47 [--date D] --out result.json [inputs]
+Usage: results2json.py --soc T41 --ip <cam-ip> --image agg47 [--date D] --out result.json [inputs]
 """
 import argparse, json, math, os, re, sys
 

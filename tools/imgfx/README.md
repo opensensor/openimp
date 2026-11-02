@@ -65,25 +65,25 @@ sensor flip 0.
 
 | camera | binary | command |
 |---|---|---|
-| T10 secuplug 192.168.10.31 | imgfx_t10 | `imgfx_t10 jxh42 0x30 1280 720 /tmp/imgfx` |
-| T20 wyze campan1 192.168.10.163 | imgfx_t20 | `imgfx_t20 jxf22 0x40 1920 1080 /tmp/imgfx` |
-| T21 victure pc420 192.168.10.27 | imgfx_t21 | `imgfx_t21 jxf23 0x40 1920 1080 /tmp/imgfx` |
-| T23 jooan a6m 192.168.10.30 | imgfx_t23 | `imgfx_t23 sc1a4t 0x30 1280 720 /tmp/imgfx` |
-| T23 galayou y4 192.168.10.28 | imgfx_t23 | `imgfx_t23 sc2336 0x30 1920 1080 /tmp/imgfx` |
-| T31 wuuk y0510 192.168.10.21 | imgfx_t31 | `imgfx_t31 sc4336p 0x30 2560 1440 /tmp/imgfx` |
-| T41 vanhua t55a 192.168.178.179 | imgfx_t41 | `imgfx_t41 gc5603 0x31 2880 1620 /tmp/imgfx` |
+| T10 secuplug .31 | imgfx_t10 | `imgfx_t10 jxh42 0x30 1280 720 /tmp/imgfx` |
+| T20 wyze campan1 .163 | imgfx_t20 | `imgfx_t20 jxf22 0x40 1920 1080 /tmp/imgfx` |
+| T21 victure pc420 .27 | imgfx_t21 | `imgfx_t21 jxf23 0x40 1920 1080 /tmp/imgfx` |
+| T23 jooan a6m .30 | imgfx_t23 | `imgfx_t23 sc1a4t 0x30 1280 720 /tmp/imgfx` |
+| T23 galayou y4 .28 | imgfx_t23 | `imgfx_t23 sc2336 0x30 1920 1080 /tmp/imgfx` |
+| T31 wuuk y0510 .21 | imgfx_t31 | `imgfx_t31 sc4336p 0x30 2560 1440 /tmp/imgfx` |
+| T41 vanhua t55a .179 | imgfx_t41 | `imgfx_t41 gc5603 0x31 2880 1620 /tmp/imgfx` |
 
 (sc1a4t addr 0x30 and gc5603 0x31 / 2880x1620 are from the sensor drivers in
 ingenic-sdk; the other values as given.)
 
 Typical run:
 
-    scp imgfx_t31 root@192.168.10.21:/tmp/
-    ssh root@192.168.10.21
+    scp imgfx_t31 root@<cam-ip>:/tmp/
+    ssh root@<cam-ip>
       /etc/init.d/S95timps stop
       mkdir -p /tmp/imgfx && cd /tmp && ./imgfx_t31 sc4336p 0x30 2560 1440 /tmp/imgfx | tee /tmp/imgfx/console.txt
       # night: IMGFX_MODE=night ./imgfx_t31 ...
-    scp -r root@192.168.10.21:/tmp/imgfx ./cam-t31
+    scp -r root@<cam-ip>:/tmp/imgfx ./cam-t31
     python3 imgfx_collage.py ./cam-t31          # jpg/, contact-N.jpg, report.txt
 
 Reboot or restart the streamer afterwards (`/etc/init.d/S95timps start`).
@@ -101,8 +101,8 @@ hilight depress, ...) are not flagged as suspect.
 ## Build
 
 `./build.sh` cross-builds all six binaries (toolchain and libimp from
-`/mnt/NVMe/git/thingino-out/<cam>/`, vendor headers from
-`thingino-raptor-hal/ingenic-headers/<SoC>`). Every vendor function is declared
+`$THINGINO_OUT/<cam>/`, vendor headers from
+`$HDR_DIR/<SoC>/...`). Every vendor function is declared
 weak, one source builds everywhere; a function missing in the camera's libimp
 prints `N/A` at run time.
 

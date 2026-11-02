@@ -4,7 +4,7 @@
 # via rmmod/insmod with the arguments of /etc/modules.d, LIB (optional, "-" = keep) is used through LD_LIBRARY_PATH; apitest runs
 # with the given areas/cases; the stock module is loaded again and the streamer restarted afterwards (trap, also on errors).
 #
-#   AREAS=cases CASES=isposd tools/apitest/run_swap.sh 192.168.10.34 T41 path/tx-isp-t41.ko path/libimp.so OUT
+#   AREAS=cases CASES=isposd tools/apitest/run_swap.sh <cam-ip> T41 path/tx-isp-t41.ko path/libimp.so OUT
 #
 # env: AREAS (default sys,fs,enc,osd,ivs,audio,isp,su,cases)  CASES (APITEST_CASES)  TOPIC (STATUS tag)  BIN (apitest dir, default ./build)
 #      PUSHF="local[:name] ..." (extra files into /tmp/rsw)  PULLF="name ..." (files of /tmp/rsw copied to OUT after the run)
@@ -12,7 +12,7 @@
 # libimp-only (KO = "-"): the kernel modules are never touched, also not in the restore (the Eufy T40 panics/hangs on rmmod).
 # Rules: cam lock held for the whole run, STATUS "planned test" start/done lines, nothing large in /tmp (ko < 1 MB on T41 -> check
 # 'free'), no AO call (APITEST_AO=0), never the vendor ISP ko.
-S=${S:-/mnt/NVMe/git/scratch-clones/session-110bf918}
+S=${S:?set S=<scratch dir with audit/ and locks/>}
 D=$(cd "$(dirname "$0")" && pwd)
 BIN=${BIN:-$D/build}
 IP=$1; SOC=$(echo "$2" | tr a-z A-Z); KO=$3; LIB=$4; OUT=$5; NN=${IP##*.}

@@ -60,22 +60,22 @@ Same cameras and sensor arguments as imgfx:
 
 | camera | binary | command |
 |---|---|---|
-| T10 secuplug 192.168.10.31 | apitest_t10 | `apitest_t10 jxh42 0x30 1280 720` |
-| T20 wyze campan1 192.168.10.163 | apitest_t20 | `apitest_t20 jxf22 0x40 1920 1080` |
-| T21 victure pc420 192.168.10.27 | apitest_t21 | `apitest_t21 jxf23 0x40 1920 1080` |
-| T23 jooan a6m 192.168.10.30 | apitest_t23 | `apitest_t23 sc1a4t 0x30 1280 720` |
-| T23 galayou y4 192.168.10.28 | apitest_t23 | `apitest_t23 sc2336 0x30 1920 1080` |
-| T31 wuuk y0510 192.168.10.21 | apitest_t31 | `apitest_t31 sc4336p 0x30 2560 1440` |
-| T41 vanhua t55a 192.168.178.179 | apitest_t41 | `apitest_t41 gc5603 0x31 2880 1620` |
+| T10 secuplug .31 | apitest_t10 | `apitest_t10 jxh42 0x30 1280 720` |
+| T20 wyze campan1 .163 | apitest_t20 | `apitest_t20 jxf22 0x40 1920 1080` |
+| T21 victure pc420 .27 | apitest_t21 | `apitest_t21 jxf23 0x40 1920 1080` |
+| T23 jooan a6m .30 | apitest_t23 | `apitest_t23 sc1a4t 0x30 1280 720` |
+| T23 galayou y4 .28 | apitest_t23 | `apitest_t23 sc2336 0x30 1920 1080` |
+| T31 wuuk y0510 .21 | apitest_t31 | `apitest_t31 sc4336p 0x30 2560 1440` |
+| T41 vanhua t55a .179 | apitest_t41 | `apitest_t41 gc5603 0x31 2880 1620` |
 
 Typical run:
 
-    scp apitest_t31 root@192.168.10.21:/tmp/
-    ssh root@192.168.10.21
+    scp apitest_t31 root@<cam-ip>:/tmp/
+    ssh root@<cam-ip>
       /etc/init.d/S95timps stop
       /tmp/apitest_t31 sc4336p 0x30 2560 1440 | tee /tmp/apitest.txt     # about 2 minutes
       # single areas: apitest_t31 sc4336p 0x30 2560 1440 enc,osd
-    scp root@192.168.10.21:/tmp/apitest.txt cam-t31-apitest.txt
+    scp root@<cam-ip>:/tmp/apitest.txt cam-t31-apitest.txt
     grep -E ' (FAIL|N/A) ' cam-t31-apitest.txt          # what needs attention
 
 Reboot or restart the streamer afterwards (`/etc/init.d/S95timps start`). Exit
@@ -93,7 +93,7 @@ round trips of the ISP pairs that `at_isp.c` does not round-trip itself).
 
 ## Evidence runs (`run_cam.sh`, `results2json.py`)
 
-    tools/apitest/run_cam.sh 192.168.10.34 T41 [outdir]
+    tools/apitest/run_cam.sh <cam-ip> T41 [outdir]
 
 Per camera, under the cam lock for the whole run: preflight (sensor, libimp md5, init script, dmesg baseline), stops the
 streamer, copies the binaries to `/tmp/at` (< 1 MB), runs `apitest` (areas sys,fs,enc,osd,ivs,audio,isp,su; audio is
@@ -132,3 +132,10 @@ build, flash, then on the camera (streamer stopped, nothing else using the ISP, 
 
 The sensor arguments are those of the table above (see `/proc/jz/sensor/name`). Send `apitest.json` (one report: function ->
 PASS/FAIL/RT/NA/SKIP + detail) with the issue or pull request; `results2json.py --report` and `merge_evidence.py` consume it.
+
+## Closing comments for vendor-vs-open comparisons
+
+Every closing or evidence comment that rests on a camera comparison states which library ran, as one line:
+`which libimp ran: path + md5 + log markers` (OpenIMP logs `[KernelIF]`/`[VBM]`, the vendor library `i264e` lines; the installed
+`/usr/lib/libimp.so` of a test camera is OpenIMP, a vendor run loads the vendor library via `LD_LIBRARY_PATH`). A run whose log
+contradicts the expected library is invalid, not a result.
