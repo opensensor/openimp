@@ -148,7 +148,9 @@ case " $platform_cppflags " in
         # IMP_Encoder_SetChnHSkip reference structures (src/hskip)
         compile hskip src/hskip/hskip.c -Werror
         compile hskip_black src/hskip/hskip_black.c -Werror
-        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o $output_dir/hskip.o $output_dir/hskip_black.o"
+        # IMP_Encoder_SetChnDemask strategy (src/demask)
+        compile demask src/demask/demask.c -Werror
+        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o $output_dir/hskip.o $output_dir/hskip_black.o $output_dir/demask.o"
         ;;
 esac
 # T21 only: the Helix eprc controllers (HELIX_T21_SYNTAX in

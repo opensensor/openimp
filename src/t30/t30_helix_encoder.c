@@ -327,6 +327,8 @@ struct T30HelixEncoder {
     uint32_t hs_scenecuts;
     int cr_inited;                      /* the T10 controller was set up once (SetChangeRef counts from the next set-up) */
     uint32_t hs_idr_qp, hs_idr_bits;    /* QP and size (bits) of the last IDR picture (OEM E+0x90450, E+0x9044c) */
+    int pic_qp;                         /* OEM i264e_encode word 0 of the picture record: the first try's QP, 0 for a
+                                         * BlackEnhance picture (IMP_Encoder_SetChnDemask reads it); 0 before the first picture */
 #endif
     int have_reference;
     int force_idr;
@@ -2789,6 +2791,13 @@ static int t30_helix_encode_job_counted(T30HelixEncoder *encoder,
     return ret;
 }
 
+#if defined(PLATFORM_T20)
+int OpenIMP_T30_HelixPictureQp(const T30HelixEncoder *encoder)
+{
+    return encoder ? encoder->pic_qp : 0;
+}
+#endif
+
 uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder)
 {
     return encoder ? encoder->failures : 0u;
@@ -3231,6 +3240,8 @@ t20_again:
         if (hs_black)
             qp = 0;             /* the OEM codes the all-skip picture at QP 0 */
     }
+    if (!t20_reencodes && !cr_second && !sc_force)
+        encoder->pic_qp = (int)qp;      /* i264e_encode: *pic = QP, before the slice is coded */
 #endif
 #if defined(HELIX_T21_SYNTAX)
     if (encoder->ref_share)

@@ -372,13 +372,25 @@ functions:
     group: qp
     summary: "Reads or sets the encoder-side noise filter (type and the QP values for I and P pictures)."
     returns: "0 on success. -1 for an invalid channel or a NULL pointer; the setter on T23 and the other SoCs also -1 for a channel that was not created (T20 and T21: 0). The setter on T30 returns -1 for a filter type other than 0 when the channel was created with denoise enabled."
-    notes: "The on/off switch of the filter is the one given at channel creation; the setter changes only the type and the QP values. T20 and T21 check the combination of values in the same way as the vendor library."
+    notes: "The on/off switch of the filter is the one given at channel creation; the setter changes only the type and the QP values. T20 and T21 check the combination of values in the same way as the vendor library. On T10 and T20 the 3.9.0 names `Get/SetChnH264Denoise` are the same functions."
     soc: "T10, T20, T21, T23"
   Encoder_Get/SetChnDemask:
     group: qp
-    summary: "Stores or reads the demask attribute (enable and auto flags, count, threshold). The values are stored in the channel attribute; the Helix path has no demask stage."
+    summary: "Sets or reads the demask attribute (enable and auto flags, count, threshold): a control loop that lowers the ISP sharpness step by step while the encoder's QP is above the threshold and raises it again afterwards."
     returns: "0 on success, -1 for an invalid channel or a NULL pointer."
-    notes: "Valid before and after `CreateChn`, which copies the same block in from the rate-control attribute. The older 3.9.0 T10/T20 library also had `Get/SetChnH264Demask`, `Get/SetChnH264Denoise`, `Get/SetChnH264FrmUsedMode` and `Get/SetChnRcAttr`; the 3.12.0 library on the cameras dropped or renamed them (to this call, `ChnDenoise` and `ChnFrmUsedMode`), and OpenIMP follows 3.12.0, so those four pairs are not exported."
+    notes: "Valid before and after `CreateChn`, which copies the same block in from the rate-control attribute. Every H.264 picture compares the QP of the previous picture with the threshold; while the strategy is active the ISP sharpness steps down by 0x14 per picture to 0, otherwise up to the application's own `IMP_ISP_Tuning_SetSharpness` value, with a hold of the count and a one-step hysteresis. Disabling at run time restores the application's sharpness at once. The auto flag is not supported (as the vendor). The 3.9.0 names `Get/SetChnH264Demask` are the same functions (docs/T20_DEMASK.md)."
+    soc: T10, T20
+  Encoder_Get/SetChnH264Demask:
+    group: qp
+    summary: "The 3.9.0 names of `Get/SetChnDemask`: the same functions (one symbol), same attribute."
+    returns: "As `Get/SetChnDemask`: 0 on success, -1 for an invalid channel or a NULL pointer."
+    notes: "Exported by the older 3.9.0 vendor library only; OpenIMP exports them as aliases of `Get/SetChnDemask`. The 3.9.0 channel-attribute layout of `CreateChn` is not provided."
+    soc: T10, T20
+  Encoder_Get/SetChnH264Denoise:
+    group: qp
+    summary: "The 3.9.0 names of `Get/SetChnDenoise`: the same functions (one symbol), same attribute."
+    returns: "As `Get/SetChnDenoise`."
+    notes: "Exported by the older 3.9.0 vendor library only; OpenIMP exports them as aliases of `Get/SetChnDenoise`. The 3.9.0 channel-attribute layout of `CreateChn` is not provided."
     soc: T10, T20
   Encoder_Get/SetChnCrop:
     group: qp

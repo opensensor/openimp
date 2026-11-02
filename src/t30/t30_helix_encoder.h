@@ -51,5 +51,10 @@ int OpenIMP_T30_HelixReconfigure(T30HelixEncoder *encoder,
 #endif
 /* Consecutive failed pictures since the last good one. */
 uint32_t OpenIMP_T30_HelixFailures(const T30HelixEncoder *encoder);
+#if defined(PLATFORM_T20)
+/* the QP of the last picture as the OEM i264e_encode reports it (first try,
+ * 0 for a BlackEnhance picture); 0 before the first picture, as the OEM record */
+int OpenIMP_T30_HelixPictureQp(const T30HelixEncoder *encoder);
+#endif
 
 #endif

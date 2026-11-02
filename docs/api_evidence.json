@@ -1,6 +1,6 @@
 {
  "_comment": "Machine-readable evidence for the API coverage tables of docs/FEATURE_MATRIX.md (generated section) and docs/feature-matrix.html. Edit THIS file, then run python3 tools/gen_feature_matrix_html.py. cells: dev (device-tested), host (host tests only), aud (connected per static audit, no device test), no-op (vendor no-op, matched), cache, stub, err, miss (not exported), n.a. (not in that SoC's vendor API), ? (not determined), nob (no OpenIMP build for this SoC yet). better: SoCs where OpenIMP is better than the vendor (dev only). ref: evidence reference per SoC. used: streamers per SoC (p prudynt, r raptor, t timps; a dagger = source only, no binary checked). feature_links: a function cell 'aud' becomes 'dev' while the linked main-matrix feature cell is device-tested (supported).",
- "asof": "2026-11-01",
+ "asof": "2026-11-02",
  "socs": [
   "T10",
   "T20",
@@ -7016,8 +7016,8 @@
   "Encoder_Get/SetChnDemask": {
    "area": "Encoder",
    "cells": {
-    "T10": "cache",
-    "T20": "cache",
+    "T10": "dev",
+    "T20": "dev",
     "T21": "n.a.",
     "T23": "n.a.",
     "T30": "n.a.",
@@ -7027,10 +7027,10 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20 3.12.0 (0x49160/0x492d8): three words stored in rcAttr.attrDemask without a created check, as the vendor (apitest PASS on T10, T20); the vendor also pokes an i264e flag word, the Helix path has no demask stage (class c) T10/T20 3.12.0 (0x49160/0x492d8): three words stored in rcAttr.attrDemask without a created check, as the vendor (apitest PASS on T10, T20); the vendor also pokes an i264e flag word, the Helix path has no demask stage (class c)",
+   "note": "T10/T20 3.12.0 (0x49160/0x492d8, strategy 0x40070, post-picture block of do_channel_process_h264e 0x41dd4): not a stored value: the vendor steps the ISP sharpness by 0x14 per H.264 picture between 0x80 and 0 from the QP the encoder gave the previous picture (above demaskThresd: down, with a hold of demaskCnt counts and a one-step hysteresis; else up), through IMP_ISP_Tuning_SetSharpness_internal (mode 1 override, mode 0 the application's SetSharpness value again); enable 1 -> 0 restores the application's value, enable at CreateChn ramps from 0, the measure starts as the FixQP value or the i264e default 30. OpenIMP does the same (src/demask, docs/T20_DEMASK.md). Proof: unicorn oracle of the vendor functions (50 scenarios, 1300 pictures, 0 differences), QEMU T10/T20, cameras: the per-picture VIDIOC_S_CTRL sharpness calls of the vendor library and of OpenIMP on the same camera equal the strategy fed with the stream's QPs (T20 vendor 7/7 and OpenIMP 7/7 scenarios, T10 vendor 7/7 and OpenIMP 7/7; vendor against OpenIMP directly: identical control sequences for the FixQP scenarios and the first CBR scenario, the low-threshold CBR scenario differs from picture 33 on with the rate controllers' QPs); streams decode clean (ffmpeg strict, VA-API) with a real picture, snapshot 200, 0 oopses.",
    "ref": {
-    "T10": "apitest issue357 2026-11-01 .31 (vendor return codes and read-back, 0 FAIL; effect only in the closed vendor encoder)",
-    "T20": "apitest issue357 2026-11-01 .107 (vendor return codes and read-back, 0 FAIL; effect only in the closed vendor encoder)"
+    "T10": "apitest case demask 2026-11-02 .31 (vendor library and OpenIMP, 7 scenarios, ioctl shim; OpenIMP 7/7)",
+    "T20": "apitest case demask 2026-11-02 .107 (vendor library and OpenIMP, 7 scenarios + 3.9.0 names, ioctl shim; 7/7 EQUAL, 6 of 7 identical to the vendor per picture)"
    }
   },
   "Encoder_Get/SetChnDenoise": {
@@ -7175,8 +7175,8 @@
   "Encoder_Get/SetChnH264Demask": {
    "area": "Encoder",
    "cells": {
-    "T10": "n.a.",
-    "T20": "n.a.",
+    "T10": "dev",
+    "T20": "dev",
     "T21": "n.a.",
     "T23": "n.a.",
     "T30": "n.a.",
@@ -7186,13 +7186,17 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20: not in the 3.12.0 libimp the cameras run (nm -D, 2026-11-01); only the 3.9.0 libimp exports it, with the IMPEncoderRcAttr/CHNAttr layout of that older SDK generation, which differs from the one OpenIMP implements (3.12.0 renamed H264Demask/Denoise/FrmUsedMode to ChnDemask/ChnDenoise/ChnFrmUsedMode and dropped the RcAttr pair); a 3.9.0 program fails on the structures before it reaches the call. Not exported by OpenIMP by design (tools/export-check lists follow 3.12.0)."
+   "note": "T10/T20: exported by the older 3.9.0 libimp only (0x5d458/0x5d5e0 there, byte for byte the ChnDemask code with a 7-channel table, same {enable, isAutoMode, demaskCnt, demaskThresd} attribute); OpenIMP exports the names as aliases of Set/GetChnDemask (same function, nm shows one address). Device: apitest case demask with DEMASK_OLDNAME=1 on the T20 camera (run-time enable off/on through the 3.9.0 names, 36 sharpness controls equal to the strategy, read-back through GetChnH264Demask). The 3.9.0 CreateChn attribute layout is not provided (a 3.9.0 program still fails on the structures before it reaches these calls).",
+   "ref": {
+    "T10": "same function as Set/GetChnDemask (alias; the T10 ran the ChnDemask name)",
+    "T20": "apitest case demask DEMASK_OLDNAME=1 2026-11-02 .107 (36 controls equal, read-back ok)"
+   }
   },
   "Encoder_Get/SetChnH264Denoise": {
    "area": "Encoder",
    "cells": {
-    "T10": "n.a.",
-    "T20": "n.a.",
+    "T10": "dev",
+    "T20": "dev",
     "T21": "n.a.",
     "T23": "n.a.",
     "T30": "n.a.",
@@ -7202,7 +7206,11 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20: not in the 3.12.0 libimp the cameras run (nm -D, 2026-11-01); only the 3.9.0 libimp exports it, with the IMPEncoderRcAttr/CHNAttr layout of that older SDK generation, which differs from the one OpenIMP implements (3.12.0 renamed H264Demask/Denoise/FrmUsedMode to ChnDemask/ChnDenoise/ChnFrmUsedMode and dropped the RcAttr pair); a 3.9.0 program fails on the structures before it reaches the call. Not exported by OpenIMP by design (tools/export-check lists follow 3.12.0)."
+   "note": "T10/T20: exported by the older 3.9.0 libimp only (0x5ddc8/0x5df74 there: i264e parameter 8 with the created enable kept, the same code as 3.12.0 Set/GetChnDenoise with the same {enable, dnType, dnIQp, dnPQp} attribute); OpenIMP exports the names as aliases of Set/GetChnDenoise (one function, nm shows one address), whose device evidence (apitest enc area on T10 and T20) therefore covers them. The 3.9.0 CreateChn attribute layout is not provided.",
+   "ref": {
+    "T10": "alias of Set/GetChnDenoise (enc area 2026-11-01 .31)",
+    "T20": "alias of Set/GetChnDenoise (enc area 2026-11-01 .107)"
+   }
   },
   "Encoder_Get/SetChnH264FrmUsedMode": {
    "area": "Encoder",
