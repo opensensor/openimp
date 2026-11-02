@@ -760,7 +760,7 @@ functions:
     summary: "Starts the sensor in night mode: call it after `IMP_ISP_Open` and before `IMP_ISP_AddSensor`, so the first frames already use the night settings."
     params:
       num: "Sensor number, below 4."
-    returns: "T40: 0 on success; -4 for a sensor number of 4 or more; -8 when the ISP device is not open; -1 when the driver call fails. T41: 0; -4084 for a sensor number of 2 or more; -4088 when the ISP device is not open; -4095 when the module refuses (ioctl 0xc004542e)."
+    returns: "T40: 0 on success; -4 for a sensor number of 4 or more; -8 when the ISP device is not open; -1 when the driver call fails. T41: 0; -4084 for a sensor number of 2 or more; -4088 when the ISP device is not open; -4095 when the module refuses (ioctl 0xc004542e, which stores the night-start word of the stock module)."
     soc: "T40 and T41."
   ISP_Tuning_Get/SetHVFLIP:
     group: flip
@@ -884,7 +884,7 @@ functions:
   ISP_WDR_OPEN:
     group: wdr
     summary: "Opens the WDR path (T40 and T41 form with a sensor number). For the linear running mode the sensor and input mode go to the driver; for the WDR running mode WDR is enabled in the driver."
-    returns: "T40: 0 on success, -8 for a NULL attribute or when the ISP is not open, -1 when the driver refuses, -9 for another running mode. T41: 0; -4087 for a NULL attribute or an unknown running mode, -4084 for a sensor number of 2 or more, -4088 when the ISP is not open, -4090 when the module refuses (ioctl 0xc004548d, linear start mode)."
+    returns: "T40: 0 on success, -8 for a NULL attribute or when the ISP is not open, -1 when the driver refuses, -9 for another running mode. T41: 0; -4087 for a NULL attribute or an unknown running mode, -4084 for a sensor number of 2 or more, -4088 when the ISP is not open, -4090 when the module refuses (ioctl 0xc004548d, linear start mode; the stock module and open-tx-isp refuse mode 0)."
   ISP_Tuning_Get/SetAfHist:
     group: af
     summary: "Reads or sets the AF histogram parameters."
@@ -1217,13 +1217,13 @@ functions:
   ISP_LDC_Get/SetAttr:
     group: ldc
     summary: "Reads or sets the lens distortion correction attributes (a T41 vendor call)."
-    notes: "T41: ioctl 0xc004547a (set) and 0xc004547b (get) with the public attribute. Whether the module serves them is shown by the matrix cell."
+    notes: "T41: ioctl 0xc004547a (set) and 0xc004547b (get) with the public attribute. The stock module has no handler and answers 0 without any effect, and so does open-tx-isp: a vendor no-op, there is no lens distortion function behind the call."
     soc: "T41."
     returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4095 module error."
   ISP_LDC_INIT:
     group: ldc
     summary: "Initialises the lens distortion correction (a T41 vendor call)."
-    notes: "T41: the 3612-byte initialisation block goes to the ISP module (ioctl 0xc0045479). The vendor library keeps the block until the ISP is opened; OpenIMP needs the ISP open. Whether the module serves it is shown by the matrix cell."
+    notes: "T41: the 3612-byte initialisation block goes to the ISP module (ioctl 0xc0045479). The vendor library keeps the block until the ISP is opened; OpenIMP needs the ISP open. The stock module has no handler and answers 0 without any effect, and so does open-tx-isp: a vendor no-op, there is no lens distortion function behind the call."
     soc: "T41."
     returns: "0 on success; -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4095 module error."
   ISP_Tuning_SetFixedContraster:
@@ -1309,12 +1309,12 @@ functions:
   ISP_SET_GPIO_INIT_OR_FREE:
     group: sys
     summary: "Hands a GPIO description (an int array) to the driver, which claims or releases the pin."
-    returns: "0 on success; T23/T40: -1 for NULL or when the ISP is not open, otherwise the driver result. T41: -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, -4090 when the module refuses (the vendor logs that and returns 0)."
-    notes: "T41: ioctl 0xc004548e with the 42-byte list of GPIO numbers (ended by 0xff) and levels."
+    returns: "0 on success; T23/T40: -1 for NULL or when the ISP is not open, otherwise the driver result. T41: -4087 NULL, -4084 sensor 2 or more, -4088 ISP not open, 0 when the module refuses (the vendor logs that and returns 0)."
+    notes: "T41: ioctl 0xc004548e with the 42-byte list of GPIO numbers (ended by 0xff) and levels. The stock module has no handler and answers 0 without any effect, and so does open-tx-isp: a vendor no-op, no GPIO is claimed."
   ISP_SET_GPIO_STA:
     group: sys
     summary: "Hands a GPIO description (an int array) to the driver, which sets the pin level."
-    returns: "0 on success; T23/T40: -1 for NULL or when the ISP is not open, otherwise the driver result. T41: as `SET_GPIO_INIT_OR_FREE` (ioctl 0xc004548f)."
+    returns: "0 on success; T23/T40: -1 for NULL or when the ISP is not open, otherwise the driver result. T41: as `SET_GPIO_INIT_OR_FREE` (ioctl 0xc004548f, vendor no-op, no GPIO level is set)."
   ISP_SetSwitchgpio:
     group: sys
     summary: "Selects the GPIO that switches between two sensors on a multi-camera board."

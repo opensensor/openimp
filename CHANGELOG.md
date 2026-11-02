@@ -8,9 +8,22 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-03, review follow-up: matrix wording made exact, T20 demask ISP hand-over serialised
+
+- `SU_Base_SetWkupMode` (T41) `dev` -> `host`: the camera run wrote and read back the RTC registers directly with the values of modes 1 and 2; the OpenIMP function itself ran only in the host test (fake `open`/`ioctl`) and in QEMU (mode 0 refused). The reference text now says exactly that (no device run of the function, no wake-up shown). T41: 366/427 works.
+- The `n.a.` cells of `Encoder_Get/SetChnH264FrmUsedMode`, `Encoder_Get/SetChnRcAttr` (T10/T20/T21) and of `Encoder_Get/SetChnDemask`, `Get/SetChnH264Demask`, `Get/SetChnH264Denoise` (T21) now carry the evidence in the cell reference: `nm -D` of the real vendor libraries (T10/T20 3.12.0, T21 1.0.33) shows no such symbol; only the old 3.9.0 libimp exports them and no 3.9.0 binary was available to re-check. Cell states unchanged.
+- T20 `IMP_Encoder_SetChnDemask` and the per-picture demask step shared one ISP sharpness value without a common lock: a picture decided while the demask was on could set the override after a run-time disable had restored the application's value, leaving it stuck. Deciding the step and calling `IMP_ISP_Tuning_SetSharpness_internal` now happen under one mutex shared with the setter (lock order: demask mutex, channel lock). Compiles for T20; no new test (the race needs two threads against the real ISP call).
+
 ## 2026-11-02 (night), T41 `SU_Base_SetWkupMode`: RTC register-level proof, #80 closed
 
 - On the T41 camera the documented RTC write sequence (RTC clock gate cleared) writes and reads back RTCCR, RTCSR, RTCSAR and HWCR with the exact `SU_Base_SetWkupMode` requests (0xd2ad2d28/29). The counter does not tick and an alarm never fires: the board has no usable 32 kHz oscillator (hardware limit). API evidence only, no code change.
+
+
+## 2026-11-02 (night), T41 ISP backlog closed: LDC / GPIO vendor no-op, StartNightMode and WDR_OPEN as the stock module (#75, #171)
+
+- The OEM T41 module has no handler for the LDC (ioctl 0xc0045479..7b) and GPIO (0xc004548e/f) ISP-device ioctls and answers 0 without any effect. open-tx-isp now does the same (was ENOTTY), and `IMP_ISP_SET_GPIO_INIT_OR_FREE` / `_STA` return 0 on a module refusal like the vendor library (it only logs). `ISP_LDC_INIT`, `ISP_LDC_Get/SetAttr`, `ISP_SET_GPIO_INIT_OR_FREE`, `ISP_SET_GPIO_STA` are matrix state "no-op" (vendor no-op, **no lens-distortion and no GPIO function**).
+- The stock module does serve two others: `StartNightMode` stores 10 in the VIC frame counter word that the next first ISP tuning open consumes, `WDR_OPEN` stores the non-zero WDR mode byte (mode 0 is refused with EFAULT). The open module does the same (vinum checked); both are state "rt".
+- Evidence: host test `tx_isp_t41_devioctl_test`; QEMU T41 and the Vanhua T41 test camera (runtime swap of the module and a test libimp, apitest case `t41isp` with `APITEST_RISKY=1`, dead-man reset armed): PASS 43 / FAIL 0, 0 oopses, 6 reload cycles with a snapshot check each (picture luma stable, stock module restored). `SetVicDoneCbFunc` and `RAW_RwControl` stay documented ENOTSUP (apitest PASS on the camera); `SetAwbAlgoFunc` is not part of this closing.
 
 ## 2026-11-02 (evening), T20: macroblock rate control on by default, FIXQP I pictures at QP - 3 (#191, #3, #5)
 

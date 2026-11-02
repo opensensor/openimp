@@ -187,7 +187,9 @@ int32_t IMP_ISP_GetInternalChnAttr(IMPVI_NUM num, IMPISPInternalChnAttr *attr)
 }
 
 /* LDC_INIT (ioctl 0xc0045479, IMPISPLDCInitAttr 0xe1c bytes), LDC_SetAttr
- * (0xc004547a) and LDC_GetAttr (0xc004547b), IMPISPLDCAttr */
+ * (0xc004547a) and LDC_GetAttr (0xc004547b), IMPISPLDCAttr.  The stock T41
+ * module has no handler for them and answers 0 (open-tx-isp does the same):
+ * vendor no-op, there is no lens distortion function behind these calls. */
 _Static_assert(sizeof(IMPISPLDCInitAttr) == 0xe1c, "IMPISPLDCInitAttr");
 
 int32_t IMP_ISP_LDC_INIT(IMPVI_NUM num, IMPISPLDCInitAttr *attr)
@@ -207,18 +209,23 @@ int32_t IMP_ISP_LDC_GetAttr(IMPVI_NUM num, IMPISPLDCAttr *attr)
 
 /* SET_GPIO_INIT_OR_FREE / SET_GPIO_STA (1.2.6): ioctl 0xc004548e / 0xc004548f,
  * IMPISPGPIO (10 + 10 + 1 halfwords = 42 bytes).  The vendor logs a failing
- * ioctl and still returns 0; here the failure is returned (-4090). */
+ * ioctl and still returns 0, so does this (the 1.2.5 / open-tx-isp T41 module has
+ * no handler and answers 0 without any effect: vendor no-op, no GPIO function). */
 int32_t IMP_ISP_SET_GPIO_INIT_OR_FREE(IMPVI_NUM num, void *attr);
 int32_t IMP_ISP_SET_GPIO_STA(IMPVI_NUM num, void *attr);
 
 int32_t IMP_ISP_SET_GPIO_INIT_OR_FREE(IMPVI_NUM num, void *attr)
 {
-    return t41x_isp(num, 0xc004548eU, attr, 1, T41X_E_IOCTL);
+    int32_t r = t41x_isp(num, 0xc004548eU, attr, 1, T41X_E_IOCTL);
+
+    return r == T41X_E_IOCTL ? 0 : r;
 }
 
 int32_t IMP_ISP_SET_GPIO_STA(IMPVI_NUM num, void *attr)
 {
-    return t41x_isp(num, 0xc004548fU, attr, 1, T41X_E_IOCTL);
+    int32_t r = t41x_isp(num, 0xc004548fU, attr, 1, T41X_E_IOCTL);
+
+    return r == T41X_E_IOCTL ? 0 : r;
 }
 
 /* WDR_OPEN (ioctl 0xc004548d, {sensor byte, imode}, 8 bytes): linear start
