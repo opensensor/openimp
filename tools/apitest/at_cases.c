@@ -4374,13 +4374,8 @@ void algo_post_t40(void)
 {
     if (g_algo_reg_ae == -99 && g_algo_reg_awb == -99)
         return;
-#ifdef APITEST_T40
     rep(LBL("customalgo_close" CA_SFX), 0, (g_ae_close == 1 && g_awb_close == 1) ? V_PASS : V_FAIL,
         "after DisableSensor: AE close called %d, AWB close called %d (want 1 and 1), handle calls AE %d AWB %d", g_ae_close, g_awb_close, g_ae_handle, g_awb_handle);
-#else
-    rep(LBL("customalgo_close" CA_SFX), 0, (g_ae_close == 1 && g_awb_close == 0) ? V_PASS : V_FAIL,
-        "after DisableSensor: AE close called %d (want 1), AWB close called %d (want 0: the stock T41 module has no AWB library path), handle calls AE %d AWB %d", g_ae_close, g_awb_close, g_ae_handle, g_awb_handle);
-#endif
 }
 
 static void cs_customalgo_t40(void)
@@ -4402,12 +4397,12 @@ static void cs_customalgo_t40(void)
             g_algo_reg_ae, g_ae_open, g_ae_initmax, g_ae_handle, n1 - n0, g_ae_info_time);
     }
     NEED(IMP_ISP_SetAwbAlgoFunc) {
-#ifdef APITEST_T40
         rep(FN(IMP_ISP_SetAwbAlgoFunc), g_algo_reg_awb, (g_algo_reg_awb == 0 && g_awb_open == 1 && g_awb_handle >= 5 && flow()) ? V_PASS : V_FAIL,
-            "registered before EnableSensor: ret %d, open called %d, handle called %d times, frames flow", g_algo_reg_awb, g_awb_open, g_awb_handle);
+            "registered before EnableSensor: ret %d, open called %d, handle called %d times, frames flow%s", g_algo_reg_awb, g_awb_open, g_awb_handle,
+#ifdef APITEST_T40
+            "");
 #else
-        rep(FN(IMP_ISP_SetAwbAlgoFunc), g_algo_reg_awb, (g_algo_reg_awb == 0 && g_awb_open == 0 && g_awb_handle == 0 && flow()) ? V_PASS : V_FAIL,
-            "rt: registered before EnableSensor: ret %d; vendor-equal: the stock T41 module has no AWB library ioctl, the open fails (ENOTTY) and the library is never called (open %d, handle %d), frames flow", g_algo_reg_awb, g_awb_open, g_awb_handle);
+            " (T41: a documented extra beyond the vendor, whose module has no AWB library path)");
 #endif
     }
     NEED(IMP_ISP_Tuning_SetSensorFPS) {
@@ -4459,42 +4454,6 @@ static void cs_customalgo_t40(void)
             b_it, b_ag, it0, ag0, y0.y, b_it / 6 > g_ae_min_it ? b_it / 6 : g_ae_min_it, it1, c_it, y1.y, (uint32_t)((uint64_t)b_ag * 4 > maxag ? maxag : b_ag * 4), b_it, ag2, it2, c_ag, y2.y, y3.y, y0.y, ok1, ok2, ok3);
         (void)ag1;
     }
-    if (g_algo_reg_awb == 0 && g_awb_handle >= 5) {
-        Fst yb, yr, yu, yz;
-        uint32_t cr, cb, r1, b1, r2, b2;
-        IMPISPRunningMode om = IMPISP_RUNNING_MODE_DAY, dm = IMPISP_RUNNING_MODE_DAY;
-        int rgot = 0, okr, okb, okc, okf, synth;
-
-        if (IMP_ISP_Tuning_GetISPRunningMode && IMP_ISP_Tuning_SetISPRunningMode) {
-            rgot = IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &om) == 0;
-            if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &dm); usleep(2500000); }
-        }
-        usleep(3500000);
-        cr = g_awb_cur_r; cb = g_awb_cur_b;
-        synth = !cr || !cb;                     /* QEMU: no white balance data, fixed requests, no verdict */
-        if (synth) { cr = 256; cb = 256; }
-        yb = fst(1000);
-        g_awb_req_r = cr * 2; g_awb_req_b = cb / 2 ? cb / 2 : 1; g_awb_phase = 1; usleep(2500000);   /* strong red gain, weak blue gain */
-        r1 = g_awb_cur_r; b1 = g_awb_cur_b;
-        yr = fst(500);
-        g_awb_req_r = cr / 2 ? cr / 2 : 1; g_awb_req_b = cb * 2; usleep(2500000);                      /* weak red, strong blue */
-        r2 = g_awb_cur_r; b2 = g_awb_cur_b;
-        yu = fst(500);
-        g_awb_req_r = cr; g_awb_req_b = cb; usleep(2500000);
-        yz = fst(500);
-        g_awb_phase = 0;
-        /* red phase: V (Cr) above the blue phase, blue phase: U (Cb) above the red phase; both clearly (> 4 levels) */
-        okr = yr.ok && yu.ok && yr.v > yu.v + 4;
-        okb = yr.ok && yu.ok && yu.u > yr.u + 4;
-        { double dz = dabs(yz.u - yb.u) + dabs(yz.v - yb.v), dr = dabs(yr.u - yb.u) + dabs(yr.v - yb.v), du = dabs(yu.u - yb.u) + dabs(yu.v - yb.v);
-        /* the scene (IR / day mode switch with a frozen AE) drifts a little: "back" = clearly nearer to the start than either extreme, and the ISP gains are the start gains again */
-        okc = yz.ok && yb.ok && dz < 0.5 * (dr < du ? dr : du) && g_awb_cur_r == cr && g_awb_cur_b == cb; }
-        okf = r1 >= cr * 2 * 95 / 100 && r1 <= cr * 2 * 105 / 100 && b1 >= cb / 2 * 95 / 100 && b1 <= cb / 2 * 105 / 100 && r2 >= cr / 2 * 95 / 100 && r2 <= cr / 2 * 105 / 100 && b2 >= cb * 2 * 95 / 100 && b2 <= cb * 2 * 105 / 100;
-        rep(LBL("customalgo_awb_effect" CA_SFX), 0, synth ? V_NA : (okr && okb && okc && okf && flow()) ? V_PASS : V_FAIL,
-            "AWB cb vs picture (day mode): start gains r %u b %u U/V %.0f/%.0f | red phase (r x2, b x0.5) ISP gains r %u b %u U/V %.0f/%.0f | blue phase (r x0.5, b x2) r %u b %u U/V %.0f/%.0f | back to start U/V %.0f/%.0f | V red>blue+4 %s, U blue>red+4 %s, ISP gains follow %s, back near start (gains and picture) %s",
-            cr, cb, yb.u, yb.v, r1, b1, yr.u, yr.v, r2, b2, yu.u, yu.v, yz.u, yz.v, okr ? "yes" : "NO", okb ? "yes" : "NO", okf ? "yes" : "NO", okc ? "yes" : "NO");
-        if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &om); usleep(1500000); }
-    }
 #else
     /* T41 (#76): the starting exposure is not known to the library (the AE never ran: it registers before the first stream), so the case looks for
      * a well exposed base itself and checks that the library's requests move the ISP state and the picture */
@@ -4535,11 +4494,50 @@ static void cs_customalgo_t40(void)
             "AE callback result vs sensor (T41): base request it %u ag 1024 (proc it %ld) luma %.1f%s | req it %u -> proc it %ld ag %ld luma %.1f (want < 0.7x base) | req it %u ag %u -> proc it %ld ag %ld luma %.1f (want > +15) | back to base -> luma %.1f (base %.1f) | steps %d/%d/%d, library info ag %u",
             base, it_b, yb.y, found ? "" : " (NO well exposed base found)", dark, it_d, ag_d, yd.y, dark, gain, it_g, ag_g, yg.y, yr.y, yb.y, ok1, ok2, ok3, g_ae_cur_ag);
     }
-    /* T41 (#76): the stock T41 module has no AWB library ioctl (0xc0045423..26 answer ENOTTY): the vendor registers the record, the open fails, the library is never called.  Same here. */
-    if (g_algo_reg_awb == 0)
-        rep(LBL("customalgo_awb_vendor" CA_SFX), 0, (g_awb_open == 0 && g_awb_handle == 0 && g_awb_close == 0 && flow()) ? V_PASS : V_FAIL,
-            "rt: vendor-equal no path: the stock T41 module has no AWB library ioctl, SetAwbAlgoFunc registers the record and the open fails (ENOTTY): open called %d, handle called %d, close called %d (want 0/0/0), frames flow", g_awb_open, g_awb_handle, g_awb_close);
 #endif
+    /* AWB callback result vs picture (T40, and T41 where it is an extra beyond the vendor: #195) */
+    if (g_algo_reg_awb == 0 && g_awb_handle >= 5) {
+        Fst yb, yr, yu, yz;
+        uint32_t cr, cb, r1, b1, r2, b2;
+        IMPISPRunningMode om = IMPISP_RUNNING_MODE_DAY, dm = IMPISP_RUNNING_MODE_DAY;
+        int rgot = 0, okr, okb, okc, okf, synth;
+
+        if (IMP_ISP_Tuning_GetISPRunningMode && IMP_ISP_Tuning_SetISPRunningMode) {
+            rgot = IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &om) == 0;
+            if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &dm); usleep(2500000); }
+        }
+        usleep(3500000);
+        cr = g_awb_cur_r; cb = g_awb_cur_b;
+        synth = !cr || !cb;                     /* QEMU: no white balance data, fixed requests, no verdict */
+        if (synth) { cr = 1024; cb = 1024; }
+        yb = fst(1000);
+        /* T41: the library's gains are the hardware gains (1024 = 1.0) in 0x200..0x1800, requests outside are ignored: clamp */
+#ifdef APITEST_T40
+#define AWB_CL(x) ((x) ? (x) : 1)
+#else
+#define AWB_CL(x) ((x) < 0x200 ? 0x200 : (x) > 0x1800 ? 0x1800 : (x))
+#endif
+        g_awb_req_r = AWB_CL(cr * 2); g_awb_req_b = AWB_CL(cb / 2); g_awb_phase = 1; usleep(2500000);   /* strong red gain, weak blue gain */
+        r1 = g_awb_cur_r; b1 = g_awb_cur_b;
+        yr = fst(500);
+        g_awb_req_r = AWB_CL(cr / 2); g_awb_req_b = AWB_CL(cb * 2); usleep(2500000);                    /* weak red, strong blue */
+        r2 = g_awb_cur_r; b2 = g_awb_cur_b;
+        yu = fst(500);
+        g_awb_req_r = cr; g_awb_req_b = cb; usleep(2500000);
+        yz = fst(500);
+        g_awb_phase = 0;
+        /* red phase: V (Cr) above the blue phase, blue phase: U (Cb) above the red phase; both clearly (> 4 levels) */
+        okr = yr.ok && yu.ok && yr.v > yu.v + 4;
+        okb = yr.ok && yu.ok && yu.u > yr.u + 4;
+        { double dz = dabs(yz.u - yb.u) + dabs(yz.v - yb.v), dr = dabs(yr.u - yb.u) + dabs(yr.v - yb.v), du = dabs(yu.u - yb.u) + dabs(yu.v - yb.v);
+        /* the scene (IR / day mode switch with a frozen AE) drifts a little: "back" = clearly nearer to the start than either extreme, and the ISP gains are the start gains again */
+        okc = yz.ok && yb.ok && dz < 0.5 * (dr < du ? dr : du) && g_awb_cur_r == cr && g_awb_cur_b == cb; }
+        okf = r1 >= AWB_CL(cr * 2) * 95 / 100 && r1 <= AWB_CL(cr * 2) * 105 / 100 && b1 >= AWB_CL(cb / 2) * 95 / 100 && b1 <= AWB_CL(cb / 2) * 105 / 100 && r2 >= AWB_CL(cr / 2) * 95 / 100 && r2 <= AWB_CL(cr / 2) * 105 / 100 && b2 >= AWB_CL(cb * 2) * 95 / 100 && b2 <= AWB_CL(cb * 2) * 105 / 100;
+        rep(LBL("customalgo_awb_effect" CA_SFX), 0, synth ? V_NA : (okr && okb && okc && okf && flow()) ? V_PASS : V_FAIL,
+            "AWB cb vs picture (day mode): start gains r %u b %u U/V %.0f/%.0f | red phase (r x2, b x0.5) ISP gains r %u b %u U/V %.0f/%.0f | blue phase (r x0.5, b x2) r %u b %u U/V %.0f/%.0f | back to start U/V %.0f/%.0f | V red>blue+4 %s, U blue>red+4 %s, ISP gains follow %s, back near start (gains and picture) %s",
+            cr, cb, yb.u, yb.v, r1, b1, yr.u, yr.v, r2, b2, yu.u, yu.v, yz.u, yz.v, okr ? "yes" : "NO", okb ? "yes" : "NO", okf ? "yes" : "NO", okc ? "yes" : "NO");
+        if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &om); usleep(1500000); }
+    }
 }
 #else
 static void cs_customalgo_t40(void) {}
