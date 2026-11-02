@@ -186,7 +186,6 @@ recovered vendor kernel routines.
 
 Still missing on T40 (not done tonight): `AI_Enable/DisableHs` (howling suppression in
 `libaudioProcess`, the `audio_process_hs_*` signatures are not decoded and a test needs playback),
-`ISP_SetAeAlgoFunc`/`SetAwbAlgoFunc` (custom AE/AWB callbacks; storing them alone would be a cache),
 `FrameSource_GetFrameEx`/`ReleaseFrameEx` (own device path in the vendor library),
 `FrameSource_ExternInject_*` with `Queue/DequeueBuffer`, `Encoder_Vbm*`/`Yuv*`, `Decoder_*`,
 `EmuFrameSource_*`.  `IMP_Log_Get/Set_Option` come from the system log library on T40 (the vendor

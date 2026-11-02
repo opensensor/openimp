@@ -22,7 +22,8 @@
  *                                  record is gone (SetAlgoFunc has to be called again).
  *   IMP_ISP_Tuning_SetSensorFPS    notify(priv, 0 = FPS_CHANGE, NULL) of an active AE record.
  *
- * Gate: the calls answer -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1 (see algo_enabled()).
+ * Switch: on by default (the callback results reach the sensor and the white balance, shown on the T40 test camera); OPENIMP_ISP_ALGO_FUNC=0
+ * makes the calls answer -1 / ENOTSUP again (see algo_enabled()).  Needs an open-tx-isp T40 module with the #65 fixes.
  *
  * Differences (documented): NULL pointers and sensors above 3 are refused with -1 (the vendor
  * dereferences them); a missing callback is skipped instead of called; the close waits at most
@@ -82,14 +83,14 @@ static void algo_name(const char *name)
     prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0);
 }
 
-/* OPENIMP_ISP_ALGO_FUNC=1 switches the callbacks on.  Default off: the registration works (the driver fills the init attribute)
- * and the former AWB close oops of open-tx-isp is fixed (#173), but no statistics reached handle() in QEMU, so the
- * feature is not offered until a camera run shows the callbacks working. */
+/* On by default.  The registration, the statistics in handle() and the callback results (exposure time / analog gain / ISP gain for the AE,
+ * R/B gains for the AWB) were shown to change the sensor exposure and the picture colour on the T40 test camera (#65);
+ * OPENIMP_ISP_ALGO_FUNC=0 switches the feature off (-1 / ENOTSUP, nothing is registered). */
 static int algo_enabled(void)
 {
     const char *e = getenv("OPENIMP_ISP_ALGO_FUNC");
 
-    return e && atoi(e) != 0;
+    return !e || atoi(e) != 0;
 }
 
 int32_t IMP_ISP_SetAeAlgoFunc(IMPVI_NUM num, IMPISPAeAlgoFunc *ae_func)

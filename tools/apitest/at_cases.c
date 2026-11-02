@@ -4299,14 +4299,51 @@ static void cs_sensorattr_t40(void)
 static volatile int g_ae_open, g_ae_close, g_ae_handle, g_ae_notify, g_awb_open, g_awb_close, g_awb_handle;
 static volatile uint32_t g_ae_initmax, g_ae_info_time;
 static int g_algo_reg_ae = -99, g_algo_reg_awb = -99, g_algo_gate_rc = -99, g_algo_gate_errno;
-static int ae_cb_open(void *p, IMPISPAeInitAttr *a) { (void)p; g_ae_initmax = a->AeMaxIntegrationTime; g_ae_open++; return 0; }
+/* effect checks: the case drives the callbacks through these requests.  AE phase 0 = answer "no change" (change = 0), 1 = request
+ * g_ae_req_*, the info the driver delivered (the exposure it applied) is kept in g_ae_cur_*.  AWB likewise with g_awb_req_*. */
+static volatile int g_ae_phase, g_awb_phase;
+static volatile uint32_t g_ae_req_it, g_ae_req_ag, g_ae_req_dg, g_ae_cur_it, g_ae_cur_ag, g_ae_cur_dg, g_ae_cur_isp, g_ae_unit;
+static volatile uint32_t g_awb_req_r, g_awb_req_b, g_awb_cur_r, g_awb_cur_b;
+static volatile uint32_t g_ae_max_ag, g_ae_min_it;
+static int ae_cb_open(void *p, IMPISPAeInitAttr *a) { (void)p; g_ae_initmax = a->AeMaxIntegrationTime; g_ae_max_ag = a->AeMaxAGain; g_ae_min_it = a->AeMinIntegrationTime; g_ae_open++; return 0; }
 static void ae_cb_close(void *p) { (void)p; g_ae_close++; }
-static void ae_cb_handle(void *p, const IMPISPAeInfo *i, IMPISPAeAttr *a) { (void)p; g_ae_info_time = i->AeIntegrationTime; memset(a, 0, sizeof(*a)); g_ae_handle++; }
+static void ae_cb_handle(void *p, const IMPISPAeInfo *i, IMPISPAeAttr *a)
+{
+    (void)p;
+    g_ae_info_time = i->AeIntegrationTime; g_ae_cur_it = i->AeIntegrationTime; g_ae_cur_ag = i->AeAGain; g_ae_cur_dg = i->AeDGain;
+    g_ae_cur_isp = i->AeIspDGain; g_ae_unit = i->AeIntegrationTimeUnit;
+    memset(a, 0, sizeof(*a));
+    if (g_ae_phase) {
+        a->change = 1; a->AeIntegrationTimeUnit = ISP_CORE_EXPR_UNIT_LINE;
+        a->AeIntegrationTime = g_ae_req_it; a->AeAGain = g_ae_req_ag; a->AeDGain = g_ae_req_dg; a->AeIspDGain = 1024;
+    }
+    g_ae_handle++;
+}
 static int ae_cb_notify(void *p, IMPISPAeNotify n, void *d) { (void)p; (void)d; if (n == IMPISP_AE_NOTIFY_FPS_CHANGE) g_ae_notify++; return 0; }
 static int awb_cb_open(void *p, IMPISPAwbInitAttr *a) { (void)p; (void)a; g_awb_open++; return 0; }
 static void awb_cb_close(void *p) { (void)p; g_awb_close++; }
-static void awb_cb_handle(void *p, const IMPISPAwbInfo *i, IMPISPAwbAttr *a) { (void)p; (void)i; memset(a, 0, sizeof(*a)); g_awb_handle++; }
+static void awb_cb_handle(void *p, const IMPISPAwbInfo *i, IMPISPAwbAttr *a)
+{
+    (void)p;
+    g_awb_cur_r = i->cur_r_gain; g_awb_cur_b = i->cur_b_gain;
+    memset(a, 0, sizeof(*a));
+    if (g_awb_phase) { a->change = 1; a->r_gain = g_awb_req_r; a->b_gain = g_awb_req_b; }
+    g_awb_handle++;
+}
 static int awb_cb_notify(void *p, IMPISPAwbNotify n, void *d) { (void)p; (void)n; (void)d; return 0; }
+
+/* value of "KEY : N" in /proc/jz/isp/isp-m0 (the ISP state of the open driver); -1 when absent */
+static long isp_proc_val(const char *key)
+{
+    char line[160]; long v = -1; size_t kl = strlen(key);
+    FILE *f = fopen("/proc/jz/isp/isp-m0", "r");
+
+    if (!f) return -1;
+    while (fgets(line, sizeof(line), f))
+        if (!strncmp(line, key, kl) && line[kl] == ' ') { char *c = strchr(line, ':'); if (c) v = atol(c + 1); break; }
+    fclose(f);
+    return v;
+}
 
 void algo_pre_t40(void)
 {
@@ -4315,10 +4352,11 @@ void algo_pre_t40(void)
 
     if (!getenv("APITEST_CASES") || !strstr(getenv("APITEST_CASES"), "customalgo_t40"))
         return;
-    if (IMP_ISP_SetAeAlgoFunc) {                  /* default: switched off, -1 / ENOTSUP (nothing is registered) */
+    setenv("OPENIMP_ISP_ALGO_FUNC", "0", 1);      /* switched off: -1 / ENOTSUP, nothing is registered */
+    if (IMP_ISP_SetAeAlgoFunc) {
         errno = 0; g_algo_gate_rc = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, &ae); g_algo_gate_errno = errno;
     }
-    setenv("OPENIMP_ISP_ALGO_FUNC", "1", 1);      /* off by default in libimp until the callbacks are shown working on a camera (see openimp_p1_algo.c) */
+    unsetenv("OPENIMP_ISP_ALGO_FUNC");            /* default: on */
     if (IMP_ISP_SetAeAlgoFunc) g_algo_reg_ae = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, &ae);
     if (IMP_ISP_SetAwbAlgoFunc) g_algo_reg_awb = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, &awb);
 }
@@ -4341,7 +4379,7 @@ static void cs_customalgo_t40(void)
         return;
     }
     rep(LBL("customalgo_gate_t40"), g_algo_gate_rc, g_algo_gate_rc == 0 ? V_NA : (g_algo_gate_rc == -1 && g_algo_gate_errno == ENOTSUP) ? V_PASS : V_FAIL,
-        "without OPENIMP_ISP_ALGO_FUNC=1 SetAeAlgoFunc answers -1 / ENOTSUP (got %d, errno %d; ret 0 = the gate is open because OPENIMP_ISP_ALGO_FUNC=1 is set: not measurable)", g_algo_gate_rc, g_algo_gate_errno);
+        "with OPENIMP_ISP_ALGO_FUNC=0 SetAeAlgoFunc answers -1 / ENOTSUP (got %d, errno %d; ret 0 = a libimp without the switch, always on: not measurable)", g_algo_gate_rc, g_algo_gate_errno);
     for (i = 0; i < 40 && (g_ae_handle < 5 || g_awb_handle < 5); i++) usleep(100000);
     n0 = g_ae_handle; usleep(1000000); n1 = g_ae_handle;
     NEED(IMP_ISP_SetAeAlgoFunc) {
@@ -4358,6 +4396,79 @@ static void cs_customalgo_t40(void)
 
         rep(LBL("customalgo_notify_t40"), r, (r == 0 && g_ae_notify >= 1) ? V_PASS : V_FAIL,
             "SetSensorFPS 15/1 -> the active AE library got IMPISP_AE_NOTIFY_FPS_CHANGE %d time(s) (vendor: notify(priv, 0, NULL) after a successful set)", g_ae_notify);
+    }
+    /* effect checks (#65): the callback RESULT must reach the sensor / the white balance */
+    if (g_algo_reg_ae == 0 && g_ae_handle >= 5) {
+        Fst y0, y1, y2, y3;
+        long it1, ag1, it2, ag2, it0, ag0;
+        uint32_t b_it, b_ag, c_it, c_ag, maxag;
+        int ok1, ok2, ok3, synth;
+
+        usleep(1500000);
+        b_it = g_ae_cur_it; b_ag = g_ae_cur_ag;
+        synth = !b_it || !b_ag;                 /* QEMU delivers no exposure data: exercise the driver path with fixed requests, no verdict */
+        if (synth) { b_it = 600; b_ag = 1024; }
+        maxag = g_ae_max_ag ? g_ae_max_ag : 0xffffffffU;
+        it0 = isp_proc_val("AeIntegrationTime"); ag0 = isp_proc_val("AeAGain");
+        y0 = fst(1000);
+        /* phase 1: a fixed short exposure, gain as before */
+        g_ae_req_it = b_it / 6 > g_ae_min_it ? b_it / 6 : (g_ae_min_it ? g_ae_min_it : 1); g_ae_req_ag = b_ag; g_ae_req_dg = g_ae_cur_dg ? g_ae_cur_dg : 1024;
+        g_ae_phase = 1; usleep(3000000);
+        it1 = isp_proc_val("AeIntegrationTime"); ag1 = isp_proc_val("AeAGain"); c_it = g_ae_cur_it;
+        y1 = fst(1000);
+        ok1 = it1 >= (long)g_ae_req_it * 85 / 100 && it1 <= (long)g_ae_req_it * 115 / 100 && y1.ok && y0.ok && y1.y < y0.y * 0.7;
+        /* phase 2: base exposure time, analog gain x4 (limited to the init maximum) */
+        g_ae_req_it = b_it; g_ae_req_ag = (uint64_t)b_ag * 4 > maxag ? maxag : b_ag * 4;
+        usleep(3000000);
+        it2 = isp_proc_val("AeIntegrationTime"); ag2 = isp_proc_val("AeAGain"); c_ag = g_ae_cur_ag;
+        y2 = fst(1000);
+        ok2 = ag2 >= (long)g_ae_req_ag * 85 / 100 && ag2 <= (long)g_ae_req_ag * 115 / 100 && y2.ok && y2.y > y1.y + 15;
+        /* back to the starting exposure through the callback, then "no change" again */
+        g_ae_req_it = b_it; g_ae_req_ag = b_ag;
+        usleep(3000000);
+        y3 = fst(1000);
+        ok3 = y3.ok && dabs(y3.y - y0.y) < 0.25 * y0.y + 8;
+        g_ae_phase = 0;
+        rep(LBL("customalgo_ae_effect_t40"), 0, synth ? V_NA : (ok1 && ok2 && ok3 && flow()) ? V_PASS : V_FAIL,
+            "AE callback result vs sensor: start it %u ag %u (proc %ld/%ld) luma %.1f; req it %u -> proc it %ld (cb info %u) luma %.1f (want < 0.7x); req ag %u it %u -> proc ag %ld it %ld (cb info ag %u) luma %.1f (want > +15); callback back to start -> luma %.1f (start %.1f); steps %d/%d/%d",
+            b_it, b_ag, it0, ag0, y0.y, b_it / 6 > g_ae_min_it ? b_it / 6 : g_ae_min_it, it1, c_it, y1.y, (uint32_t)((uint64_t)b_ag * 4 > maxag ? maxag : b_ag * 4), b_it, ag2, it2, c_ag, y2.y, y3.y, y0.y, ok1, ok2, ok3);
+        (void)ag1;
+    }
+    if (g_algo_reg_awb == 0 && g_awb_handle >= 5) {
+        Fst yb, yr, yu, yz;
+        uint32_t cr, cb, r1, b1, r2, b2;
+        IMPISPRunningMode om = IMPISP_RUNNING_MODE_DAY, dm = IMPISP_RUNNING_MODE_DAY;
+        int rgot = 0, okr, okb, okc, okf, synth;
+
+        if (IMP_ISP_Tuning_GetISPRunningMode && IMP_ISP_Tuning_SetISPRunningMode) {
+            rgot = IMP_ISP_Tuning_GetISPRunningMode(IMPVI_MAIN, &om) == 0;
+            if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &dm); usleep(2500000); }
+        }
+        usleep(3500000);
+        cr = g_awb_cur_r; cb = g_awb_cur_b;
+        synth = !cr || !cb;                     /* QEMU: no white balance data, fixed requests, no verdict */
+        if (synth) { cr = 256; cb = 256; }
+        yb = fst(1000);
+        g_awb_req_r = cr * 2; g_awb_req_b = cb / 2 ? cb / 2 : 1; g_awb_phase = 1; usleep(2500000);   /* strong red gain, weak blue gain */
+        r1 = g_awb_cur_r; b1 = g_awb_cur_b;
+        yr = fst(500);
+        g_awb_req_r = cr / 2 ? cr / 2 : 1; g_awb_req_b = cb * 2; usleep(2500000);                      /* weak red, strong blue */
+        r2 = g_awb_cur_r; b2 = g_awb_cur_b;
+        yu = fst(500);
+        g_awb_req_r = cr; g_awb_req_b = cb; usleep(2500000);
+        yz = fst(500);
+        g_awb_phase = 0;
+        /* red phase: V (Cr) above the blue phase, blue phase: U (Cb) above the red phase; both clearly (> 4 levels) */
+        okr = yr.ok && yu.ok && yr.v > yu.v + 4;
+        okb = yr.ok && yu.ok && yu.u > yr.u + 4;
+        { double dz = dabs(yz.u - yb.u) + dabs(yz.v - yb.v), dr = dabs(yr.u - yb.u) + dabs(yr.v - yb.v), du = dabs(yu.u - yb.u) + dabs(yu.v - yb.v);
+        /* the scene (IR / day mode switch with a frozen AE) drifts a little: "back" = clearly nearer to the start than either extreme, and the ISP gains are the start gains again */
+        okc = yz.ok && yb.ok && dz < 0.5 * (dr < du ? dr : du) && g_awb_cur_r == cr && g_awb_cur_b == cb; }
+        okf = r1 >= cr * 2 * 95 / 100 && r1 <= cr * 2 * 105 / 100 && b1 >= cb / 2 * 95 / 100 && b1 <= cb / 2 * 105 / 100 && r2 >= cr / 2 * 95 / 100 && r2 <= cr / 2 * 105 / 100 && b2 >= cb * 2 * 95 / 100 && b2 <= cb * 2 * 105 / 100;
+        rep(LBL("customalgo_awb_effect_t40"), 0, synth ? V_NA : (okr && okb && okc && okf && flow()) ? V_PASS : V_FAIL,
+            "AWB cb vs picture (day mode): start gains r %u b %u U/V %.0f/%.0f | red phase (r x2, b x0.5) ISP gains r %u b %u U/V %.0f/%.0f | blue phase (r x0.5, b x2) r %u b %u U/V %.0f/%.0f | back to start U/V %.0f/%.0f | V red>blue+4 %s, U blue>red+4 %s, ISP gains follow %s, back near start (gains and picture) %s",
+            cr, cb, yb.u, yb.v, r1, b1, yr.u, yr.v, r2, b2, yu.u, yu.v, yz.u, yz.v, okr ? "yes" : "NO", okb ? "yes" : "NO", okf ? "yes" : "NO", okc ? "yes" : "NO");
+        if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &om); usleep(1500000); }
     }
 }
 #else
@@ -5190,6 +5301,6 @@ void t_cases(void)
     if (cs_on("framerel")) { cs_framerel(); wdog("cases", 60); }
     if (cs_on("t41isp")) { cs_t41isp(); wdog("cases", 90); }
     if (cs_on("rgnisp")) { cs_rgnisp(); wdog("cases", 90); }
-    if (cs_on("customalgo_t40")) cs_customalgo_t40(); wdog("cases", 60);
+    if (cs_on("customalgo_t40")) cs_customalgo_t40(); wdog("cases", 150);
     wdog("cases", 60);
 }

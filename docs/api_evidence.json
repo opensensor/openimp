@@ -4719,16 +4719,16 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "err",
+    "T40": "dev",
     "T41": "err"
    },
-   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because no statistics reaching handle() has been shown yet (QEMU) and the case has not run on a camera with a callback that does work. The former AWB-close oops (open-tx-isp #173) is fixed in open-tx-isp next (c639fb86). | T41: needs a user-space callback thread fed by the ISP module (ioctl 0xc004541d); the open T41 module runs its own AE and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). On by default, OPENIMP_ISP_ALGO_FUNC=0 switches it off (-1 / ENOTSUP). Device-verified effect (#65, T40 test camera, apitest customalgo_t40): the AE callback result reaches the sensor: a request of 1/6 of the running exposure time (1919 -> 319 lines) read back as 319 lines in the ISP state and dropped the picture luma 88 -> 36 (0.4x); a 4x analog gain request (4095 in the ISP state) raised it to 133; the starting exposure requested again gave 85; after DisableSensor the normal AE came back (1800 lines, same gain and luma 120 as before). | T41: needs a user-space callback thread fed by the ISP module (ioctl 0xc004541d); the open T41 module runs its own AE and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
    "action": {
     "T41": "enotsup"
    },
    "ref": {
     "T41": "QEMU T41 2026-10-31 case t41isp",
-    "T40": "apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (the AWB-close oops was fixed in open-tx-isp #173; with that driver the T40 apitest ran on a camera with OPENIMP_ISP_ALGO_FUNC=1: PASS 285 / FAIL 0 and 6 of 6 reload cycles without an oops; customalgo_t40 itself has not run on a camera)"
+    "T40": "apitest customalgo_t40 on the T40 test camera 2026-11-02 (runtime swap of the open-tx-isp module, dead-man armed): customalgo_ae_effect_t40 and customalgo_awb_effect_t40 PASS (numbers in the note), open/close 1 of 1, handle ~190 calls each, 0 oops; regression with the module: apitest all areas PASS 398 / FAIL 0, t40dev 0 FAIL, 6 of 6 reload cycles, 0 oops"
    }
   },
   "ISP_SetAwbAlgoFunc": {
@@ -4742,16 +4742,16 @@
     "T31": "aud",
     "T32": "nob",
     "T33": "nob",
-    "T40": "err",
+    "T40": "dev",
     "T41": "err"
    },
-   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). Gated: answers -1 / ENOTSUP unless OPENIMP_ISP_ALGO_FUNC=1, because no statistics reaching handle() has been shown yet (QEMU) and the case has not run on a camera with a callback that does work. The former AWB-close oops (open-tx-isp #173) is fixed in open-tx-isp next (c639fb86). | T41: needs a user-space callback thread fed by the ISP module (ioctl the AWB twin of 0xc004541d); the open T41 module runs its own AWB and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
+   "note": "T40: vendor protocol ported (SetAe/AwbAlgoFunc keep the callback record, EnableSensor registers it with ioctl 0xc004541d / 0xc0045425 and starts the worker, workers ioctl 0xc004541b/c and 0xc0045423/4, DisableSensor closes with 0xc004541e / 0xc0045426, SetSensorFPS notifies the AE library). On by default, OPENIMP_ISP_ALGO_FUNC=0 switches it off (-1 / ENOTSUP). Device-verified effect (#65, T40 test camera, apitest customalgo_t40): the AWB callback result changes the white balance: r x2 / b x0.5 moved the picture chroma (Cb/Cr) from 172/171 to 112/197, r x0.5 / b x2 to 214/141, the start gains again gave 161/159, and the gains the ISP reported followed each request exactly; DisableSensor gave the automatic white balance back (manual gains 0). | T41: needs a user-space callback thread fed by the ISP module (ioctl the AWB twin of 0xc004541d); the open T41 module runs its own AWB and has no such event path; OpenIMP exports the call as -1/ENOTSUP (apitest case t41isp PASS in QEMU T41)",
    "action": {
     "T41": "enotsup"
    },
    "ref": {
     "T41": "QEMU T41 2026-10-31 case t41isp",
-    "T40": "apitest customalgo_t40 in QEMU T40 2026-10-31 (agg59 ko): open ioctl ok and init attribute delivered (max integration time 2241), handle() called 0 times in 3 s, DisableSensor -> AWB close ioctl 0xc0045426 oops in tx_isp_t40; no camera run (the AWB-close oops was fixed in open-tx-isp #173; with that driver the T40 apitest ran on a camera with OPENIMP_ISP_ALGO_FUNC=1: PASS 285 / FAIL 0 and 6 of 6 reload cycles without an oops; customalgo_t40 itself has not run on a camera)"
+    "T40": "apitest customalgo_t40 on the T40 test camera 2026-11-02 (runtime swap of the open-tx-isp module, dead-man armed): customalgo_ae_effect_t40 and customalgo_awb_effect_t40 PASS (numbers in the note), open/close 1 of 1, handle ~190 calls each, 0 oops; regression with the module: apitest all areas PASS 398 / FAIL 0, t40dev 0 FAIL, 6 of 6 reload cycles, 0 oops"
    }
   },
   "ISP_Tuning_AE_Get/SetROI": {
