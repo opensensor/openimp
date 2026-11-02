@@ -3405,7 +3405,7 @@ static int p2_polling_stream(int channel, uint32_t timeout_ms)
     uint32_t fps_den;
     uint64_t interval_us;
 #if defined(PLATFORM_T23) || defined(PLATFORM_T21)
-    P2PadNode pad;
+    P2PadNode pad = {0};
     int pad_sel = 0;
     int pad_pending = 0;
 #endif
