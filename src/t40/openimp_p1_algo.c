@@ -260,10 +260,10 @@ void OpenIMP_P1_AlgoStart(int fd, int num)
 }
 
 /* cancel the worker; if it does not leave on the signal, the close ioctl wakes the driver wait */
-static void algo_join(pthread_t th, volatile int *done, int fd, unsigned int close_cmd, int num)
+static int algo_join(pthread_t th, volatile int *done, int fd, unsigned int close_cmd, int num)
 {
     uint32_t req[2] = {ALGO_COOKIE, (uint32_t)num};
-    int i;
+    int i, closed = 0;
 
     pthread_cancel(th);
     for (i = 0; i < 200 && !*done; i++) {
@@ -272,8 +272,9 @@ static void algo_join(pthread_t th, volatile int *done, int fd, unsigned int clo
         nanosleep(&ts, NULL);
     }
     if (!*done)
-        ioctl(fd, close_cmd, req);
+        closed = ioctl(fd, close_cmd, req) == 0;
     pthread_join(th, NULL);
+    return closed;
 }
 
 /* IMP_ISP_DisableSensor: stop the workers, tell the driver, close the user libraries */
@@ -289,9 +290,13 @@ void OpenIMP_P1_AlgoStop(int fd, int num)
     req[1] = (uint32_t)num;
     pthread_mutex_lock(&algo_lock);
     if (a->ae_flag == 1 && a->ae_running) {
+        int done_close = 0;
+
         if (num <= 1)
-            algo_join(a->ae_thread, &a->ae_done, fd, TISP_AE_CLOSE, num);
-        if (ioctl(fd, TISP_AE_CLOSE, req) == 0) {
+            done_close = algo_join(a->ae_thread, &a->ae_done, fd, TISP_AE_CLOSE, num);
+        /* the join already sent the close ioctl when the worker did not leave on the cancel: once is enough (a second
+         * close would free the driver's info block twice) */
+        if (done_close || ioctl(fd, TISP_AE_CLOSE, req) == 0) {
             a->ae_flag = 0;
             a->ae_running = 0;
             if (a->ae.close)
@@ -301,9 +306,11 @@ void OpenIMP_P1_AlgoStop(int fd, int num)
         }
     }
     if (a->awb_flag == 1 && a->awb_running) {
+        int done_close = 0;
+
         if (num <= 1)
-            algo_join(a->awb_thread, &a->awb_done, fd, TISP_AWB_CLOSE, num);
-        if (ioctl(fd, TISP_AWB_CLOSE, req) == 0) {
+            done_close = algo_join(a->awb_thread, &a->awb_done, fd, TISP_AWB_CLOSE, num);
+        if (done_close || ioctl(fd, TISP_AWB_CLOSE, req) == 0) {
             a->awb_flag = 0;
             a->awb_running = 0;
             if (a->awb.close)

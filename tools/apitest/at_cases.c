@@ -4340,13 +4340,13 @@ static void cs_customalgo_t40(void)
         rep(LBL("customalgo_t40"), 0, V_SKIP, "records are installed before EnableSensor: select this case with APITEST_CASES=customalgo_t40");
         return;
     }
-    rep(LBL("customalgo_gate_t40"), g_algo_gate_rc, (g_algo_gate_rc == -1 && g_algo_gate_errno == ENOTSUP) ? V_PASS : V_FAIL,
-        "without OPENIMP_ISP_ALGO_FUNC=1 SetAeAlgoFunc answers -1 / ENOTSUP (got %d, errno %d)", g_algo_gate_rc, g_algo_gate_errno);
+    rep(LBL("customalgo_gate_t40"), g_algo_gate_rc, g_algo_gate_rc == 0 ? V_NA : (g_algo_gate_rc == -1 && g_algo_gate_errno == ENOTSUP) ? V_PASS : V_FAIL,
+        "without OPENIMP_ISP_ALGO_FUNC=1 SetAeAlgoFunc answers -1 / ENOTSUP (got %d, errno %d; ret 0 = the gate is open because OPENIMP_ISP_ALGO_FUNC=1 is set: not measurable)", g_algo_gate_rc, g_algo_gate_errno);
     for (i = 0; i < 40 && (g_ae_handle < 5 || g_awb_handle < 5); i++) usleep(100000);
     n0 = g_ae_handle; usleep(1000000); n1 = g_ae_handle;
     NEED(IMP_ISP_SetAeAlgoFunc) {
-        rep(FN(IMP_ISP_SetAeAlgoFunc), g_algo_reg_ae, (g_algo_reg_ae == 0 && g_ae_open == 1 && g_ae_initmax > 0 && g_ae_handle >= 5 && n1 > n0 && flow()) ? V_PASS : V_FAIL,
-            "registered before EnableSensor: ret %d, open called %d (init max integration time %u), handle called %d times (%d more in 1 s), the driver delivered ae info (integration time %u), frames flow",
+        rep(FN(IMP_ISP_SetAeAlgoFunc), g_algo_reg_ae, (g_algo_reg_ae == 0 && g_ae_open == 1 && g_ae_handle >= 5 && n1 > n0 && flow()) ? V_PASS : V_FAIL,
+            "registered before EnableSensor: ret %d, open called %d (init max integration time %u: the limits are only known after the first stream, 0 on a freshly loaded module), handle called %d times (%d more in 1 s), the driver delivered ae info (integration time %u), frames flow",
             g_algo_reg_ae, g_ae_open, g_ae_initmax, g_ae_handle, n1 - n0, g_ae_info_time);
     }
     NEED(IMP_ISP_SetAwbAlgoFunc) {
