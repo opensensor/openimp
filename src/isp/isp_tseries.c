@@ -79,6 +79,9 @@ static uint32_t global_mode = 2;
 #endif
 static int tseries_isp_stream_started;
 static int tseries_bypass_link_setup_done;
+#if defined(PLATFORM_T31)
+static int tseries_bypass_graph_active;
+#endif
 static pthread_t tseries_tuning_thread;
 static volatile int tseries_tuning_thread_stop;
 static int tseries_tuning_thread_running;
@@ -2113,6 +2116,35 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
      * after ISP_PROCESS=0, none at all when set before the FrameSource), and
      * no streamer uses the raw bypass in normal operation.  Nothing is
      * touched, so the running pipeline keeps streaming. */
+#if defined(PLATFORM_T31)
+    /* Optional vendor bypass graph (T31, issue 129): OPENIMP_T31_BYPASS_GRAPH=1
+     * together with the tx_isp_t31 module parameter isp_bypass_graph=1.  The
+     * OEM five-step link rebuild around the control; afterwards the channel is
+     * (re)created by the caller (RAW format while bypassed, as the vendor
+     * sample does).  Default off: DISABLE stays refused below. */
+    if (tseries_bypass_graph_active ||
+        (enable != IMPISP_TUNING_OPS_MODE_ENABLE &&
+         getenv("OPENIMP_T31_BYPASS_GRAPH") != NULL)) {
+        int32_t link_arg = (enable == IMPISP_TUNING_OPS_MODE_DISABLE) ? 1 : 0;
+        int32_t destroy_arg = -1;
+
+        if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0 ||
+            ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &destroy_arg) != 0 ||
+            tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable) != 0 ||
+            ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &link_arg) != 0 ||
+            ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
+            kmsg_trace("libimp/ISP: SetISPBypass T31 link rebuild failed value=%d errno=%d\n",
+                       enable, errno);
+            return -1;
+        }
+        tseries_bypass_graph_active = (enable == IMPISP_TUNING_OPS_MODE_DISABLE);
+        tseries_bypass_link_setup_done = 1;
+        tseries_isp_stream_started = 1;
+        kmsg_trace("libimp/ISP: SetISPBypass T31 link graph %d ok (value=%d)\n",
+                   link_arg, enable);
+        return 0;
+    }
+#endif
     if (enable == IMPISP_TUNING_OPS_MODE_ENABLE) {
         kmsg_trace("libimp/ISP: SetISPBypass ENABLE: full ISP pipeline, no-op\n");
         return 0;

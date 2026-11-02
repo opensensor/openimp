@@ -344,6 +344,10 @@ static uint32_t pixfmt_to_fourcc(int pixfmt) {
             return 0x56595559; /* 'YUYV' */
         case 0x2:  /* PIX_FMT_UYVY422 */
             return 0x59565955; /* 'UYVY' */
+#if defined(PLATFORM_T31)
+        case 0x22: /* PIX_FMT_RAW: 12-bit Bayer, the vendor T31 reports RG12 */
+            return 0x32314752;
+#endif
         default:
             return pixfmt; /* Already fourcc or unknown */
     }
@@ -1315,6 +1319,9 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
             size = ((width + 15) & 0xfffffff0) * (height << 2);
             break;
 
+#if defined(PLATFORM_T31)
+        case 0x22:      /* PIX_FMT_RAW (bypass graph): 2 bytes per pixel */
+#endif
         case 0x32314742: /* BG12 */
         case 0x32314142: /* AB12 */
         case 0x32314247: /* GB12 */
