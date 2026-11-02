@@ -150,7 +150,7 @@ extern int OpenIMP_T40_FrameSource_WaitFrame(int channel, void **frame,
 #define P2_MAX_CHANNELS 8
 #endif
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
+#if defined(PLATFORM_T21)
 /* The vendor T21 library has six encoder channels; Set/GetFisheyeEnableStatus and Set/GetH264TransCfg answer -1 above that
  * (OpenIMP keeps eight channels for the other calls). */
 #define P2_T21_VENDOR_CHANNELS 6
@@ -6759,8 +6759,13 @@ int IMP_Encoder_GetSuperFrameCfg(int channel,
     return 0;
 }
 
-#if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
-/* Vendor T21 libimp 1.0.33 (SetH264TransCfg 0x493dc, GetH264TransCfg 0x4957c, i264e_reconfig_trans_set, i264e_idr_reconfig;
+#if defined(PLATFORM_T21)
+/* T10/T20 (libimp 3.12.0, one binary; SetH264TransCfg 0x4b8d4, GetH264TransCfg 0x4ba7c; camera A/B on T10 and T20, docs/T21_H264TRANS.md): the same
+ * i264e call, so Set is the T21 semantics below (raw value, coded clamped to -12..12 from the next IDR picture on), but the T10/T20 Get never
+ * shows the offset: it zeroes the 144-byte structure, sets intraTransMode and interTransMode to 1 and returns 0 (also while the PPS carries
+ * an offset).  A channel that is not created crashes the vendor library on T10/T20; OpenIMP answers as the T21.
+ *
+ * Vendor T21 libimp 1.0.33 (SetH264TransCfg 0x493dc, GetH264TransCfg 0x4957c, i264e_reconfig_trans_set, i264e_idr_reconfig;
  * camera A/B in docs/T21_H264TRANS.md): a channel number outside the table or a NULL pointer is -1.  Of an H.264 channel
  * that exists, Set hands the raw value to the encoder (no range check, 0); the next IDR picture codes it, clamped to
  * -12..12, in both chroma_qp_index_offset fields of the PPS and in the command list.  Get returns the offset the encoder
@@ -6789,6 +6794,14 @@ int IMP_Encoder_SetH264TransCfg(int channel,
 int IMP_Encoder_GetH264TransCfg(int channel,
                                IMPEncoderH264TransCfg *config)
 {
+#if defined(PLATFORM_T20)
+    if (!p2_valid_channel(channel) || channel >= P2_T21_VENDOR_CHANNELS || !config)
+        return -1;
+    memset(config, 0, sizeof(*config));
+    config->intraTransMode = 1;
+    config->interTransMode = 1;
+    return 0;
+#else
     P2EncoderChannel *ch;
     int ret = 0, offset = 0;
 
@@ -6806,6 +6819,7 @@ int IMP_Encoder_GetH264TransCfg(int channel,
     }
     pthread_mutex_unlock(&ch->lock);
     return ret;
+#endif
 }
 
 #else

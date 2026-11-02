@@ -7383,7 +7383,7 @@
   "Encoder_Get/SetH264TransCfg": {
    "area": "Encoder",
    "cells": {
-    "T10": "cache",
+    "T10": "dev",
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
@@ -7399,14 +7399,17 @@
      "r†"
     ]
    },
-   "note": "T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested T10: no chroma-offset register, stays 0; T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetH264TransCfg: ret=0 chroma_qp_index_offset 0; Encoder_SetH264TransCfg: ret=0 same cfg written back,). T21 2026-11-02 (docs/T21_H264TRANS.md): vendor call semantics adopted and proven against the vendor library on the camera (channel 6 and above -1; a channel that is not created, destroyed or JPEG: Set 0 without effect, Get 0 with zeroed structure; Get shows the offset the encoder codes with, a Set only after the next IDR; no range check, coded clamped to -12..12), PPS offsets 5 -4 12 and 13 -13 100 (as 12 -12 12) equal in both libraries.",
+   "note": "T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested T20: chroma QP offset via PPS + reg 0x40120 (claude/t1x-roi), verified on a camera, no colour shift; T21: chroma QP offset, PPS rewrite; not device-tested. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (Encoder_GetH264TransCfg: ret=0 chroma_qp_index_offset 0; Encoder_SetH264TransCfg: ret=0 same cfg written back,). T21 2026-11-02 (docs/T21_H264TRANS.md): vendor call semantics adopted and proven against the vendor library on the camera (channel 6 and above -1; a channel that is not created, destroyed or JPEG: Set 0 without effect, Get 0 with zeroed structure; Get shows the offset the encoder codes with, a Set only after the next IDR; no range check, coded clamped to -12..12), PPS offsets 5 -4 12 and 13 -13 100 (as 12 -12 12) equal in both libraries. T10/T20 2026-11-02 (docs/T21_H264TRANS.md): vendor 3.12.0 call semantics adopted and proven against the vendor library on both cameras: Set hands the raw value to the encoder (no range check, 0; channel 6 and above and NULL -1), the PPS offset follows from the next IDR clamped to -12..12 (5 -4 and 13 -13 100 give 5 -4 and 12 -12 12 on the T20 in both libraries); Get never shows the offset (zeroed 144-byte structure, intraTransMode = interTransMode = 1, 0) in the vendor and in OpenIMP. T10 better than the vendor: the T10 vendor library codes the offset in the PPS alone (H264E_T10_SliceInit has no chroma register), so with 12 the decoded chroma shifts (mean 154 -> 191, spread 5 -> 14 on the camera); writing register 0x40120 on the T10 does not help (same shift, tested), so OpenIMP's T10 accepts the call as the vendor but keeps the PPS at 0 and the colours correct (docs/OPENIMP_BEYOND_VENDOR.md).",
    "ref": {
-    "T20": "apitest agg63 2026-10-31 .107",
+    "T20": "apitest case transcfg 2026-11-02 .107 (vendor library 3.12.0 and OpenIMP on the same camera: return codes, read-backs and the PPS offsets of the streams equal; see note)",
     "T21": "apitest case transcfg 2026-11-02 .24 (vendor library 1.0.33 and OpenIMP on the same camera: return codes, read-backs and the PPS offsets of the streams equal; see note)",
     "T23": "apitest agg47 2026-10-26 .30",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)",
-    "T10": "apitest issue357 2026-11-01 .31 (vendor return codes and read-back, 0 FAIL; effect only in the closed vendor encoder)"
-   }
+    "T10": "apitest case transcfg 2026-11-02 .31 (vendor library 3.12.0 and OpenIMP on the same camera: return codes and read-backs equal; the vendor codes the offset in the PPS only and the picture shifts colour, OpenIMP keeps the PPS at 0; see note)"
+   },
+   "better": [
+    "T10"
+   ]
   },
   "Encoder_Get/SetH265TransCfg": {
    "area": "Encoder",

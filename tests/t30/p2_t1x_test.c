@@ -458,6 +458,29 @@ int main(void)
         CHECK(IMP_Encoder_SetH264TransCfg(0, NULL) == -1 && IMP_Encoder_GetH264TransCfg(0, NULL) == -1);
         chroma_applied = 0;
     }
+#elif defined(PLATFORM_T20)
+    /* H264TransCfg, vendor T10/T20 (docs/T21_H264TRANS.md): Set as the T21 (raw value to the codec, which codes it clamped), but Get never
+     * shows the offset: zeroed structure with intraTransMode = interTransMode = 1 and 0 */
+    {
+        int calls;
+
+        memset(&tr, 0, sizeof(tr));
+        tr.chroma_qp_index_offset = -3;
+        CHECK(IMP_Encoder_SetH264TransCfg(0, &tr) == 0 && chroma_value == -3);
+        memset(&tr, 0x5a, sizeof(tr));
+        CHECK(IMP_Encoder_GetH264TransCfg(0, &tr) == 0 && tr.chroma_qp_index_offset == 0 &&
+              tr.intraTransMode == 1 && tr.interTransMode == 1 && !tr.bScalingListValid && tr.interScalingList8X8[63] == 0 &&
+              tr.intraScalingList8X8[0] == 0);
+        tr.chroma_qp_index_offset = 13;
+        calls = chroma_calls;
+        CHECK(IMP_Encoder_SetH264TransCfg(0, &tr) == 0 && chroma_calls == calls + 1 && chroma_value == 13);
+        tr.chroma_qp_index_offset = 100;
+        CHECK(IMP_Encoder_SetH264TransCfg(1, &tr) == 0 && chroma_value == 100);
+        calls = chroma_calls;
+        CHECK(IMP_Encoder_SetH264TransCfg(4, &tr) == 0 && IMP_Encoder_SetH264TransCfg(2, &tr) == 0 && chroma_calls == calls);
+        CHECK(IMP_Encoder_SetH264TransCfg(6, &tr) == -1 && IMP_Encoder_GetH264TransCfg(6, &tr) == -1);
+        CHECK(IMP_Encoder_SetH264TransCfg(0, NULL) == -1 && IMP_Encoder_GetH264TransCfg(0, NULL) == -1);
+    }
 #else
     /* H264TransCfg: the chroma QP offset (-12..12) reaches the codec */
     memset(&tr, 0, sizeof(tr));

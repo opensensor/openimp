@@ -1843,6 +1843,7 @@ int enc_fisheye_run(void) { return -1; }
  * index offset) on an H.264 chn 0, FIXQP.  Prints every return code and the value read back, before and after CreateChn and on a JPEG
  * channel, and dumps the stream; the host reads the PPS chroma_qp_index_offset (ffmpeg trace_headers) and the chroma statistics.
  *   TRANS_PRE=<n> (a Set before CreateChn)  TRANS_OFFSETS=a,b,c (Set at picture TRANS_AT, TRANS_AT + TRANS_STEP, ...; default 5 and -4)
+ *   TRANS_NOPRE=1 (no Set before CreateChn: the T10/T20 vendor library reads an invalid handle there and dies)
  *   TRANS_QP (default 30)  TRANS_GOP (default 15)  TRANS_FRAMES (default 100)  TRANS_JPEG=1 (Set/Get on a JPEG channel 1)  TRANS_DUMP=<file>
  *   HSKIP_MAIN=1 (ch0 at the sensor size)
  * ------------------------------------------------------------------------------------------ */
@@ -1883,7 +1884,7 @@ int enc_transcfg_run(void)
     a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_FIXQP;
     a->rcAttr.attrRcMode.attrH264FixQp.qp = fixqp;
     if ((e = getenv("TRANS_PRE")) && *e) trans_set(chn, atoi(e), "before CreateChn");
-    else trans_set(chn, 0, "before CreateChn");
+    else if (!getenv("TRANS_NOPRE")) trans_set(chn, 0, "before CreateChn");
     r = IMP_Encoder_CreateChn(chn, a);
     printf("transcfg: CreateChn %d (qp %d gop %d frames %d)\n", r, fixqp, gop, frames);
     if (r) { gfree(a); grp_down(0); return -1; }
@@ -1916,6 +1917,19 @@ int enc_transcfg_run(void)
         IMP_Encoder_ReleaseStream(chn, s);
         gchk(s);
         gfree(s);
+        if (k % 10 == 9) {   /* what Get reports while the stream runs (the T10/T20 vendor Get never shows the offset) */
+            IMPEncoderH264TransCfg o;
+            int g;
+
+            memset(&o, 0x5a, sizeof(o));
+            g = IMP_Encoder_GetH264TransCfg(chn, &o);
+#if defined(PLATFORM_T21)
+            printf("transcfg: picture %d Get -> %d chroma %d\n", k, g, (int)o.chroma_qp_index_offset);
+#else
+            printf("transcfg: picture %d Get -> %d chroma %d intra %u inter %u scaling %d\n", k, g, (int)o.chroma_qp_index_offset,
+                   (unsigned)o.intraTransMode, (unsigned)o.interTransMode, (int)o.bScalingListValid);
+#endif
+        }
     }
     if (dump) fclose(dump);
     printf("transcfg: %d pictures, %lu bytes\n", k, total);
