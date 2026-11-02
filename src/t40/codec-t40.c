@@ -9585,6 +9585,14 @@ int AL_Codec_Encode_SetChangeRef(void *codec, int enable)
     return 0;
 }
 
+int AL_Codec_Encode_SetFisheye(void *codec, int enable)
+{
+    if (codec == NULL)
+        return -1;
+    ((AL_CodecEncode *)codec)->hw_params.fisheye = enable ? 1u : 0u;
+    return 0;
+}
+
 #if defined(PLATFORM_T20)
 int AL_Codec_Encode_GetPictureQp(void *codec, int *qp)
 {

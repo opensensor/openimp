@@ -119,6 +119,9 @@ typedef struct {
     /* 0x80: T20/T10 IMP_Encoder_SetChangeRef: 1 = the OEM flag is off (its
      * default is on, so a zero block keeps the default) */
     uint32_t change_ref_off;
+    /* 0x84: T10/T20 IMP_Encoder_SetFisheyeEnableStatus (i264e parameter 0x72,
+     * src/fisheye): the per-picture ROI table of the OEM i264e_icodec_enc */
+    uint32_t fisheye;
 } HWEncoderParams;
 
 #define HW_HSKIP_SCENECUT 1u    /* bEnableScenecut */
@@ -133,7 +136,7 @@ typedef struct {
 #define HW_SUPERFRM_NONE     1u
 #define HW_SUPERFRM_REENCODE 2u
 
-_Static_assert(sizeof(HWEncoderParams) == 0x84, "HWEncoderParams size");
+_Static_assert(sizeof(HWEncoderParams) == 0x88, "HWEncoderParams size");
 _Static_assert(offsetof(HWEncoderParams, static_time) == 0x30 &&
                offsetof(HWEncoderParams, rc_flags) == 0x48,
                "HWEncoderParams rate-control extras layout");

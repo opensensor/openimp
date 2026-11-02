@@ -1753,6 +1753,88 @@ int enc_demask_run(void)
 int enc_demask_run(void) { return -1; }
 #endif
 
+/* ------------------------------------------------------------------------------------------
+ * Explicit case "fisheye" (APITEST_CASES=fisheye, issues #3 #5, T10/T20): H.264 chn 0 with IMP_Encoder_SetFisheyeEnableStatus
+ * before CreateChn.  The vendor encoder (i264e_icodec_enc) clears the ROI table of every picture and codes the top-left 64x32
+ * pixels at QP <= 15 on I slices and at whole seconds of the frame rate; the macroblock QPs are read from the stream dump on the
+ * host (tools/fisheye_mbqp.c).  Every picture is logged as "pic <n> <bytes>".
+ *   FISHEYE_ON (default 1)  FISHEYE_QP (FIXQP at that QP, default 30; 0: CBR)  FISHEYE_GOP (default 40)  FISHEYE_FRAMES (default 100)
+ *   FISHEYE_ROI=1 (an application ROI, delta QP -6 over most of the picture, set before the first picture)  FISHEYE_DUMP=<file>
+ * ------------------------------------------------------------------------------------------ */
+#if !defined(ENC_NEW) && HAS_IMP_Encoder_SetFisheyeEnableStatus
+int enc_fisheye_run(void)
+{
+    G(EAttr, a);
+    const char *e;
+    int chn = 0, r, k, on = (e = getenv("FISHEYE_ON")) && *e ? atoi(e) : 1;
+    int fixqp = (e = getenv("FISHEYE_QP")) && *e ? atoi(e) : 30;
+    int gop = (e = getenv("FISHEYE_GOP")) && *e ? atoi(e) : 40;
+    int frames = (e = getenv("FISHEYE_FRAMES")) && *e ? atoi(e) : 100;
+    int roi = (e = getenv("FISHEYE_ROI")) && *e ? atoi(e) : 0, fe = -1;
+    FILE *dump = NULL;
+    unsigned long total = 0;
+
+    if (grp_up(0, 0) != 0) { gfree(a); return -1; }
+    fill_attr(a, CODEC_H264, gop);
+    if (fixqp > 0) {
+        memset(&a->rcAttr.attrRcMode, 0, sizeof(a->rcAttr.attrRcMode));
+        a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_FIXQP;
+        a->rcAttr.attrRcMode.attrH264FixQp.qp = fixqp;
+    }
+    r = IMP_Encoder_SetFisheyeEnableStatus(chn, on);
+    printf("fisheye: SetFisheyeEnableStatus %d before CreateChn -> %d\n", on, r);
+    r = IMP_Encoder_CreateChn(chn, a);
+    printf("fisheye: CreateChn %d (qp %d gop %d frames %d)\n", r, fixqp, gop, frames);
+    if (r) { gfree(a); grp_down(0); return -1; }
+    r = IMP_Encoder_SetFisheyeEnableStatus(chn, !on);
+    printf("fisheye: SetFisheyeEnableStatus %d after CreateChn -> %d\n", !on, r);
+    r = IMP_Encoder_GetFisheyeEnableStatus(chn, &fe);
+    printf("fisheye: GetFisheyeEnableStatus -> %d value %d\n", r, fe);
+    r = IMP_Encoder_RegisterChn(GRP, chn);
+#if HAS_IMP_Encoder_SetChnROI
+    if (roi) {
+        IMPEncoderROICfg c;
+
+        memset(&c, 0, sizeof(c));
+        c.u32Index = 0; c.bEnable = true; c.bRelatedQp = true; c.s32Qp = -6;
+        c.rect.p0.x = 0; c.rect.p0.y = 0; c.rect.p1.x = EW - 1; c.rect.p1.y = EH - 1;
+        r = IMP_Encoder_SetChnROI(chn, &c);
+        printf("fisheye: SetChnROI (delta -6, whole picture) -> %d\n", r);
+    }
+#endif
+    r = IMP_Encoder_StartRecvPic(chn);
+    printf("fisheye: StartRecvPic %d\n", r);
+    if (getenv("FISHEYE_DUMP")) dump = fopen(getenv("FISHEYE_DUMP"), "wb");
+    if (!g_sbuf) g_sbuf = malloc(STREAMCAP);
+    for (k = 0; k < frames; k++) {
+        G(IMPEncoderStream, s);
+        int trunc = 0;
+        size_t n;
+
+        if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("fisheye: poll timeout at picture %d\n", k); break; }
+        if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("fisheye: GetStream failed at picture %d\n", k); break; }
+        gchk(s);
+        n = gather(s, g_sbuf, STREAMCAP, &trunc);
+        if (dump && !trunc) fwrite(g_sbuf, 1, n, dump);
+        printf("pic %d %zu\n", k, n);
+        total += n;
+        IMP_Encoder_ReleaseStream(chn, s);
+        gchk(s);
+        gfree(s);
+    }
+    if (dump) fclose(dump);
+    printf("fisheye: %d pictures, %lu bytes\n", k, total);
+    IMP_Encoder_StopRecvPic(chn);
+    IMP_Encoder_UnRegisterChn(chn);
+    IMP_Encoder_DestroyChn(chn);
+    gfree(a);
+    grp_down(0);
+    return 0;
+}
+#else
+int enc_fisheye_run(void) { return -1; }
+#endif
+
 int enc_chain_up(void)          /* H.264 chn 0 + group 0 with an OSD group in between (used by the OSD test) */
 {
     if (grp_up(1, 0) != 0) return -1;

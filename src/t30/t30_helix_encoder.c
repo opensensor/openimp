@@ -81,6 +81,9 @@ typedef T30H264SliceConfig PlatformH264SliceConfig;
 #if defined(HELIX_HSKIP)
 #include "hskip/hskip.h"
 #endif
+#if defined(PLATFORM_T20)
+#include "fisheye/fisheye.h"
+#endif
 
 #if defined(PLATFORM_T23)
 /* Runtime capability marker for streamers: present (and 1) only in a libimp
@@ -1052,6 +1055,13 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
 #endif
     if (encoder->roi_hw)
         memcpy(slice->roi, encoder->roi, sizeof(slice->roi));
+#if defined(PLATFORM_T20)
+    /* IMP_Encoder_SetFisheyeEnableStatus: i264e_icodec_enc clears the ROI table of every try and codes
+     * the top-left 64x32 pixels at QP <= 15 on I slices and whole-second pictures (src/fisheye) */
+    if (encoder->params.fisheye)
+        fisheye_roi(1, encoder->frame_number, idr, encoder->params.fps_num, encoder->params.fps_den, (int)qp,
+                    slice->roi);
+#endif
 #if !defined(PLATFORM_T23)
     slice->chroma_qp_offset = (int8_t)encoder->chroma_qp_offset;
 #endif

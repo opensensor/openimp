@@ -147,7 +147,9 @@ case " $platform_cppflags " in
         compile rc_t10 src/rc_t10/rc_t10.c $hot_flags -Werror -ffp-contract=off
         # IMP_Encoder_SetChnDemask strategy (src/demask)
         compile demask src/demask/demask.c -Werror
-        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o $output_dir/demask.o"
+        # IMP_Encoder_SetFisheyeEnableStatus ROI (src/fisheye)
+        compile fisheye src/fisheye/fisheye.c -Werror
+        rc_t20_objects="$output_dir/rc_t20.o $output_dir/rc_t20_mb.o $output_dir/rc_t10.o $output_dir/demask.o $output_dir/fisheye.o"
         ;;
 esac
 # IMP_Encoder_SetChnHSkip reference structures (src/hskip): T10/T20 and T21

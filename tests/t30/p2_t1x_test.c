@@ -27,6 +27,8 @@ int IMP_Encoder_SetChnColor2Grey(int, const IMPEncoderColor2GreyCfg *);
 int IMP_Encoder_GetChnColor2Grey(int, IMPEncoderColor2GreyCfg *);
 int IMP_Encoder_SetChnROI(int, const IMPEncoderROICfg *);
 int IMP_Encoder_GetChnAttr(int, IMPEncoderCHNAttr *);
+int IMP_Encoder_SetFisheyeEnableStatus(int, int);
+int IMP_Encoder_GetFisheyeEnableStatus(int, int *);
 int IMP_Encoder_SetChnDenoise(int, const IMPEncoderAttrDenoise *);
 int IMP_Encoder_GetChnDenoise(int, IMPEncoderAttrDenoise *);
 int IMP_Encoder_SetMbRC(int, int);
@@ -116,6 +118,9 @@ int AL_Codec_Encode_SetSameSceneGops(void *c, uint32_t g) { (void)c; (void)g; re
 static int hs_calls, hs_type = -1, hs_m, hs_n, hs_scene, hs_black;
 int AL_Codec_Encode_SetHSkip(void *c, uint32_t t, uint32_t m, uint32_t n, int sc, int bl)
 { (void)c; hs_calls++; hs_type = (int)t; hs_m = (int)m; hs_n = (int)n; hs_scene = sc; hs_black = bl; return 0; }
+static int fe_flag = -1;
+int AL_Codec_Encode_SetFisheye(void *c, int en)
+{ (void)c; fe_flag = en; return 0; }
 static int cr_calls = -1;
 int AL_Codec_Encode_SetChangeRef(void *c, int en)
 { (void)c; cr_calls = en; return 0; }
@@ -245,6 +250,23 @@ int main(void)
         CHECK(IMP_Encoder_GetChnAttr(2, &got) == 0 &&
               got.rcAttr.attrDenoise.dnType == 0);
         CHECK(IMP_Encoder_DestroyChn(2) == 0);
+    }
+#endif
+#if defined(PLATFORM_T20)
+    {
+        /* IMP_Encoder_SetFisheyeEnableStatus: settable before CreateChn only; CreateChn hands the flag to the
+         * encoder (i264e parameter 0x72, src/fisheye) */
+        IMPEncoderCHNAttr fa;
+        int fe = -1;
+
+        make_attr(&fa, 0);
+        fe_flag = -1;
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(3, 1) == 0);
+        CHECK(IMP_Encoder_GetFisheyeEnableStatus(3, &fe) == 0 && fe == 1);
+        CHECK(IMP_Encoder_CreateChn(3, &fa) == 0 && fe_flag == 1);
+        CHECK(IMP_Encoder_SetFisheyeEnableStatus(3, 0) == -1);
+        CHECK(IMP_Encoder_GetFisheyeEnableStatus(3, &fe) == 0 && fe == 1);
+        CHECK(IMP_Encoder_DestroyChn(3) == 0);
     }
 #endif
 

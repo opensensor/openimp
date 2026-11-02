@@ -1360,6 +1360,7 @@ extern int AL_Codec_Encode_SetSameSceneGops(void *codec, uint32_t gops);
 extern int AL_Codec_Encode_SetHSkip(void *codec, uint32_t type, uint32_t m, uint32_t n,
                                     int scenecut, int black);
 extern int AL_Codec_Encode_SetChangeRef(void *codec, int enable);
+extern int AL_Codec_Encode_SetFisheye(void *codec, int enable);
 #if defined(PLATFORM_T20)
 extern int AL_Codec_Encode_GetPictureQp(void *codec, int *qp);
 /* src/isp/isp_tseries.c: mode 2 = IMP_ISP_Tuning_SetSharpness, 1 = demask override, 0 = the application's value again */
@@ -2342,6 +2343,10 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
      * rate-control attribute.  T20: the OEM CreateChn runs SMART as i264e
      * method 3 (its own SMART controller), not as VBR. */
     (void)AL_Codec_Encode_SetRcExtras(ch->codec, &attr->rcAttr.attrRcMode);
+#endif
+#if defined(PLATFORM_T20)
+    /* OEM CreateChn: the fisheye flag is i264e parameter 0x72 (src/fisheye) */
+    (void)AL_Codec_Encode_SetFisheye(ch->codec, ch->fisheye);
 #endif
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21)
     {
@@ -6337,8 +6342,9 @@ int IMP_Encoder_GetChnFrmUsedMode(int channel, IMPEncoderAttrFrmUsed *attr)
 }
 
 /* OEM: a flag in the channel record, settable only while the channel is not
- * created (-1 afterwards).  Its only reader is the closed fisheye motion
- * search of the OEM i264e, which the Helix path does not contain. */
+ * created (-1 afterwards).  CreateChn hands it to the encoder (i264e parameter
+ * 0x72): T10/T20 build, the per-picture ROI of src/fisheye (OEM
+ * i264e_icodec_enc); the other builds keep it as a stored flag. */
 int IMP_Encoder_SetFisheyeEnableStatus(int channel, int enable)
 {
     int ret = -1;
