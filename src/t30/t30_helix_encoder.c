@@ -3386,8 +3386,10 @@ t20_again:
         if (hs_black)
             qp = 0;             /* the OEM codes the all-skip picture at QP 0 */
     }
+#if defined(PLATFORM_T20)
     if (!t20_reencodes && !cr_second && !sc_force)
         encoder->pic_qp = (int)qp;      /* i264e_encode: *pic = QP, before the slice is coded */
+#endif
 #endif
 #if defined(HELIX_T21_SYNTAX)
     if (encoder->ref_share)
