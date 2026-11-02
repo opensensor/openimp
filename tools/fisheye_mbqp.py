@@ -6,7 +6,7 @@ video-encoding parameters (libavcodec through ctypes; no ffmpeg headers needed).
 
 Per decoded picture: slice type letter (I when the picture decoded as a key frame), the QPs of the macroblocks
 x 0..3, y 0..1 (the Fisheye region: top-left 64x32 pixels) as min/max, and min/mean/max QP of all other macroblocks.
-Verdict line: pictures with region QP <= 15 and the rest above it ('fisheye pictures'), by index.
+Verdict lines: the pictures with a macroblock at QP <= 15 and those with the top-left region at QP <= 15, by index.
 """
 import ctypes as C
 import ctypes.util
@@ -93,6 +93,12 @@ def mbqps(path):
             C.c_int.from_address(pkt + 32).value = psize.value                     # AVPacket.size
             avc.avcodec_send_packet(ctx, pkt)
             drain()
+    n = avc.av_parser_parse2(parser, ctx, C.byref(pdata), C.byref(psize), bytes(PAD), 0, 0, 0, 0)    # the last packet
+    if psize.value:
+        C.c_void_p.from_address(pkt + 24).value = C.cast(pdata, vp).value
+        C.c_int.from_address(pkt + 32).value = psize.value
+        avc.avcodec_send_packet(ctx, pkt)
+        drain()
     avc.avcodec_send_packet(ctx, None)
     drain()
     return out
@@ -108,12 +114,16 @@ def main():
         base, blocks = f
         reg = [q for (x, y), q in blocks.items() if x <= 3 and y <= 1]
         rest = [q for (x, y), q in blocks.items() if not (x <= 3 and y <= 1)]
-        rows.append((i, (base, min(reg), max(reg), min(rest), sum(rest) / len(rest), max(rest))))
-    print('# pic slice_qp region_min region_max rest_min rest_mean rest_max')
+        rows.append((i, (base, min(reg), max(reg), min(rest), sum(rest) / len(rest), max(rest), min(reg + rest))))
+    print('# pic slice_qp region_min region_max rest_min rest_mean rest_max all_min')
     for i, r in rows:
         print(i, *(('%.1f' % v if isinstance(v, float) else v) for v in r) if r else ['-'])
-    fe = [i for i, r in rows if r and r[2] <= 15 and r[3] > 15]
-    print('# pictures %d, with the top-left region at QP <= 15 and the rest above: %s' % (len(rows), ' '.join(map(str, fe))))
+    fe = [i for i, r in rows if r and r[6] <= 15]
+    reg = [i for i, r in rows if r and r[1] <= 15]
+    print('# pictures %d; with a macroblock at QP <= 15: %s' % (len(rows), ' '.join(map(str, fe))))
+    print('# of these with the top-left region at QP <= 15: %s' % ' '.join(map(str, reg)))
+    print('# note: a skipped macroblock inherits the QP of the macroblock before it, so the QPs after the region (and of skipped')
+    print('# region macroblocks) follow the region in P pictures; the set of pictures is the evidence')
 
 
 if __name__ == '__main__':

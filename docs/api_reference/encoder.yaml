@@ -613,10 +613,10 @@ functions:
     soc: T31
   Encoder_Get/SetFisheyeEnableStatus:
     group: misc
-    summary: "Stores a fisheye flag for a channel and returns it. The fisheye processing itself is not provided; the flag only lets the application read back what it set."
+    summary: "Sets or reads the fisheye flag of a channel. On T10 and T20 the flag changes how the encoder treats its region of interest: the ROI table of every picture is cleared (an application ROI from `SetChnROI` is lost) and on IDR pictures and at every whole second of the frame rate the top-left 64x32 pixels are coded at QP 15 or better. On the other SoCs the flag is stored only."
     returns: "0 on success, -1 for an invalid channel, a NULL pointer (Get), or (Set) a channel that has already been created."
-    notes: "Set it before the channel is created."
-    soc: "T10 to T31 and T40; the T41 vendor library has no such call."
+    notes: "Set it before the channel is created; `CreateChn` hands it to the encoder. T10/T20 (docs/T20_FISHEYE.md): the region follows the vendor encoder; OpenIMP keeps the H.264 limit of 25 between neighbouring macroblock QPs, so at a slice QP above 40 the region QP is raised to the slice QP minus 25."
+    soc: "T10 to T31 and T40 (effect on T10 and T20); the T41 vendor library has no such call."
   Encoder_EnableAllNCUDenoise:
     group: misc
     summary: "NCU denoise exists on T30-class SoCs only; on T23 the call fails."

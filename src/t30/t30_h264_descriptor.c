@@ -267,10 +267,14 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     /* H264E_T20_SliceInit 0x20cd8..0x20f38: the eight ROI regions.  T20's
      * older JZ NVPU only has these eight slots; writes to the later T30
      * EFE slots stop its VDMA walker before the terminal command. */
+    /* Without a macroblock QP table every macroblock outside the regions is coded at the slice QP, so a
+     * window may go 25 below it (the OEM's Fisheye region sits at QP 15 under a slice QP of 40);
+     * with the table the rate control may take any QP up to the cap. */
     (void)Helix_H264_RoiSanitize(config->roi, roi, (int)config->qp,
                                  config->qp > 12u ? (int)config->qp - 12 : 0,
-                                 config->max_qp_cap ? (int)config->max_qp_cap
-                                                    : (int)max_qp);
+                                 config->qp_table_words ? (config->max_qp_cap ? (int)config->max_qp_cap
+                                                                              : (int)max_qp)
+                                                        : (int)config->qp);
     Helix_H264_RoiRegisters((const uint8_t (*)[7])roi, roi_words);
     EMIT(0x40044, roi_words[0]);
     EMIT(0x40048, roi_words[1]);
@@ -534,7 +538,7 @@ int T10_H264_BuildDescriptor(const T30H264SliceConfig *config,
      * the same encoding as on the T20; no chroma QP offset register */
     (void)Helix_H264_RoiSanitize(config->roi, roi, (int)config->qp,
                                  config->qp > 12u ? (int)config->qp - 12 : 0,
-                                 (int)max_qp);
+                                 config->qp_table_words ? (int)max_qp : (int)config->qp);   /* see the T20 list */
     Helix_H264_RoiRegisters((const uint8_t (*)[7])roi, roi_words);
     EMIT(0x40044, roi_words[0]);
     EMIT(0x40048, roi_words[1]);

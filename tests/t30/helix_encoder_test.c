@@ -1764,10 +1764,11 @@ static void test_roi_chroma(int t10)
          * spread of all windows at most 25.  Absolute 51 (region 7) ->
          * slice QP + 13: T21 (picture QP 28) 41, T20 (QP 20) 33. */
         if (t10) {
-            /* T10 test picture QP 44: absolute 20 -> 26, absolute 51 kept,
-             * relative +8 lowered to +7 for the 25 spread */
-            assert(list_roi[0] == 0x1f00ef69u);
-            assert(list_roi[1] == (0x0eu << 8 | 0xcdu << 24));
+            /* T10 test picture QP 44, no macroblock QP table (every macroblock outside the windows is at
+             * the slice QP): absolute 20 kept (44 - 24, inside the 25 steps), the other windows lowered
+             * for the 25 spread: relative +8 -> +1, absolute 51 -> 45 */
+            assert(list_roi[0] == 0x0700ef51u);
+            assert(list_roi[1] == (0x0eu << 8 | 0xb5u << 24));
         } else {
 #if defined(PLATFORM_T20)
             assert(list_roi[1] == (0x0eu << 8 | 0x85u << 24));
@@ -1824,6 +1825,60 @@ static void test_roi_chroma(int t10)
 #endif
 }
 
+
+#if defined(PLATFORM_T20)
+/* IMP_Encoder_SetFisheyeEnableStatus (src/fisheye, OEM i264e_icodec_enc): with the flag the application's ROI
+ * table is cleared for every picture and region 0 (macroblocks x 0..3, y 0..1) is coded at QP min(QP, 15) on I
+ * pictures and at whole seconds of the frame rate; without the flag the table is the application's */
+static void test_fisheye(int t10)
+{
+    static const uint8_t roi[8][7] = { {1, 1, (uint8_t)-4, 0, 39, 0, 22}, {0}, {0}, {0}, {0}, {0}, {0}, {0} };
+    HWEncoderParams params;
+    T30HelixEncoder *encoder = NULL;
+    PictureInfo info;
+    unsigned int n, regions = 0, flag;
+
+    for (flag = 0; flag < 2u; flag++) {
+        memset(&params, 0, sizeof(params));
+        params.width = 640;
+        params.height = 360;
+        params.fps_num = 25;
+        params.fps_den = 1;
+        params.gop_length = 20;
+        params.rc_mode = HW_RC_MODE_FIXQP;
+        params.qp = 30;
+        params.min_qp = 20;
+        params.max_qp = 45;
+        params.fisheye = flag;
+        assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+        assert(OpenIMP_T30_HelixSetRoi(encoder, roi) == 0);
+        for (n = 0; n < 60u; n++) {
+            int idr_or_second;
+
+            assert(encode(encoder, &info) == 0);
+            idr_or_second = info.idr || n % 25u == 0u;
+            if (!flag) {
+                /* the application's relative -4 window, no region 0 of ours */
+                assert(n == 0u || list_roi[0] == (uint32_t)(((uint8_t)-4 << 2 | 3) & 0xff));
+                continue;
+            }
+            if (idr_or_second) {
+                /* qp << 2 | en for region 0, IDR coded at FixQP - 3 = 27, region QP 15: 0x3d; x 0..3, y 0..1 */
+                assert(list_roi[0] == 0x3du && list_roi[2] == 0x01000300u);
+                assert(list_roi[1] == 0u && list_roi[3] == 0u && list_roi[9] == 0u);
+                regions++;
+            } else {
+                assert(list_roi[0] == 0u && list_roi[2] == 0u && list_roi[3] == 0u);
+            }
+        }
+        OpenIMP_T30_HelixDestroy(encoder);
+    }
+    /* IDRs at 0, 20, 40; whole seconds at 0, 25, 50 */
+    assert(regions == 5u);
+    (void)t10;
+}
+#endif
+
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 int OpenIMP_T21_PpsWithChromaOffset(bs_t *bits, int offset);
 
@@ -1876,7 +1931,9 @@ int main(void)
     test_t20_superframe();
     setenv("OPENIMP_HELIX_SOC", "t10", 1);
     test_roi_chroma(1);
+    test_fisheye(1);
     unsetenv("OPENIMP_HELIX_SOC");
+    test_fisheye(0);
 #endif
     /* nothing leaks; the shared bitstream buffer is kept for the process */
     for (i = 0; i < 16u; i++)
