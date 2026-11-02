@@ -79,7 +79,9 @@ static uint32_t global_mode = 2;
 #endif
 static int tseries_isp_stream_started;
 static int tseries_bypass_link_setup_done;
+#if defined(PLATFORM_T31)
 static int tseries_bypass_graph_active;
+#endif
 static pthread_t tseries_tuning_thread;
 static volatile int tseries_tuning_thread_stop;
 static int tseries_tuning_thread_running;
