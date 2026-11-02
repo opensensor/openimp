@@ -9,6 +9,7 @@ SRCS := $(PROJECT_DIR)/src/rc_t10/rc_t10.c $(PROJECT_DIR)/src/hskip/hskip.c
 
 check: $(RC_T10_TEST)
 	$(RC_T10_TEST) rc_t10_vectors.txt
+	$(RC_T10_TEST) rc_t10_vectors_trig.txt
 	$(RC_T10_TEST) rc_t10_vectors_hskip.txt
 	RC_MB_RC2=0 $(RC_T10_TEST) rc_t10_vectors_changeref0.txt
 	RC_MB_RC2=0 $(RC_T10_TEST) rc_t10_vectors_hskip_changeref0.txt

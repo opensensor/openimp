@@ -223,7 +223,7 @@ functions:
     group: rc
     summary: "Sets the trigger level and mode (new maximum QP) of the rate controller's QP-cap lift. There is no getter."
     returns: "0 for a valid channel (also for one that was not created), -1 for a channel number of 6 or more (the vendor limit) or an invalid one."
-    notes: "T10 and T20: a created H.264 channel hands the pair to the rate controller, which lifts the QP cap from the application's maximum QP to the new maximum while a GOP uses more than level times its budget (stock behaviour, mode clamped to 1 to 51). T21: the pair is stored with the stock return codes only; the T21 rate controller has no trigger yet."
+    notes: "T10 and T20: a created H.264 channel hands the pair to the rate controller, which lifts the QP cap from the application's maximum QP to the new maximum while a GOP uses more than level times its budget (stock behaviour, mode clamped to 1 to 51 and not below the application's maximum QP). The call restarts the controller; the level is used as given (no rounding). Compared with the vendor library on cameras and against its controller code on the host. T21: the pair is stored with the stock return codes only; the vendor T21 controller has no trigger either."
   Encoder_GetChnAveBitrate:
     group: rc
     summary: "Averages the bitrate over a number of streams that you pass in one by one."

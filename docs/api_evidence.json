@@ -19413,8 +19413,8 @@
   "Encoder_SetChnRcTrigLevel": {
    "area": "Encoder",
    "cells": {
-    "T10": "rt",
-    "T20": "rt",
+    "T10": "dev",
+    "T20": "dev",
     "T21": "no-op",
     "T23": "rt",
     "T30": "?",
@@ -19428,10 +19428,10 @@
    "ref": {
     "T23": "apitest agg62 2026-10-31 .30 (API round trip, no visible effect expected)",
     "T21": "apitest t2xcov 2026-10-29 .24 (return codes as stock: idle channel 0, channel 99 -1; the pair is kept; the vendor 1.0.33 controller never reads it, host oracle with five different pairs on seven scenarios: 0 differences, so the stored-only behaviour equals the vendor)",
-    "T10": "apitest t2xcov 2026-10-29 .31 (API round trip, no visible effect expected)",
-    "T20": "apitest t2xcov 2026-10-29 .107 (API round trip, no visible effect expected)"
+    "T10": "apitest case rctrig 2026-11-02 .31 (vendor library and OpenIMP on the same camera, starved CBR 640x360, 3 kbit/s, 150 pictures per scenario; both lift the QP above the application maximum under the same conditions, see note)",
+    "T20": "apitest case rctrig 2026-11-02 .107 (vendor library and OpenIMP on the same camera, 22 scenarios of 120/150 pictures: lift ceiling, mode cap and the controller restart after a run-time call equal; QP sequence after the restart identical per picture, see note)"
    },
-   "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run (no apitest case for T30). Vendor 1.0.5 (0xc1994) passes the pair to i264e parameter 4 for an H.264 channel; OpenIMP stores/forwards it in the T30 build."
+   "note": "T10/T20: SetChnRcTrigLevel is a controller input, not a stored value: a call during the stream restarts the rate controller with an IDR (both libraries code the IDR at the same picture); while a GOP uses more than level times its budget the controller lifts the QP cap from the application maximum to the new maximum (default 3.0 / 51). Host oracle (tools/rc_t20_oracle.py --trig-wide, vendor library under unicorn): 24 scenarios per SoC with levels 0.5 to 12.5 and new maximum 30 to 51, 0 differences for T10 and T20 (also below the application maximum). Camera: the picture QP never exceeds the application maximum unless the level is low enough for the scene; then both libraries reach the same ceiling (mode 45: 45/45, 51: 51/51, 49/49) and mode below the maximum keeps the maximum; a call during the stream restarts the controller (QP 15 start, picture QPs identical for the next 30 pictures). T21: no trigger in the vendor controller. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run (no apitest case for T30). Vendor 1.0.5 (0xc1994) passes the pair to i264e parameter 4 for an H.264 channel; OpenIMP stores/forwards it in the T30 build."
   },
   "Encoder_SetChnRfcDropFrameLines": {
    "area": "Encoder",

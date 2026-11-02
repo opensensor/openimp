@@ -14,6 +14,8 @@ OpenIMP; it is read from the path you pass.
     tools/rc_t20_oracle.py T20/lib/3.12.0/uclibc/4.7.2/libimp.so > tests/rc_t20/rc_t20_vectors.txt
     tools/rc_t20_oracle.py --t10 T20/lib/3.12.0/uclibc/4.7.2/libimp.so 16 120 > tests/rc_t10/rc_t10_vectors.txt
 
+--trig-wide (first option) draws the trigger level (IMP_Encoder_SetChnRcTrigLevel, raw float at run time) from 0.5 to 12.5 and the new max QP from 30 to 51,
+also below the application's max QP (tests/rc_t20/rc_t20_vectors_trig.txt, tests/rc_t10/rc_t10_vectors_trig.txt).
 --hskip adds an HSkip structure to every scenario (K and H lines: the skip type and the OEM picture decision; the
 controller is told counter and frame type like i264e_encode does) for the class byte of the controller (src/hskip,
 RCT20_HSkipClass); --changeref-off sets i264e parameter [272] (IMP_Encoder_SetChangeRef) to 0 for tests/rc_t20, tests/rc_t10 (--changeref-off
@@ -321,7 +323,7 @@ def scenario(lib_path, seed, frames, out):
                qp=rnd.randint(20, 40), min=mn, max=mx, bitrate=rnd.choice([256, 512, 1000, 2000]),
                ibias=rnd.randint(-3, 3), frm=rnd.randint(2, 6), gopstep=rnd.randint(2, 15), gopRel=rnd.randint(0, 1),
                static=rnd.randint(1, 10), maxbr=rnd.choice([512, 1000, 2000, 4000]), chg=rnd.randint(50, 100),
-               qual=rnd.randint(0, 6), trig=rnd.choice([3.0, 2.0, 1.5]), newmax=rnd.choice([51, 48]),
+               qual=rnd.randint(0, 6), trig=rnd.choice(TRIGS), newmax=rnd.choice(NEWMAX),
                superI=0x12c0000, superP=0xd64925, mbrc=mbrc)
     if seed % 3 == 2:   # small super-frame thresholds: re-encodes
         cfg['superI'] = rnd.randint(200000, 900000); cfg['superP'] = rnd.randint(60000, 300000)
@@ -363,14 +365,20 @@ def scenario(lib_path, seed, frames, out):
 T10 = False
 CHANGEREF_OFF = False
 HSKIP = False
+TRIGS = [3.0, 2.0, 1.5]
+NEWMAX = [51, 48]
 # IMP_Encoder_SetChnHSkip configurations of the --hskip scenarios: (skip type, m, n, maxSameSceneCnt)
 HS_CONFIGS = (lambda g: (0, g - 1, 1, 3), lambda g: (5, 4, 1, 0), lambda g: (6, 4, 1, 0), lambda g: (5, g - 1, 1, 2),
               lambda g: (6, 2, 1, 5), lambda g: (1, g - 1, 1, 0), lambda g: (2, g - 1, 1, 0))
 
 
 def main():
-    global T10, CHANGEREF_OFF, HSKIP
+    global T10, CHANGEREF_OFF, HSKIP, TRIGS, NEWMAX
     args = sys.argv[1:]
+    if args and args[0] == '--trig-wide':
+        TRIGS = [3.0, 2.0, 1.5, 1.0, 0.5, 1.9, 5.5, 9.0, 12.5]
+        NEWMAX = [51, 48, 44, 40, 36, 30]
+        args = args[1:]
     if args and args[0] == '--hskip':
         HSKIP = True
         args = args[1:]

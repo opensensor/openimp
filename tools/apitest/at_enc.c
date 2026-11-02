@@ -1835,6 +1835,90 @@ int enc_fisheye_run(void)
 int enc_fisheye_run(void) { return -1; }
 #endif
 
+/* ------------------------------------------------------------------------------------------
+ * Explicit case "rctrig" (APITEST_CASES=rctrig, issues #3 #5, T10/T20): H.264 CBR chn 0 on a starved bit rate with
+ * IMP_Encoder_SetChnRcTrigLevel(chn, level, mode).  The vendor controller lifts the QP cap from the application's max QP to
+ * "mode" (default 51) while a GOP uses more than level (default 3.0) times its budget; the picture QPs and sizes are compared
+ * between the vendor library and OpenIMP on the host (tools/fisheye_mbqp.py).  Every picture is logged as "pic <n> <bytes>".
+ *   RCTRIG_LEVEL (float; unset: SetChnRcTrigLevel is not called)  RCTRIG_MODE (new max QP, default 51)
+ *   RCTRIG_BITRATE (kbit/s, default 20)  RCTRIG_MAXQP (default 40)  RCTRIG_MINQP (default 15)  RCTRIG_GOP (default 30)
+ *   RCTRIG_FRAMES (default 120)  RCTRIG_AT (>=0: call SetChnRcTrigLevel before that picture instead of before the first one)
+ *   RCTRIG_DUMP=<file>
+ * ------------------------------------------------------------------------------------------ */
+#if !defined(ENC_NEW) && defined(PLATFORM_T20) || !defined(ENC_NEW) && defined(PLATFORM_T10)
+extern int IMP_Encoder_SetChnRcTrigLevel(int chn, uint32_t level, int mode);
+
+static int rt_set(int chn, float lv, int mode, int pic)
+{
+    union { float f; uint32_t u; } u;
+    int r;
+
+    u.f = lv;
+    r = IMP_Encoder_SetChnRcTrigLevel(chn, u.u, mode);
+    printf("rctrig: SetChnRcTrigLevel %.3f mode %d before pic %d -> %d\n", lv, mode, pic, r);
+    return r;
+}
+
+int enc_rctrig_run(void)
+{
+    G(EAttr, a);
+    const char *e;
+    int chn = 0, r, k, mode = (e = getenv("RCTRIG_MODE")) && *e ? atoi(e) : 51;
+    int br = (e = getenv("RCTRIG_BITRATE")) && *e ? atoi(e) : 20;
+    int maxqp = (e = getenv("RCTRIG_MAXQP")) && *e ? atoi(e) : 40;
+    int minqp = (e = getenv("RCTRIG_MINQP")) && *e ? atoi(e) : 15;
+    int gop = (e = getenv("RCTRIG_GOP")) && *e ? atoi(e) : 30;
+    int frames = (e = getenv("RCTRIG_FRAMES")) && *e ? atoi(e) : 120;
+    int at = (e = getenv("RCTRIG_AT")) && *e ? atoi(e) : -1;
+    int have = (e = getenv("RCTRIG_LEVEL")) && *e;
+    float lv = have ? (float)atof(e) : 0.0f;
+    FILE *dump = NULL;
+    unsigned long total = 0;
+
+    if (grp_up(0, 0) != 0) { gfree(a); return -1; }
+    fill_attr(a, CODEC_H264, gop);
+    a->rcAttr.attrRcMode.attrH264Cbr.outBitRate = br;
+    a->rcAttr.attrRcMode.attrH264Cbr.maxQp = maxqp;
+    a->rcAttr.attrRcMode.attrH264Cbr.minQp = minqp;
+    r = IMP_Encoder_CreateChn(chn, a);
+    printf("rctrig: CreateChn %d (bitrate %d maxqp %d minqp %d gop %d frames %d)\n", r, br, maxqp, minqp, gop, frames);
+    if (r) { gfree(a); grp_down(0); return -1; }
+    r = IMP_Encoder_RegisterChn(GRP, chn);
+    if (have && at < 0) rt_set(chn, lv, mode, 0);
+    r = IMP_Encoder_StartRecvPic(chn);
+    printf("rctrig: StartRecvPic %d\n", r);
+    if (getenv("RCTRIG_DUMP")) dump = fopen(getenv("RCTRIG_DUMP"), "wb");
+    if (!g_sbuf) g_sbuf = malloc(STREAMCAP);
+    for (k = 0; k < frames; k++) {
+        G(IMPEncoderStream, s);
+        int trunc = 0;
+        size_t n;
+
+        if (have && k == at) rt_set(chn, lv, mode, k);
+        if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("rctrig: poll timeout at picture %d\n", k); break; }
+        if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("rctrig: GetStream failed at picture %d\n", k); break; }
+        gchk(s);
+        n = gather(s, g_sbuf, STREAMCAP, &trunc);
+        if (dump && !trunc) fwrite(g_sbuf, 1, n, dump);
+        printf("pic %d %zu\n", k, n);
+        total += n;
+        IMP_Encoder_ReleaseStream(chn, s);
+        gchk(s);
+        gfree(s);
+    }
+    if (dump) fclose(dump);
+    printf("rctrig: %d pictures, %lu bytes\n", k, total);
+    IMP_Encoder_StopRecvPic(chn);
+    IMP_Encoder_UnRegisterChn(chn);
+    IMP_Encoder_DestroyChn(chn);
+    gfree(a);
+    grp_down(0);
+    return 0;
+}
+#else
+int enc_rctrig_run(void) { return -1; }
+#endif
+
 int enc_chain_up(void)          /* H.264 chn 0 + group 0 with an OSD group in between (used by the OSD test) */
 {
     if (grp_up(1, 0) != 0) return -1;

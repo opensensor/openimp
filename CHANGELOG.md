@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-02 (late night), T10/T20 `SetChnRcTrigLevel`: camera and oracle proof (#3, #5)
+
+- The trigger is a rate controller input in the vendor library (QP cap lift from the application maximum to the new maximum while a GOP uses more than `level` times its budget, applied with the next IDR). OpenIMP already carried it in `src/rc_t20` / `src/rc_t10`; this round adds the proof. `tools/rc_t20_oracle.py --trig-wide`: levels 0.5 to 12.5, new maximum QP 30 to 51 (also below the application maximum), 24 scenarios per SoC against the vendor controller under unicorn, 0 differences (`tests/rc_t20/rc_t20_vectors_trig.txt`, `tests/rc_t10/rc_t10_vectors_trig.txt`).
+- New apitest case `rctrig` (explicit): a starved CBR stream with the pair set before the first picture or during the stream. Vendor library and OpenIMP on the T20 and T10 test cameras reach the same QP ceilings and restart identically after a run-time call (IDR at the call, QP 15, next 30 picture QPs identical). `Encoder_SetChnRcTrigLevel` T10/T20: rt -> dev. Details in `docs/T20_RCTRIG.md`. No library change; T21 stays as the vendor (no trigger in its controller).
+
 ## 2026-11-02 (night), T10/T20 `SetFisheyeEnableStatus`: the vendor encoder's per-picture region of interest (#3, #5)
 
 - The flag is not a stored value: `IMP_Encoder_CreateChn` hands it to the vendor encoder as i264e parameter 0x72, and `i264e_icodec_enc` then clears the ROI table of every coding try (an application ROI is lost) and, on IDR pictures and at every whole second of the frame rate, codes the top-left 64x32 pixels (macroblocks x 0..3, y 0..1) at an absolute QP of min(slice QP, 15). OpenIMP's T10/T20 build does the same (`src/fisheye`, `docs/T20_FISHEYE.md`). The other SoCs keep the flag as stored state.

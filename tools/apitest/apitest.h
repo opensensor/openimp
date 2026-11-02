@@ -173,6 +173,7 @@ int enc_pull_h264(int n);
 int enc_hskip_run(void);     /* case "hskip" (explicit only) */
 int enc_demask_run(void);    /* case "demask" (explicit only, T10/T20) */
 int enc_fisheye_run(void);   /* case "fisheye" (explicit only, T10/T20) */
+int enc_rctrig_run(void);    /* case "rctrig" (explicit only, T10/T20) */
 
 /* fetch one NV12 frame from FS ch1 (for IVS/encoder-less users) */
 int fs_peek(int ch, int *w, int *h, int64_t *ts);
