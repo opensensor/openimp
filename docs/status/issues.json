@@ -2837,7 +2837,7 @@
   {
    "number": 189,
    "title": "Lifted T40/T41 drivers: typed-pointer byte offsets (x4 steps, counters that never meet their bound)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/189",
    "labels": [
     "prio:streamer",
@@ -2884,7 +2884,7 @@
   {
    "number": 195,
    "title": "T41: functional SetAwbAlgoFunc (extra beyond vendor)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/195",
    "labels": [
     "area:ISP",
@@ -2896,6 +2896,24 @@
     "type:gap"
    ],
    "created": "2026-11-02T21:27:05Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 197,
+   "title": "T41: AE algorithm library released when its client dies (extra)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/197",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "repo:openimp",
+    "severity:low",
+    "soc:T41",
+    "type:gap"
+   ],
+   "created": "2026-11-02T22:59:04Z",
    "closed": null,
    "milestone": null
   }

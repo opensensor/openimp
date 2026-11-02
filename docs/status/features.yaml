@@ -3468,6 +3468,7 @@ api_links:
   issues:
   - 76
   - 195
+  - 197
   functions:
   - ISP_SetAeAlgoFunc
   - ISP_SetAwbAlgoFunc
