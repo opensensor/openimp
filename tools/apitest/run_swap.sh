@@ -58,6 +58,8 @@ $SSH 'mkdir -p /tmp/rsw; free | head -2; df /tmp | tail -1' >> "$OUT/run.log" 2>
 cat "$BIN/apitest_$lc" | $SSH 'cat > /tmp/rsw/apitest; chmod 755 /tmp/rsw/apitest'
 [ "$KO" != - ] && cat "$KO" | $SSH 'cat > /tmp/rsw/test.ko'
 [ "$LIB" != - ] && cat "$LIB" | $SSH 'cat > /tmp/rsw/libimp.so'
+# stable ISP day/night + ircut before the streamer is stopped (audit/T10_DARK_PICTURE_1102.md: the boot-day window after a streamer start gives dark pictures)
+$SSH 'last=; same=0; n=0; while [ $n -lt 300 ] && [ $same -lt 20 ]; do cur="$(grep -h -m1 Runing /proc/jz/isp/isp_info /proc/jz/isp/isp-m0 2>/dev/null)|$(cat /tmp/ircutmode.txt 2>/dev/null)"; if [ "$cur" = "$last" ]; then same=$((same+1)); else same=0; last="$cur"; fi; n=$((n+1)); sleep 2; done; echo "precheck stable=$same/20 after $((n*2))s: $last"' >> "$OUT/precheck.txt" 2>&1
 $SSH "/etc/init.d/$STREAMER stop >/dev/null 2>&1; sleep 3; dmesg -c >/dev/null"
 if [ "$KO" != - ]; then
   $SSH "for m in $SENS; do rmmod \$m || echo FAIL-rmmod-sensor; done; rmmod $ISPMOD || echo FAIL-rmmod-stock; insmod /tmp/rsw/test.ko $ISPARGS || echo FAIL-insmod-ours; for m in $SENS; do modprobe \$m || echo FAIL-sensor; done; sleep 1; lsmod | grep -E 'tx_isp|sensor_'; echo osd_commits=\$(cat /sys/module/${ISPMOD}/parameters/osd_commits 2>/dev/null)" >> "$OUT/run.log" 2>&1
@@ -65,7 +67,9 @@ if [ "$KO" != - ]; then
 fi
 for f in $PUSHF; do cat "${f%%:*}" | $SSH "cat > /tmp/rsw/$(basename "${f##*:}")"; done
 LD=; [ "$LIB" != - ] && LD="LD_LIBRARY_PATH=/tmp/rsw"
-timeout 1500 $SSH "cd /tmp/rsw; $LD APITEST_AO=0 ${EXTRA_ENV} ${CASES:+APITEST_CASES=$CASES} ./apitest --json /tmp/rsw/apitest.json $SENSOR $I2C $W $H $AREAS" > "$OUT/apitest.log" 2> "$OUT/apitest.err"
+# SAMPLE=1: memory sampler on the camera every 20 s (ends when /tmp/rsw is removed by the restore) -> PULLF=mem.txt
+[ -n "$SAMPLE" ] && $SSH -n 'nohup sh -c "while [ -d /tmp/rsw ]; do echo t=\$(date +%s); grep -E \"MemFree|^Cached|Slab\" /proc/meminfo; cat /proc/jz/rmem /proc/jz/vbm 2>/dev/null | head -20; sleep 20; done" > /tmp/rsw/mem.txt 2>&1 &' >/dev/null 2>&1
+timeout ${TMO:-1500} $SSH "cd /tmp/rsw; $LD APITEST_AO=0 ${EXTRA_ENV} ${CASES:+APITEST_CASES=$CASES} ./apitest --json /tmp/rsw/apitest.json $SENSOR $I2C $W $H $AREAS" > "$OUT/apitest.log" 2> "$OUT/apitest.err"
 echo "apitest rc=$?" >> "$OUT/run.log"
 $SSH 'cat /tmp/rsw/apitest.json' > "$OUT/apitest.json" 2>/dev/null
 for f in $PULLF; do $SSH "cat /tmp/rsw/$f" > "$OUT/$f" 2>/dev/null; done

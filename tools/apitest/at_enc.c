@@ -108,6 +108,12 @@ static size_t gather(const IMPEncoderStream *s, unsigned char *buf, size_t cap, 
     return n;
 }
 
+/* the frame of a stream as one buffer (cases that dump a stream: padframe_t23) */
+size_t at_stream_gather(const IMPEncoderStream *s, unsigned char *buf, size_t cap, int *trunc)
+{
+    return gather(s, buf, cap, trunc);
+}
+
 /* --- tiny H.264 SPS reader (resolution, profile, level) */
 typedef struct { const unsigned char *b; size_t n, pos; } BR;
 static unsigned br_bit(BR *r) { unsigned v; if (r->pos >= r->n * 8) return 0; v = (r->b[r->pos >> 3] >> (7 - (r->pos & 7))) & 1; r->pos++; return v; }
@@ -1923,7 +1929,7 @@ int enc_transcfg_run(void)
 
             memset(&o, 0x5a, sizeof(o));
             g = IMP_Encoder_GetH264TransCfg(chn, &o);
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
             printf("transcfg: picture %d Get -> %d chroma %d\n", k, g, (int)o.chroma_qp_index_offset);
 #else
             printf("transcfg: picture %d Get -> %d chroma %d intra %u inter %u scaling %d\n", k, g, (int)o.chroma_qp_index_offset,

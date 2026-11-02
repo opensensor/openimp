@@ -4580,6 +4580,8 @@ static void *t23_pad_feeder(void *arg)
     return NULL;
 }
 
+extern size_t at_stream_gather(const IMPEncoderStream *s, unsigned char *buf, size_t cap, int *trunc);
+static FILE *g_pad_dump;    /* APITEST_PAD_DUMP: the pad-off phase is written out (decode + picture check on the host) */
 static void t23_stream_stats(int ms, int *frames, double *avg)
 {
     int64_t t0 = now_us();
@@ -4593,6 +4595,13 @@ static void t23_stream_stats(int ms, int *frames, double *avg)
         if (IMP_Encoder_PollingStream(1, 200) != 0) continue;
         if (IMP_Encoder_GetStream(1, &s, 0) != 0) continue;
         for (k = 0; k < s.packCount; k++) bytes += s.pack[k].length;
+        if (g_pad_dump) {
+            static unsigned char dbuf[1 << 20];
+            int trunc = 0;
+            size_t n = at_stream_gather(&s, dbuf, sizeof(dbuf), &trunc);
+
+            if (!trunc) fwrite(dbuf, 1, n, g_pad_dump);
+        }
         (*frames)++;
         IMP_Encoder_ReleaseStream(1, &s);
     }
@@ -4646,6 +4655,13 @@ static void cs_padframe_t23(void)
             pthread_create(&th, NULL, t23_pad_feeder, NULL);
             t23_stream_stats(2000, &f1, &s1);
             rel1 = g_pad_rel;
+            if (getenv("APITEST_PAD_SOAK_S")) {        /* long PadFrame use (leak check from outside: /proc/meminfo) */
+                int soak = atoi(getenv("APITEST_PAD_SOAK_S")), fs;
+                double ss;
+
+                while (soak > 0) { t23_stream_stats(10000, &fs, &ss); soak -= 10; }
+                rel1 = g_pad_rel; f1 = fs; s1 = ss;
+            }
             attr[1] = 1; attr[2] = 1000; attr[3] = 0;              /* match within 1 ms */
             g_pad_ts = 1;                                          /* stale pad frames */
             r2 = IMP_Encoder_SetPadFrameAttr(1, 1, attr);
@@ -4655,7 +4671,9 @@ static void cs_padframe_t23(void)
             rel2 = g_pad_rel - rel2;
             g_pad_run = 0; pthread_join(th, NULL);
             r3 = IMP_Encoder_SetPadFrameAttr(1, 0, NULL);
+            if (getenv("APITEST_PAD_DUMP")) g_pad_dump = fopen(getenv("APITEST_PAD_DUMP"), "wb");
             t23_stream_stats(2000, &f3, &s3);
+            if (g_pad_dump) { fclose(g_pad_dump); g_pad_dump = NULL; }
             IMP_Encoder_StopRecvPic(1); IMP_System_UnBind(&fs1, &en1); IMP_Encoder_UnRegisterChn(1); IMP_Encoder_DestroyChn(1); IMP_Encoder_DestroyGroup(1);
             rep(FN(IMP_Encoder_SetPadFrameAttr), r1 | r2 | r3, (r1 == 0 && r2 == 0 && r3 == 0 && f3 > 5 && s3 > s1 * 2) ? V_PASS : V_FAIL,
                 "free mode on / time-stamp mode on / off: ret %d %d %d; off again: %d frames, %.0f bytes avg", r1, r2, r3, f3, s3);
@@ -5360,7 +5378,13 @@ void t_cases(void)
     if (cs_on("isppicupd_t23")) cs_isppicupd_t23(); wdog("cases", 60);
     if (cs_on("enchelp_t23")) cs_enchelp_t23(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("t140c")) cs_t140c(); wdog("cases", 120);
-    if (cs_on("padframe_t23")) cs_padframe_t23(); wdog("cases", 120);
+    if (cs_on("padframe_t23")) {
+        int pc = getenv("APITEST_PAD_CYCLES") ? atoi(getenv("APITEST_PAD_CYCLES")) : 1;   /* repeated start/stop of the pad session */
+
+        wdog("padframe", 120 + pc * 20 + (getenv("APITEST_PAD_SOAK_S") ? atoi(getenv("APITEST_PAD_SOAK_S")) : 0));
+        while (pc-- > 0) cs_padframe_t23();
+    }
+    wdog("cases", 120);
     if (cs_on("switchbin_t23")) cs_switchbin_t23(); wdog("cases", 90);
     if (cs_on("osdalloc_t23")) cs_osdalloc_t23(); wdog("cases", 60);
 #if defined(PLATFORM_T23)
