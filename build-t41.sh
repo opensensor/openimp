@@ -182,7 +182,12 @@ do
         -o "$output_dir/$source.o"
 done
 
-# T41 ISP calls without a streamer (backlog #75/#76): vendor 1.2.5/1.2.6 pass-throughs, four documented ENOTSUP
+# custom AE/AWB callbacks (IMP_ISP_SetAeAlgoFunc / SetAwbAlgoFunc), the vendor protocol shared with T40 (#76)
+"$compiler" $strict_flags -I"$T41_HEADERS" -I"$project_dir/src" \
+    -c "$project_dir/src/t40/openimp_p1_algo.c" \
+    -o "$output_dir/openimp_p1_algo.o"
+
+# T41 ISP calls without a streamer (backlog #75/#76): vendor 1.2.5/1.2.6 pass-throughs, two documented ENOTSUP
 "$compiler" $strict_flags -I"$T41_HEADERS" -I"$project_dir/src" \
     -c "$project_dir/src/t40/openimp_t41_isp_extra.c" \
     -o "$output_dir/openimp_t41_isp_extra.o"
@@ -230,6 +235,7 @@ done
     "$output_dir/openimp_p3_compat.o" \
     "$output_dir/openimp_t41_isp_osd.o" \
     "$output_dir/openimp_t41_isp_extra.o" \
+    "$output_dir/openimp_p1_algo.o" \
     "$output_dir/t41_osd.o" \
     "$output_dir/t41_ivs.o" \
     "$output_dir/t41_ivs_move.o" \

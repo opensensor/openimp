@@ -787,7 +787,7 @@ int IMP_ISP_DelSensor(IMPVI_NUM num, IMPSensorInfo *info)
     return result;
 }
 
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
 /* custom AE/AWB callbacks (openimp_p1_algo.c) */
 extern void OpenIMP_P1_AlgoStart(int fd, int num) __attribute__((weak));   /* weak: host tests link p1.c alone */
 extern void OpenIMP_P1_AlgoStop(int fd, int num) __attribute__((weak));
@@ -810,7 +810,7 @@ int IMP_ISP_EnableSensor(IMPVI_NUM num, IMPSensorInfo *info)
         unlock_p1();
         return 0;
     }
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
     /* vendor: pending SetAeAlgoFunc/SetAwbAlgoFunc records are registered here */
     if (OpenIMP_P1_AlgoStart)
         OpenIMP_P1_AlgoStart(p1.isp_fd, (int)num);
@@ -848,7 +848,7 @@ int IMP_ISP_DisableSensor(IMPVI_NUM num)
     }
     input.enable = 0;
     input.vinum = num;
-#if defined(PLATFORM_T40)
+#if defined(PLATFORM_T40) || defined(PLATFORM_T41)
     if (OpenIMP_P1_AlgoStop)
         OpenIMP_P1_AlgoStop(p1.isp_fd, (int)num);
 #endif

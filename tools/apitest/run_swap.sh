@@ -40,7 +40,7 @@ tail -n 3 "$STATUS" | grep -qiE "stuck|deadlock|hung" && { echo "STATUS says stu
 
 $SSH 'cat /etc/modules.d/20-isp /etc/modules.d/30-sensor 2>/dev/null; ls /etc/init.d | grep -E "timps|prudynt|raptor"; uname -r; lsmod | grep -E "tx_isp|sensor_"' > "$OUT/before.txt" 2>&1
 ISPLINE=$(grep -E "^tx[-_]isp" "$OUT/before.txt" | head -1); ISPMOD=${ISPLINE%% *}; ISPARGS=${ISPLINE#"$ISPMOD"}; [ "$ISPARGS" = "$ISPLINE" ] && ISPARGS=
-SENS=$(grep -oE "^sensor_[a-z0-9_]*" "$OUT/before.txt" | tr "\n" " " | sed "s/ *$//")      # ALL loaded sensor modules (the Eufy T40 has two: the ISP module cannot be removed while one is loaded)
+SENS=$(grep -oE "^sensor_[a-z0-9_]*" "$OUT/before.txt" | awk '!seen[$0]++' | tr "\n" " " | sed "s/ *$//")      # ALL loaded sensor modules (the Eufy T40 has two: the ISP module cannot be removed while one is loaded)
 STREAMER=$(grep -oE "^S[0-9]+(timps|prudynt|raptor)[A-Za-z0-9_-]*" "$OUT/before.txt" | grep -v -E "motion|onvif|webui" | head -1)
 KR=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+" "$OUT/before.txt" | head -1)
 STOCK=$($SSH "find /lib/modules /usr/lib/modules -name '${ISPMOD//_/-}.ko' 2>/dev/null | head -1")

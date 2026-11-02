@@ -18,6 +18,11 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <errno.h>
+#ifdef APITEST_T40
+#define CA_SFX "_t40"      /* case customalgo_t40 / customalgo_t41 */
+#else
+#define CA_SFX "_t41"
+#endif
 #include "apitest.h"
 
 typedef struct { double y, u, v, c, h, sd; int ok; } Fst;
@@ -4292,7 +4297,11 @@ static void cs_sensorattr_t40(void)
     }
 }
 
-/* customalgo_t40 (#65): IMP_ISP_SetAeAlgoFunc / IMP_ISP_SetAwbAlgoFunc.  The vendor registers the callback records when the sensor is enabled
+#endif /* APITEST_T40 */
+
+/* T40 and T41 (same vendor protocol): case customalgo_t40 / customalgo_t41 */
+#if defined(APITEST_T40) || defined(PLATFORM_T41)
+/* customalgo_t40 / customalgo_t41 (#65 #76): IMP_ISP_SetAeAlgoFunc / IMP_ISP_SetAwbAlgoFunc.  The vendor registers the callback records when the sensor is enabled
  * (a record set later only counts at the next EnableSensor), so the records are installed by algo_pre_t40() before IMP_ISP_EnableSensor in the
  * main flow (when this case is selected); the case then checks open / handle / notify and algo_post_t40() the close after DisableSensor.
  * The callbacks only count and answer "no change" (change = 0), so the picture is not touched. */
@@ -4350,7 +4359,7 @@ void algo_pre_t40(void)
     static IMPISPAeAlgoFunc ae = { NULL, ae_cb_open, ae_cb_close, ae_cb_handle, ae_cb_notify };
     static IMPISPAwbAlgoFunc awb = { NULL, awb_cb_open, awb_cb_close, awb_cb_handle, awb_cb_notify };
 
-    if (!getenv("APITEST_CASES") || !strstr(getenv("APITEST_CASES"), "customalgo_t40"))
+    if (!getenv("APITEST_CASES") || !strstr(getenv("APITEST_CASES"), "customalgo" CA_SFX))
         return;
     setenv("OPENIMP_ISP_ALGO_FUNC", "0", 1);      /* switched off: -1 / ENOTSUP, nothing is registered */
     if (IMP_ISP_SetAeAlgoFunc) {
@@ -4365,8 +4374,13 @@ void algo_post_t40(void)
 {
     if (g_algo_reg_ae == -99 && g_algo_reg_awb == -99)
         return;
-    rep(LBL("customalgo_close_t40"), 0, (g_ae_close == 1 && g_awb_close == 1) ? V_PASS : V_FAIL,
+#ifdef APITEST_T40
+    rep(LBL("customalgo_close" CA_SFX), 0, (g_ae_close == 1 && g_awb_close == 1) ? V_PASS : V_FAIL,
         "after DisableSensor: AE close called %d, AWB close called %d (want 1 and 1), handle calls AE %d AWB %d", g_ae_close, g_awb_close, g_ae_handle, g_awb_handle);
+#else
+    rep(LBL("customalgo_close" CA_SFX), 0, (g_ae_close == 1 && g_awb_close == 0) ? V_PASS : V_FAIL,
+        "after DisableSensor: AE close called %d (want 1), AWB close called %d (want 0: the stock T41 module has no AWB library path), handle calls AE %d AWB %d", g_ae_close, g_awb_close, g_ae_handle, g_awb_handle);
+#endif
 }
 
 static void cs_customalgo_t40(void)
@@ -4375,10 +4389,10 @@ static void cs_customalgo_t40(void)
     uint32_t sn = 15, sd = 1;
 
     if (g_algo_reg_ae == -99 && g_algo_reg_awb == -99) {
-        rep(LBL("customalgo_t40"), 0, V_SKIP, "records are installed before EnableSensor: select this case with APITEST_CASES=customalgo_t40");
+        rep(LBL("customalgo" CA_SFX), 0, V_SKIP, "records are installed before EnableSensor: select this case with APITEST_CASES=customalgo" CA_SFX);
         return;
     }
-    rep(LBL("customalgo_gate_t40"), g_algo_gate_rc, g_algo_gate_rc == 0 ? V_NA : (g_algo_gate_rc == -1 && g_algo_gate_errno == ENOTSUP) ? V_PASS : V_FAIL,
+    rep(LBL("customalgo_gate" CA_SFX), g_algo_gate_rc, g_algo_gate_rc == 0 ? V_NA : (g_algo_gate_rc == -1 && g_algo_gate_errno == ENOTSUP) ? V_PASS : V_FAIL,
         "with OPENIMP_ISP_ALGO_FUNC=0 SetAeAlgoFunc answers -1 / ENOTSUP (got %d, errno %d; ret 0 = a libimp without the switch, always on: not measurable)", g_algo_gate_rc, g_algo_gate_errno);
     for (i = 0; i < 40 && (g_ae_handle < 5 || g_awb_handle < 5); i++) usleep(100000);
     n0 = g_ae_handle; usleep(1000000); n1 = g_ae_handle;
@@ -4388,15 +4402,26 @@ static void cs_customalgo_t40(void)
             g_algo_reg_ae, g_ae_open, g_ae_initmax, g_ae_handle, n1 - n0, g_ae_info_time);
     }
     NEED(IMP_ISP_SetAwbAlgoFunc) {
+#ifdef APITEST_T40
         rep(FN(IMP_ISP_SetAwbAlgoFunc), g_algo_reg_awb, (g_algo_reg_awb == 0 && g_awb_open == 1 && g_awb_handle >= 5 && flow()) ? V_PASS : V_FAIL,
             "registered before EnableSensor: ret %d, open called %d, handle called %d times, frames flow", g_algo_reg_awb, g_awb_open, g_awb_handle);
+#else
+        rep(FN(IMP_ISP_SetAwbAlgoFunc), g_algo_reg_awb, (g_algo_reg_awb == 0 && g_awb_open == 0 && g_awb_handle == 0 && flow()) ? V_PASS : V_FAIL,
+            "rt: registered before EnableSensor: ret %d; vendor-equal: the stock T41 module has no AWB library ioctl, the open fails (ENOTTY) and the library is never called (open %d, handle %d), frames flow", g_algo_reg_awb, g_awb_open, g_awb_handle);
+#endif
     }
     NEED(IMP_ISP_Tuning_SetSensorFPS) {
+#ifdef APITEST_T40
         int r = IMP_ISP_Tuning_SetSensorFPS(IMPVI_MAIN, &sn, &sd);
+#else
+        IMPISPSensorFps sfps = { sn, sd };
+        int r = IMP_ISP_Tuning_SetSensorFPS(IMPVI_MAIN, &sfps);
+#endif
 
-        rep(LBL("customalgo_notify_t40"), r, (r == 0 && g_ae_notify >= 1) ? V_PASS : V_FAIL,
+        rep(LBL("customalgo_notify" CA_SFX), r, (r != 0 && getenv("APITEST_QEMU")) ? V_NA : (r == 0 && g_ae_notify >= 1) ? V_PASS : V_FAIL,
             "SetSensorFPS 15/1 -> the active AE library got IMPISP_AE_NOTIFY_FPS_CHANGE %d time(s) (vendor: notify(priv, 0, NULL) after a successful set)", g_ae_notify);
     }
+#ifdef APITEST_T40
     /* effect checks (#65): the callback RESULT must reach the sensor / the white balance */
     if (g_algo_reg_ae == 0 && g_ae_handle >= 5) {
         Fst y0, y1, y2, y3;
@@ -4429,7 +4454,7 @@ static void cs_customalgo_t40(void)
         y3 = fst(1000);
         ok3 = y3.ok && dabs(y3.y - y0.y) < 0.25 * y0.y + 8;
         g_ae_phase = 0;
-        rep(LBL("customalgo_ae_effect_t40"), 0, synth ? V_NA : (ok1 && ok2 && ok3 && flow()) ? V_PASS : V_FAIL,
+        rep(LBL("customalgo_ae_effect" CA_SFX), 0, synth ? V_NA : (ok1 && ok2 && ok3 && flow()) ? V_PASS : V_FAIL,
             "AE callback result vs sensor: start it %u ag %u (proc %ld/%ld) luma %.1f; req it %u -> proc it %ld (cb info %u) luma %.1f (want < 0.7x); req ag %u it %u -> proc ag %ld it %ld (cb info ag %u) luma %.1f (want > +15); callback back to start -> luma %.1f (start %.1f); steps %d/%d/%d",
             b_it, b_ag, it0, ag0, y0.y, b_it / 6 > g_ae_min_it ? b_it / 6 : g_ae_min_it, it1, c_it, y1.y, (uint32_t)((uint64_t)b_ag * 4 > maxag ? maxag : b_ag * 4), b_it, ag2, it2, c_ag, y2.y, y3.y, y0.y, ok1, ok2, ok3);
         (void)ag1;
@@ -4465,21 +4490,69 @@ static void cs_customalgo_t40(void)
         /* the scene (IR / day mode switch with a frozen AE) drifts a little: "back" = clearly nearer to the start than either extreme, and the ISP gains are the start gains again */
         okc = yz.ok && yb.ok && dz < 0.5 * (dr < du ? dr : du) && g_awb_cur_r == cr && g_awb_cur_b == cb; }
         okf = r1 >= cr * 2 * 95 / 100 && r1 <= cr * 2 * 105 / 100 && b1 >= cb / 2 * 95 / 100 && b1 <= cb / 2 * 105 / 100 && r2 >= cr / 2 * 95 / 100 && r2 <= cr / 2 * 105 / 100 && b2 >= cb * 2 * 95 / 100 && b2 <= cb * 2 * 105 / 100;
-        rep(LBL("customalgo_awb_effect_t40"), 0, synth ? V_NA : (okr && okb && okc && okf && flow()) ? V_PASS : V_FAIL,
+        rep(LBL("customalgo_awb_effect" CA_SFX), 0, synth ? V_NA : (okr && okb && okc && okf && flow()) ? V_PASS : V_FAIL,
             "AWB cb vs picture (day mode): start gains r %u b %u U/V %.0f/%.0f | red phase (r x2, b x0.5) ISP gains r %u b %u U/V %.0f/%.0f | blue phase (r x0.5, b x2) r %u b %u U/V %.0f/%.0f | back to start U/V %.0f/%.0f | V red>blue+4 %s, U blue>red+4 %s, ISP gains follow %s, back near start (gains and picture) %s",
             cr, cb, yb.u, yb.v, r1, b1, yr.u, yr.v, r2, b2, yu.u, yu.v, yz.u, yz.v, okr ? "yes" : "NO", okb ? "yes" : "NO", okf ? "yes" : "NO", okc ? "yes" : "NO");
         if (rgot && om != IMPISP_RUNNING_MODE_DAY) { IMP_ISP_Tuning_SetISPRunningMode(IMPVI_MAIN, &om); usleep(1500000); }
     }
+#else
+    /* T41 (#76): the starting exposure is not known to the library (the AE never ran: it registers before the first stream), so the case looks for
+     * a well exposed base itself and checks that the library's requests move the ISP state and the picture */
+    if (g_algo_reg_ae == 0 && g_ae_handle >= 5) {
+        static const int div[] = { 32, 16, 8, 4, 2, 1 };
+        Fst yb = { 0 }, yd, yg, yr;
+        long it_b, it_d, ag_d, it_g, ag_g;
+        uint32_t maxit = g_ae_initmax ? g_ae_initmax : 1000, maxag = g_ae_max_ag ? g_ae_max_ag : 8192, base = 2, dark, gain;
+        int k, ok1, ok2, ok3, found = 0;
+
+        usleep(1500000);
+        for (k = 0; k < 6; k++) {                       /* ramp the requested integration time until the picture is well exposed */
+            base = maxit / div[k] > 2 ? maxit / div[k] : 2;
+            g_ae_req_it = base; g_ae_req_ag = 1024; g_ae_req_dg = 1024; g_ae_phase = 1;
+            usleep(2500000);
+            yb = fst(500);
+            if (yb.ok && yb.y >= 60.0) { found = 1; break; }
+        }
+        it_b = isp_proc_val("AeIntegrationTime");
+        dark = base / 6 > 2 ? base / 6 : 1;
+        g_ae_req_it = dark; usleep(3000000);            /* a sixth of the exposure time */
+        yd = fst(1000);
+        it_d = isp_proc_val("AeIntegrationTime"); ag_d = isp_proc_val("AeAGain");
+        ok1 = found && yd.ok && yd.y < yb.y * 0.7 && it_d >= (long)dark * 85 / 100 && it_d <= (long)dark * 115 / 100 + 1;
+        gain = (uint64_t)1024 * 8 > maxag ? maxag : 1024 * 8;
+        g_ae_req_ag = gain; usleep(3000000);            /* the short exposure with 8x analog gain */
+        yg = fst(1000);
+        it_g = isp_proc_val("AeIntegrationTime"); ag_g = isp_proc_val("AeAGain");
+        ok2 = yg.ok && yd.ok && yg.y > yd.y + 15.0 && ag_g >= (long)gain * 85 / 100 && ag_g <= (long)gain * 115 / 100;
+        g_ae_req_it = base; g_ae_req_ag = 1024; usleep(3000000);   /* back to the base exposure */
+        yr = fst(1000);
+        ok3 = yr.ok && yb.ok && dabs(yr.y - yb.y) < 0.25 * yb.y + 8;
+        g_ae_phase = 0;
+        /* QEMU (APITEST_QEMU=1): the ISP state must follow the requests, the test pattern does not respond to the exposure: no picture verdict */
+        { int state_ok = it_d >= (long)dark * 85 / 100 && it_d <= (long)dark * 115 / 100 + 1 && ag_g >= (long)gain * 85 / 100 && ag_g <= (long)gain * 115 / 100;
+          if (getenv("APITEST_QEMU")) { ok1 = ok2 = ok3 = state_ok; found = found || state_ok; } }
+        rep(LBL("customalgo_ae_effect" CA_SFX), 0, getenv("APITEST_QEMU") ? ((found && ok1 && flow()) ? V_NA : V_FAIL) : (found && ok1 && ok2 && ok3 && flow()) ? V_PASS : V_FAIL,
+            "AE callback result vs sensor (T41): base request it %u ag 1024 (proc it %ld) luma %.1f%s | req it %u -> proc it %ld ag %ld luma %.1f (want < 0.7x base) | req it %u ag %u -> proc it %ld ag %ld luma %.1f (want > +15) | back to base -> luma %.1f (base %.1f) | steps %d/%d/%d, library info ag %u",
+            base, it_b, yb.y, found ? "" : " (NO well exposed base found)", dark, it_d, ag_d, yd.y, dark, gain, it_g, ag_g, yg.y, yr.y, yb.y, ok1, ok2, ok3, g_ae_cur_ag);
+    }
+    /* T41 (#76): the stock T41 module has no AWB library ioctl (0xc0045423..26 answer ENOTTY): the vendor registers the record, the open fails, the library is never called.  Same here. */
+    if (g_algo_reg_awb == 0)
+        rep(LBL("customalgo_awb_vendor" CA_SFX), 0, (g_awb_open == 0 && g_awb_handle == 0 && g_awb_close == 0 && flow()) ? V_PASS : V_FAIL,
+            "rt: vendor-equal no path: the stock T41 module has no AWB library ioctl, SetAwbAlgoFunc registers the record and the open fails (ENOTTY): open called %d, handle called %d, close called %d (want 0/0/0), frames flow", g_awb_open, g_awb_handle, g_awb_close);
+#endif
 }
 #else
+static void cs_customalgo_t40(void) {}
+void algo_pre_t40(void) {}
+void algo_post_t40(void) {}
+#endif
+
+#if !defined(APITEST_T40)
 static void cs_t140c(void) {}
 static void cs_awbctstart_t40(void) {}
 static void cs_framedrop_t40(void) {}
 static void cs_ratiohang_t40(void) {}
 static void cs_sensorattr_t40(void) {}
-static void cs_customalgo_t40(void) {}
-void algo_pre_t40(void) {}
-void algo_post_t40(void) {}
 #endif
 
 /* T23 pad frames (stock IMP_Encoder_SetPadFrameAttr / IMP_Encoder_PadFrame): H.264 on FS ch1 (group 1 / chn 1); a feeder thread hands in
@@ -4874,8 +4947,9 @@ static void cs_t41isp(void)
         gfree(buf);
     }
     /* documented ENOTSUP */
-    NEED(IMP_ISP_SetAeAlgoFunc) { errno = 0; r = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, NULL); e1 = errno; rep(FN(IMP_ISP_SetAeAlgoFunc), r, (r == -1 && e1 == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d (expect -1 ENOTSUP)", r, e1); }
-    NEED(IMP_ISP_SetAwbAlgoFunc) { errno = 0; r = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, NULL); e2 = errno; rep(FN(IMP_ISP_SetAwbAlgoFunc), r, (r == -1 && e2 == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d", r, e2); }
+    /* the library paths are proven by APITEST_CASES=customalgo_t41; here only the argument check (the vendor dereferences a NULL record) */
+    NEED(IMP_ISP_SetAeAlgoFunc) { r = IMP_ISP_SetAeAlgoFunc(IMPVI_MAIN, NULL); e1 = 0; rep(FN(IMP_ISP_SetAeAlgoFunc), r, (r == -1) ? V_PASS : V_FAIL, "rt: NULL record refused with -1 (vendor: NULL dereference); library path: APITEST_CASES=customalgo_t41, ret %d", r); }
+    NEED(IMP_ISP_SetAwbAlgoFunc) { r = IMP_ISP_SetAwbAlgoFunc(IMPVI_MAIN, NULL); e2 = 0; rep(FN(IMP_ISP_SetAwbAlgoFunc), r, (r == -1) ? V_PASS : V_FAIL, "rt: NULL record refused with -1 (vendor: NULL dereference); library path: APITEST_CASES=customalgo_t41, ret %d", r); }
     NEED(IMP_ISP_SetVicDoneCbFunc) { errno = 0; r = IMP_ISP_SetVicDoneCbFunc(NULL); e = errno; rep(FN(IMP_ISP_SetVicDoneCbFunc), r, (r == -1 && e == ENOTSUP) ? V_PASS : V_FAIL, "ret %d errno %d", r, e); }
     NEED(IMP_ISP_RAW_RwControl) { errno = 0; r = IMP_ISP_RAW_RwControl(IMPVI_MAIN, NULL); e = errno; rep(FN(IMP_ISP_RAW_RwControl), r, (r == -1 && e == ENOTSUP && flow()) ? V_PASS : V_FAIL, "ret %d errno %d, frames still flow", r, e); }
 }
@@ -5178,7 +5252,7 @@ static void cs_decoder_t2x(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "wdrtoggle_t41", "fscycle", "hskip" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5301,6 +5375,6 @@ void t_cases(void)
     if (cs_on("framerel")) { cs_framerel(); wdog("cases", 60); }
     if (cs_on("t41isp")) { cs_t41isp(); wdog("cases", 90); }
     if (cs_on("rgnisp")) { cs_rgnisp(); wdog("cases", 90); }
-    if (cs_on("customalgo_t40")) cs_customalgo_t40(); wdog("cases", 150);
+    if (cs_on("customalgo" CA_SFX)) cs_customalgo_t40(); wdog("cases", 150);
     wdog("cases", 60);
 }

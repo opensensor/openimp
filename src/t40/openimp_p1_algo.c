@@ -1,4 +1,4 @@
-/* T40 custom AE / AWB algorithm callbacks: IMP_ISP_SetAeAlgoFunc / IMP_ISP_SetAwbAlgoFunc.
+/* T40 + T41 custom AE / AWB algorithm callbacks: IMP_ISP_SetAeAlgoFunc / IMP_ISP_SetAwbAlgoFunc.
  *
  * Follows the vendor libimp 1.3.1 (disassembly, 2026-10-31):
  *   SetAe/AwbAlgoFunc(num, func)   0x86630 / 0x872c8: copy the 5-pointer callback record,
@@ -23,7 +23,7 @@
  *   IMP_ISP_Tuning_SetSensorFPS    notify(priv, 0 = FPS_CHANGE, NULL) of an active AE record.
  *
  * Switch: on by default (the callback results reach the sensor and the white balance, shown on the T40 test camera); OPENIMP_ISP_ALGO_FUNC=0
- * makes the calls answer -1 / ENOTSUP again (see algo_enabled()).  Needs an open-tx-isp T40 module with the #65 fixes.
+ * makes the calls answer -1 / ENOTSUP again (see algo_enabled()).  Needs an open-tx-isp T40 / T41 module with the #65 / #76 fixes.
  *
  * Differences (documented): NULL pointers and sensors above 3 are refused with -1 (the vendor
  * dereferences them); a missing callback is skipped instead of called; the close waits at most

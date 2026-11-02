@@ -8,12 +8,13 @@
  *    -4084, tuning not enabled -4091, failed ioctl -4090;
  *  - ISP-device ioctls (the vendor ISPDevice fd): ISP not open -4088, NULL
  *    -4087, sensor >= 2 -4084, failed ioctl -4095 (the WDR and GPIO calls -4090);
- *  - four calls that need a user-space callback thread fed by the ISP module
- *    (SetAeAlgoFunc, SetAwbAlgoFunc, SetVicDoneCbFunc) or a RAW frame
- *    exchange with rmem buffers (RAW_RwControl) are exported as a documented
- *    ENOTSUP (-1, errno ENOTSUP): the open T41 module has no event path for
- *    them, and a program that links them fails at the first call instead of
- *    at load time.
+ *  - two calls that need a user-space callback thread fed by the ISP module
+ *    (SetVicDoneCbFunc) or a RAW frame exchange with rmem buffers
+ *    (RAW_RwControl) are exported as a documented ENOTSUP (-1, errno
+ *    ENOTSUP): the open T41 module has no event path for them, and a program
+ *    that links them fails at the first call instead of at load time.
+ *    SetAeAlgoFunc / SetAwbAlgoFunc follow the vendor protocol
+ *    (openimp_p1_algo.c).
  *
  * Whether the running ISP module serves a control is the module's business:
  * the open-tx-isp T41 module answers EPERM to a tuning control it does not
@@ -263,23 +264,7 @@ static int32_t t41x_unsupported(void)
     return -1;
 }
 
-/* SetAeAlgoFunc / SetAwbAlgoFunc: the vendor registers user callbacks that a
- * thread runs on every statistics event of the ISP module (ioctl 0xc004541d /
- * 0xc004541e).  The open T41 module runs its own AE and AWB and has no such
- * event path. */
-int32_t IMP_ISP_SetAeAlgoFunc(IMPVI_NUM num, IMPISPAeAlgoFunc *ae_func)
-{
-    (void)num;
-    (void)ae_func;
-    return t41x_unsupported();
-}
-
-int32_t IMP_ISP_SetAwbAlgoFunc(IMPVI_NUM num, IMPISPAwbAlgoFunc *awb_func)
-{
-    (void)num;
-    (void)awb_func;
-    return t41x_unsupported();
-}
+/* SetAeAlgoFunc / SetAwbAlgoFunc: src/t40/openimp_p1_algo.c (vendor callback protocol, shared with T40). */
 
 /* SetVicDoneCbFunc: a callback thread fed by the VIC frame-done event of the
  * ISP module (ioctl 0xc0045431); the open module has no such event path. */
