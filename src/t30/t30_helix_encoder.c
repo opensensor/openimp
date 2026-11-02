@@ -3520,6 +3520,13 @@ again:
         encoder->slice.mb_tune = encoder->sps.i_mb_width >= 51 &&
                                  encoder->sps.i_mb_height >= 39 &&
                                  RCT20_Scene(&encoder->t20rc) != 0u;
+    } else if (!encoder->t10 && encoder->params.rc_mode == HW_RC_MODE_FIXQP) {
+        /* T20 3.12.0, fixed QP: the macroblock QP cap 0x40040 is the channel
+         * QP + 3 (51 at most) for I and P pictures alike (soc_vpu capture at
+         * QP 10..51), not the slice QP + 13 */
+        uint32_t cap = encoder->params.qp + 3u;
+
+        encoder->slice.max_qp_cap = (uint8_t)(cap > 51u ? 51u : cap);
     }
 #endif
 #if defined(HELIX_T21_SYNTAX)

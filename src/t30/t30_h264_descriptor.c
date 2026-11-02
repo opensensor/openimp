@@ -50,6 +50,8 @@ static const uint32_t t30_lps_range[64] = {
     0x09070608, 0x08070508, 0x07060508, 0x00000000
 };
 
+#define T20_DBLK_MIN_QP 16u
+
 static int t30_emit(T30DescriptorWriter *writer, uint32_t reg,
                     uint32_t value)
 {
@@ -149,12 +151,24 @@ static int t30_emit_motion_estimation(T30DescriptorWriter *writer,
     MOTION_EMIT(0x5010c, T30_VRAM_ME);
     MOTION_EMIT(0x50104, T30_VRAM_TOPMV);
     MOTION_EMIT(0x50108, 0x13200070u);
+#if defined(PLATFORM_T20)
+    /* T20 3.12.0 command list (soc_vpu capture of a P picture, 640x360):
+     * the motion search window is the macroblock-aligned picture
+     * (0x016f027f), and 0x50040 has bit 27 set (0x8f3f5008). */
+    MOTION_EMIT(0x50060, ((uint32_t)config->mb_height * 16u - 1u) << 16 |
+                         ((uint32_t)config->mb_width * 16u - 1u));
+#else
     MOTION_EMIT(0x50060, ((uint32_t)config->height - 1u) << 16 |
                          ((uint32_t)config->width - 1u));
+#endif
     MOTION_EMIT(0x50064, (config->stride[1] << 16) |
                          config->stride[0]);
     MOTION_EMIT(0x50010, 0x800a8021u);
+#if defined(PLATFORM_T20)
+    MOTION_EMIT(0x50040, 0x8f3f5008u);
+#else
     MOTION_EMIT(0x50040, 0x873f5008u);
+#endif
     MOTION_EMIT(0x50044, 0);
     MOTION_EMIT(0x50048, 0x07d007d0u);
     MOTION_EMIT(0x50800, config->reference_y);
@@ -366,7 +380,13 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     EMIT(0x70074, ((uint32_t)config->mb_height << 16) |
                   config->mb_width);
     EMIT(0x7007c, (uint32_t)config->first_mby << 16);
+#if defined(PLATFORM_T20)
+    /* H264E_T20_SliceInit 0x70064 = slice +172 bit 0: clear below QP 16 (soc_vpu capture,
+     * FixQP 10..51: IDR QP 12/15 and P QP 10..15 clear, IDR 17, P 18.. set) */
+    EMIT(0x70064, config->qp >= T20_DBLK_MIN_QP ? 1u : 0u);
+#else
     EMIT(0x70064, 1);
+#endif
     EMIT(0x70084, config->output_y);
     EMIT(0x70088, config->output_c);
     EMIT(0x7008c, T30_VRAM_DUMMY);

@@ -73,6 +73,9 @@ typedef struct {
 } FakeAllocation;
 
 static FakeAllocation allocations[16];
+#if defined(PLATFORM_T20)
+static uint32_t run_40040, run_50040, run_50060, run_70064;   /* T20: the last command list's QP cap and ME words */
+#endif
 static uint32_t run_raw_c;          /* chroma input address of the last RUN */
 static uint8_t payload[1u << 20];
 static uint32_t payload_length;
@@ -349,6 +352,14 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
                 run_qptab_ctrl = d[i];
             else if (reg == 0x80034u)
                 run_80034 = d[i];
+            else if (reg == 0x40040u)
+                run_40040 = d[i];
+            else if (reg == 0x50040u)
+                run_50040 = d[i];
+            else if (reg == 0x50060u)
+                run_50060 = d[i];
+            else if (reg == 0x70064u)
+                run_70064 = d[i];
             else if (reg >= 0xc5800u && reg < 0xc5800u + 4u * 4096u &&
                      run_qptab_words < 4096u)
                 run_qptab[run_qptab_words++] = d[i];
@@ -920,9 +931,27 @@ static void test_t20_fixqp(void)
     for (n = 0; n < 25u; n++) {
         assert(encode(encoder, &info) == 0);
         assert(info.qp == (info.idr ? 27 : 30));
+        /* T20 3.12.0 soc_vpu capture (FixQP 10..51): macroblock QP cap = QP + 3 for I and P, the ME words of
+         * a P picture 0x8f3f5008 and the macroblock-aligned picture 640x360 -> 367<<16 | 639 */
+        assert(run_40040 == 33u);
+        assert(run_70064 == 1u);
+        if (!info.idr) {
+            assert(run_50040 == 0x8f3f5008u);
+            assert(run_50060 == ((367u << 16) | 639u));
+        }
         idrs += info.idr != 0;
     }
     assert(idrs == 3u);
+    OpenIMP_T30_HelixDestroy(encoder);
+
+    /* 0x70064 is clear below slice QP 16: FixQP 18 codes the I pictures at 15 (clear) and the P pictures at 18 */
+    params.qp = params.min_qp = params.max_qp = 18;
+    assert(OpenIMP_T30_HelixCreate(&encoder, &params) == 0);
+    for (n = 0; n < 12u; n++) {
+        assert(encode(encoder, &info) == 0);
+        assert(run_70064 == (info.idr ? 0u : 1u));
+        assert(run_40040 == 21u);
+    }
     OpenIMP_T30_HelixDestroy(encoder);
 }
 
