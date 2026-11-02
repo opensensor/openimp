@@ -129,6 +129,7 @@ void t_fs_pre(void)
     fs_attrs();
     r = IMP_FrameSource_CreateChn(0, &fs0);
     RET0(IMP_FrameSource_CreateChn, r, "ch0 %dx%d NV12 15 fps (sensor size)", g_sw, g_sh);
+    if (getenv("HSKIP_MAIN")) goto main_only;      /* case hskip with HSKIP_MAIN=1: ch0 only (see at_enc.c) */
     r = IMP_FrameSource_CreateChn(1, &fs1);
     RET0(IMP_FrameSource_CreateChn, r, "ch1 %dx%d scaled, nrVBs 3", SUB_W, SUB_H);
     /* settings that must be made between CreateChn and EnableChn */
@@ -151,10 +152,13 @@ void t_fs_pre(void)
     NEED(IMP_FrameSource_SetPool) { r = IMP_FrameSource_SetPool(1, 0); RET0(IMP_FrameSource_SetPool, r, "ch1 pool 0"); }
 # endif
 #endif
+main_only:
     r = IMP_FrameSource_EnableChn(0);
     RET0(IMP_FrameSource_EnableChn, r, "ch0");
-    r = IMP_FrameSource_EnableChn(1);
-    RET0(IMP_FrameSource_EnableChn, r, "ch1");
+    if (!getenv("HSKIP_MAIN")) {
+        r = IMP_FrameSource_EnableChn(1);
+        RET0(IMP_FrameSource_EnableChn, r, "ch1");
+    }
     /* the application can read frames (GetFrame) only with a frame depth on the vendor stacks (T41 OpenIMP follows that) */
     if (IMP_FrameSource_SetFrameDepth) { IMP_FrameSource_SetFrameDepth(0, 2); IMP_FrameSource_SetFrameDepth(1, 2); }
     sleep(3);       /* AE/AWB settle */
@@ -164,9 +168,9 @@ void t_fs_post(void)
 {
     int r;
 
-    r = IMP_FrameSource_DisableChn(1); RET0(IMP_FrameSource_DisableChn, r, "ch1");
+    if (!getenv("HSKIP_MAIN")) { r = IMP_FrameSource_DisableChn(1); RET0(IMP_FrameSource_DisableChn, r, "ch1"); }
     r = IMP_FrameSource_DisableChn(0); RET0(IMP_FrameSource_DisableChn, r, "ch0");
-    r = IMP_FrameSource_DestroyChn(1); RET0(IMP_FrameSource_DestroyChn, r, "ch1");
+    if (!getenv("HSKIP_MAIN")) { r = IMP_FrameSource_DestroyChn(1); RET0(IMP_FrameSource_DestroyChn, r, "ch1"); }
     r = IMP_FrameSource_DestroyChn(0); RET0(IMP_FrameSource_DestroyChn, r, "ch0");
 }
 

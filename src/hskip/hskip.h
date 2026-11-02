@@ -41,6 +41,7 @@ typedef struct {
     uint32_t type;              /* [2] skipType */
     uint32_t a, b;              /* [3] [4] base picture spacing */
     uint32_t buffers;           /* [5] reconstruction buffers used (2 or 3) */
+    int t21;                    /* the T21 1.0.33 variant (hskip_init_t21) */
     HSkipRef prev, cur;         /* the two states of i264e_decide_slice_type_and_rd */
     uint32_t counter;           /* ctx[0]: pictures since the IDR (-1: none yet) */
 } HSkip;
@@ -59,6 +60,26 @@ typedef struct {
 
 /* i264e_init_skip_header; m, n as IMPEncoderAttrHSkip, black not needed here */
 void hskip_init(HSkip *s, uint32_t gop, uint32_t type, uint32_t m, uint32_t n, uint32_t same);
+
+/* The T21 1.0.33 i264e_init_skip_header: the same structures, but N1X and N2X use three reconstruction
+ * buffers (N2X rotates the long-term base picture through all three; N1X never leaves buffers 0 and 1).
+ * tests/hskip/hskip_vectors_t21.txt (tools/hskip_oracle.py with the T21 library). */
+void hskip_init_t21(HSkip *s, uint32_t gop, uint32_t type, uint32_t m, uint32_t n, uint32_t same);
+
+/* The skip attributes after i264e_validate_parameters of the T21 1.0.33 library (done at CreateChn and with
+ * every IDR that takes a new skip header): the structure is honoured in SMART rate control only; every other
+ * rate-control mode clears type, m, n, black enhancement and scene cut and sets maxSameSceneCnt to 1.  In SMART
+ * m and n are not the application's: they follow the skip type and the GOP length.  gop: the GOP length. */
+typedef struct {
+    uint32_t type, m, n, same;
+    uint32_t scenecut, black;
+} HSkipAttr;
+void hskip_t21_validate(HSkipAttr *a, int smart, uint32_t gop);
+
+/* The scene-cut IDR of i264e_decide_slice_type_and_rd on T21 (skip types N1X and H1M with maxSameSceneCnt > 0, from the
+ * second GOP of the IDR period on, at a GOP boundary): not FIXQP, and the class the controller gave the
+ * previous picture is 5.  counter: pictures since the IDR (ctx[0]); returns scene_idr for hskip_decide. */
+int hskip_t21_scene_idr(uint32_t counter, uint32_t gop, int not_fixqp, int cls);
 
 /* i264e_decide_slice_type_and_rd: the decision for the next picture.  force_idr:
  * an IDR was requested (or no picture was coded yet).  scene_idr: the T20 rule of
@@ -97,6 +118,8 @@ int hskip_scenecut(const HSkip *s, const HSkipPic *pic, int enable, uint32_t fps
 
 /* Number of reconstruction buffers a skip type needs (2 for N1X/N2X). */
 uint32_t hskip_buffers(uint32_t type);
+/* the reconstruction buffers the T21 variant really uses (N1X: two, as it never reaches the third) */
+uint32_t hskip_buffers_t21(uint32_t type);
 
 /* BlackEnhance (src/hskip/hskip_black.c): slice data of `mbs` skipped macroblocks;
  * ctx_state: preCtxState of the P slice context 11 (h264_cabac_context_init, QP 0) */

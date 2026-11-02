@@ -92,7 +92,7 @@ if os.environ.get("QR_LIB"):
     pre = [os.path.join("/tmp/at", os.path.basename(e)) for e in os.environ.get("QR_LIBEXTRA", "").split(",") if e]
     if pre:
         ldp += "LD_PRELOAD=%s " % ":".join(pre)
-out, rc = push(binary, "apitest") if not nopush else sh("ls -l /tmp/at/apitest", 20, 5)
+out, rc = push(binary, "apitest") if not (nopush or os.environ.get("QR_APPKEEP")) else sh("ls -l /tmp/at/apitest", 20, 5)    # QR_APPKEEP=1: keep the apitest of an earlier push, push the library only
 print("pushed:", out.strip().splitlines()[-2:] if out.strip() else out)
 res = []
 for c in cases:

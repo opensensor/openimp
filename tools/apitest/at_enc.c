@@ -269,9 +269,13 @@ static int pull(int chn, int codec, int maxf, int stop, int rp, SI *si, int tmo_
 /* ----------------------------------------------------- group / bind chain */
 static int g_osd;           /* OSD between FS and ENC */
 
+/* the FrameSource channel that feeds the encoder: ch1 (scaled), or ch0 with HSKIP_MAIN=1 (case hskip: a library whose scaled channel the
+ * driver does not serve, e.g. the T21 vendor libimp with the open tx-isp, codes the sensor-size channel) */
+static int enc_fs_ch(void) { return getenv("HSKIP_MAIN") ? 0 : CH_SUB; }
+
 static int grp_up(int with_osd, int first)
 {
-    IMPCell fs = { DEV_ID_FS, CH_SUB, 0 }, enc = { DEV_ID_ENC, GRP, 0 }, osd = { DEV_ID_OSD, GRP, 0 };
+    IMPCell fs = { DEV_ID_FS, enc_fs_ch(), 0 }, enc = { DEV_ID_ENC, GRP, 0 }, osd = { DEV_ID_OSD, GRP, 0 };
     int r, ok = 0;
 
     r = IMP_Encoder_CreateGroup(GRP);
@@ -283,7 +287,7 @@ static int grp_up(int with_osd, int first)
             QR0(IMP_OSD_CreateGroup, r, first, "group %d", GRP);
         }
         r = IMP_System_Bind(&fs, &osd);
-        QR0(IMP_System_Bind, r, first, "FS ch%d -> OSD group %d", CH_SUB, GRP);
+        QR0(IMP_System_Bind, r, first, "FS ch%d -> OSD group %d", enc_fs_ch(), GRP);
         if (r) return -1;
         r = IMP_System_Bind(&osd, &enc);
         QR0(IMP_System_Bind, r, 0, "OSD -> ENC group %d", GRP);
@@ -291,7 +295,7 @@ static int grp_up(int with_osd, int first)
         g_osd = 1;
     } else {
         r = IMP_System_Bind(&fs, &enc);
-        QR0(IMP_System_Bind, r, first, "FS ch%d -> ENC group %d", CH_SUB, GRP);
+        QR0(IMP_System_Bind, r, first, "FS ch%d -> ENC group %d", enc_fs_ch(), GRP);
         if (r) return -1;
     }
     NEED(IMP_System_GetBindbyDest) {
@@ -312,7 +316,7 @@ static int grp_up(int with_osd, int first)
 
 static void grp_down(int first)
 {
-    IMPCell fs = { DEV_ID_FS, CH_SUB, 0 }, enc = { DEV_ID_ENC, GRP, 0 }, osd = { DEV_ID_OSD, GRP, 0 };
+    IMPCell fs = { DEV_ID_FS, enc_fs_ch(), 0 }, enc = { DEV_ID_ENC, GRP, 0 }, osd = { DEV_ID_OSD, GRP, 0 };
     int r;
 
     if (g_osd) {
@@ -321,7 +325,7 @@ static void grp_down(int first)
         if (IMP_OSD_DestroyGroup) { r = IMP_OSD_DestroyGroup(GRP); QR0(IMP_OSD_DestroyGroup, r, first, "group %d", GRP); }
         g_osd = 0;
     } else {
-        r = IMP_System_UnBind(&fs, &enc); QR0(IMP_System_UnBind, r, first, "FS ch%d -> ENC group %d", CH_SUB, GRP);
+        r = IMP_System_UnBind(&fs, &enc); QR0(IMP_System_UnBind, r, first, "FS ch%d -> ENC group %d", enc_fs_ch(), GRP);
     }
     r = IMP_Encoder_DestroyGroup(GRP);
     QR0(IMP_Encoder_DestroyGroup, r, first, "group %d", GRP);
@@ -1531,7 +1535,8 @@ void t_enc(void)
  * SetChnHSkipBlackEnhance from the environment; every picture is logged as "pic <n> <bytes> <nal type:ref_idc ...>" and the
  * whole stream is dumped for the host (ffmpeg -bsf:v trace_headers shows frame_num, ref list modification, MMCO).
  *   HSKIP_TYPE (0..6, default 0)  HSKIP_M  HSKIP_N  HSKIP_SAME (maxSameSceneCnt)  HSKIP_SCENECUT  HSKIP_BLACK  HSKIP_REF (ChangeRef)
- *   HSKIP_SMART=1 (SMART rate control, HSKIP_BITRATE = maximum kbit/s)  HSKIP_MAXTYPE (maxHSkipType at CreateChn, default 6)  HSKIP_RT=1 (set through IMP_Encoder_SetChnHSkip after the first IDR
+ *   HSKIP_FLICKER=N (brightness jump at picture 3 and back at 13 of every N; HSKIP_FLICKPH shifts both, HSKIP_FLICKHI/LO are the two values, default 255/128)
+ *   HSKIP_MAIN=1 (the encoder reads FrameSource ch0 at the sensor size, ch1 is not set up)  HSKIP_SMART=1 (SMART rate control, HSKIP_BITRATE = maximum kbit/s)  HSKIP_MAXTYPE (maxHSkipType at CreateChn, default 6)  HSKIP_RT=1 (set through IMP_Encoder_SetChnHSkip after the first IDR
  *   instead of at CreateChn)  HSKIP_GOP (default 30)  HSKIP_FRAMES (default 240)  HSKIP_DUMP=<file>  HSKIP_BITRATE (kbit/s)
  * ------------------------------------------------------------------------------------------ */
 #if !defined(ENC_NEW) && HAS_IMP_Encoder_SetChnHSkip
@@ -1560,10 +1565,12 @@ int enc_hskip_run(void)
     char nals[96];
     unsigned long total = 0;
     int flick = hs_env("HSKIP_FLICKER", 0);
+    int fph = hs_env("HSKIP_FLICKPH", 0), fhi = hs_env("HSKIP_FLICKHI", 255), flo = hs_env("HSKIP_FLICKLO", 128);   /* phase (pictures) and the two brightness values of the flicker */
     int (*sbright)(unsigned char) = flick > 0 ? (int (*)(unsigned char))dlsym((void *)0, "IMP_ISP_Tuning_SetBrightness") : NULL;
 
     if (grp_up(0, 0) != 0) { gfree(a); return -1; }
     fill_attr(a, CODEC_H264, gop);
+    if (getenv("HSKIP_MAIN")) { a->encAttr.picWidth = g_sw; a->encAttr.picHeight = g_sh; }
     if (hs_env("HSKIP_BITRATE", 0)) a->rcAttr.attrRcMode.attrH264Cbr.outBitRate = hs_env("HSKIP_BITRATE", 0);
     if (hs_env("HSKIP_SMART", 0)) {                 /* HSKIP_SMART=1: SMART rate control (the OEM method 3), HSKIP_BITRATE = max kbit/s */
         IMPEncoderAttrH264Smart *sm = &a->rcAttr.attrRcMode.attrH264Smart;
@@ -1602,11 +1609,11 @@ int enc_hskip_run(void)
         int trunc = 0;
         size_t n;
 
-        if (flick > 0 && sbright && (k % flick == 3 || k % flick == 13)) {
+        if (flick > 0 && sbright && ((k + flick - fph % flick) % flick == 3 || (k + flick - fph % flick) % flick == 13)) {
             /* a scene change that is the same for both libraries (HSKIP_FLICKER=N, N > 13): the ISP brightness jumps to white at
              * picture 3 and back at picture 13 of every N; the change reaches the encoder about two pictures later, so the
              * large picture after the way back is picture 15 (a whole second at 15 fps, a base picture of the H1M types) */
-            sbright(k % flick == 3 ? 255 : 128);
+            sbright((k + flick - fph % flick) % flick == 3 ? fhi : flo);
         }
         if (IMP_Encoder_PollingStream(chn, 3000) != 0) { gfree(s); printf("hskip: poll timeout at picture %d\n", k); break; }
         if (IMP_Encoder_GetStream(chn, s, true) != 0) { gfree(s); printf("hskip: GetStream failed at picture %d\n", k); break; }

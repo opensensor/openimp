@@ -61,6 +61,8 @@ def pictures(path):
             cur['ltr'] = val
         elif name == 'no_output_of_prior_pics_flag':
             cur['noout'] = val
+        elif name == 'slice_qp_delta' and 'qpd' not in cur:
+            cur['qpd'] = val
     # collapse multi-slice pictures: a new picture starts at a new frame_num/IDR
     res = []
     for p in pics:
