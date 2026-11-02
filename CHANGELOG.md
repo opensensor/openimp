@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-03, review follow-up: matrix wording made exact, T20 demask ISP hand-over serialised
+
+- `SU_Base_SetWkupMode` (T41) `dev` -> `host`: the camera run wrote and read back the RTC registers directly with the values of modes 1 and 2; the OpenIMP function itself ran only in the host test (fake `open`/`ioctl`) and in QEMU (mode 0 refused). The reference text now says exactly that (no device run of the function, no wake-up shown). T41: 366/427 works.
+- The `n.a.` cells of `Encoder_Get/SetChnH264FrmUsedMode`, `Encoder_Get/SetChnRcAttr` (T10/T20/T21) and of `Encoder_Get/SetChnDemask`, `Get/SetChnH264Demask`, `Get/SetChnH264Denoise` (T21) now carry the evidence in the cell reference: `nm -D` of the real vendor libraries (T10/T20 3.12.0, T21 1.0.33) shows no such symbol; only the old 3.9.0 libimp exports them and no 3.9.0 binary was available to re-check. Cell states unchanged.
+- T20 `IMP_Encoder_SetChnDemask` and the per-picture demask step shared one ISP sharpness value without a common lock: a picture decided while the demask was on could set the override after a run-time disable had restored the application's value, leaving it stuck. Deciding the step and calling `IMP_ISP_Tuning_SetSharpness_internal` now happen under one mutex shared with the setter (lock order: demask mutex, channel lock). Compiles for T20; no new test (the race needs two threads against the real ISP call).
+
 ## 2026-11-02 (night), T41 `SU_Base_SetWkupMode`: RTC register-level proof, #80 closed
 
 - On the T41 camera the documented RTC write sequence (RTC clock gate cleared) writes and reads back RTCCR, RTCSR, RTCSAR and HWCR with the exact `SU_Base_SetWkupMode` requests (0xd2ad2d28/29). The counter does not tick and an alarm never fires: the board has no usable 32 kHz oscillator (hardware limit). API evidence only, no code change.

@@ -7016,7 +7016,8 @@
    "note": "T10/T20 3.12.0 (0x49160/0x492d8, strategy 0x40070, post-picture block of do_channel_process_h264e 0x41dd4): not a stored value: the vendor steps the ISP sharpness by 0x14 per H.264 picture between 0x80 and 0 from the QP the encoder gave the previous picture (above demaskThresd: down, with a hold of demaskCnt counts and a one-step hysteresis; else up), through IMP_ISP_Tuning_SetSharpness_internal (mode 1 override, mode 0 the application's SetSharpness value again); enable 1 -> 0 restores the application's value, enable at CreateChn ramps from 0, the measure starts as the FixQP value or the i264e default 30. OpenIMP does the same (src/demask, docs/T20_DEMASK.md). Proof: unicorn oracle of the vendor functions (50 scenarios, 1300 pictures, 0 differences), QEMU T10/T20, cameras: the per-picture VIDIOC_S_CTRL sharpness calls of the vendor library and of OpenIMP on the same camera equal the strategy fed with the stream's QPs (T20 vendor 7/7 and OpenIMP 7/7 scenarios, T10 vendor 7/7 and OpenIMP 7/7; vendor against OpenIMP directly: identical control sequences for the FixQP scenarios and the first CBR scenario, the low-threshold CBR scenario differs from picture 33 on with the rate controllers' QPs); streams decode clean (ffmpeg strict, VA-API) with a real picture, snapshot 200, 0 oopses.",
    "ref": {
     "T10": "apitest case demask 2026-11-02 .31 (vendor library and OpenIMP, 7 scenarios, ioctl shim; OpenIMP 7/7)",
-    "T20": "apitest case demask 2026-11-02 .107 (vendor library and OpenIMP, 7 scenarios + 3.9.0 names, ioctl shim; 7/7 EQUAL, 6 of 7 identical to the vendor per picture)"
+    "T20": "apitest case demask 2026-11-02 .107 (vendor library and OpenIMP, 7 scenarios + 3.9.0 names, ioctl shim; 7/7 EQUAL, 6 of 7 identical to the vendor per picture)",
+    "T21": "the symbol is not exported by the real vendor library: nm -D of libimp 1.0.33 shows no Get/SetChnDemask; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check"
    }
   },
   "Encoder_Get/SetChnDenoise": {
@@ -7175,7 +7176,8 @@
    "note": "T10/T20: exported by the older 3.9.0 libimp only (0x5d458/0x5d5e0 there, byte for byte the ChnDemask code with a 7-channel table, same {enable, isAutoMode, demaskCnt, demaskThresd} attribute); OpenIMP exports the names as aliases of Set/GetChnDemask (same function, nm shows one address). Device: apitest case demask with DEMASK_OLDNAME=1 on the T20 camera (run-time enable off/on through the 3.9.0 names, 36 sharpness controls equal to the strategy, read-back through GetChnH264Demask). The 3.9.0 CreateChn attribute layout is not provided (a 3.9.0 program still fails on the structures before it reaches these calls).",
    "ref": {
     "T10": "same function as Set/GetChnDemask (alias; the T10 ran the ChnDemask name)",
-    "T20": "apitest case demask DEMASK_OLDNAME=1 2026-11-02 .107 (36 controls equal, read-back ok)"
+    "T20": "apitest case demask DEMASK_OLDNAME=1 2026-11-02 .107 (36 controls equal, read-back ok)",
+    "T21": "the symbol is not exported by the real vendor library: nm -D of libimp 1.0.33 shows no Get/SetChnH264Demask; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check"
    }
   },
   "Encoder_Get/SetChnH264Denoise": {
@@ -7195,7 +7197,8 @@
    "note": "T10/T20: exported by the older 3.9.0 libimp only (0x5ddc8/0x5df74 there: i264e parameter 8 with the created enable kept, the same code as 3.12.0 Set/GetChnDenoise with the same {enable, dnType, dnIQp, dnPQp} attribute); OpenIMP exports the names as aliases of Set/GetChnDenoise (one function, nm shows one address), whose device evidence (apitest enc area on T10 and T20) therefore covers them. The 3.9.0 CreateChn attribute layout is not provided.",
    "ref": {
     "T10": "alias of Set/GetChnDenoise (enc area 2026-11-01 .31)",
-    "T20": "alias of Set/GetChnDenoise (enc area 2026-11-01 .107)"
+    "T20": "alias of Set/GetChnDenoise (enc area 2026-11-01 .107)",
+    "T21": "the symbol is not exported by the real vendor library: nm -D of libimp 1.0.33 shows no Get/SetChnH264Denoise; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check"
    }
   },
   "Encoder_Get/SetChnH264FrmUsedMode": {
@@ -7212,7 +7215,12 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20: not in the 3.12.0 libimp the cameras run (nm -D, 2026-11-01); only the 3.9.0 libimp exports it, with the IMPEncoderRcAttr/CHNAttr layout of that older SDK generation, which differs from the one OpenIMP implements (3.12.0 renamed H264Demask/Denoise/FrmUsedMode to ChnDemask/ChnDenoise/ChnFrmUsedMode and dropped the RcAttr pair); a 3.9.0 program fails on the structures before it reaches the call. Not exported by OpenIMP by design (tools/export-check lists follow 3.12.0)."
+   "note": "T10/T20: not in the 3.12.0 libimp the cameras run (nm -D, 2026-11-01); only the 3.9.0 libimp exports it, with the IMPEncoderRcAttr/CHNAttr layout of that older SDK generation, which differs from the one OpenIMP implements (3.12.0 renamed H264Demask/Denoise/FrmUsedMode to ChnDemask/ChnDenoise/ChnFrmUsedMode and dropped the RcAttr pair); a 3.9.0 program fails on the structures before it reaches the call. Not exported by OpenIMP by design (tools/export-check lists follow 3.12.0).",
+   "ref": {
+    "T10": "the symbol is not exported by the real vendor library: nm -D of libimp 3.12.0 shows no Get/SetChnH264FrmUsedMode; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check",
+    "T20": "the symbol is not exported by the real vendor library: nm -D of libimp 3.12.0 shows no Get/SetChnH264FrmUsedMode; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check",
+    "T21": "the symbol is not exported by the real vendor library: nm -D of libimp 1.0.33 shows no Get/SetChnH264FrmUsedMode; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check"
+   }
   },
   "Encoder_Get/SetChnHSkip": {
    "area": "Encoder",
@@ -7281,7 +7289,12 @@
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20: not in the 3.12.0 libimp the cameras run (nm -D, 2026-11-01); only the 3.9.0 libimp exports it, with the IMPEncoderRcAttr/CHNAttr layout of that older SDK generation, which differs from the one OpenIMP implements (3.12.0 renamed H264Demask/Denoise/FrmUsedMode to ChnDemask/ChnDenoise/ChnFrmUsedMode and dropped the RcAttr pair); a 3.9.0 program fails on the structures before it reaches the call. Not exported by OpenIMP by design (tools/export-check lists follow 3.12.0)."
+   "note": "T10/T20: not in the 3.12.0 libimp the cameras run (nm -D, 2026-11-01); only the 3.9.0 libimp exports it, with the IMPEncoderRcAttr/CHNAttr layout of that older SDK generation, which differs from the one OpenIMP implements (3.12.0 renamed H264Demask/Denoise/FrmUsedMode to ChnDemask/ChnDenoise/ChnFrmUsedMode and dropped the RcAttr pair); a 3.9.0 program fails on the structures before it reaches the call. Not exported by OpenIMP by design (tools/export-check lists follow 3.12.0).",
+   "ref": {
+    "T10": "the symbol is not exported by the real vendor library: nm -D of libimp 3.12.0 shows no Get/SetChnRcAttr; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check",
+    "T20": "the symbol is not exported by the real vendor library: nm -D of libimp 3.12.0 shows no Get/SetChnRcAttr; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check",
+    "T21": "the symbol is not exported by the real vendor library: nm -D of libimp 1.0.33 shows no Get/SetChnRcAttr; only the old 3.9.0 libimp exports it and no 3.9.0 binary was available to re-check"
+   }
   },
   "Encoder_Get/SetChnRoiAttr": {
    "area": "Encoder",
@@ -17456,14 +17469,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "dev"
+    "T41": "host"
    },
    "note": "T41: the board's neo-sysutils writes the mode into /sys/power/state (the kernel refuses it); the vendor libsysutils 1.2.5 opens /dev/rtc0 and sends ioctl 0x80045209 with {0, 0x2c, 0xd2ad2d28 (mode 1) / 0xd2ad2d29 (mode 2)}. OpenIMP's libimp.so now exports the vendor request (src/core/su_base_wkup.c, host test with fake open/ioctl; QEMU T41: mode 0 refused by libimp.so). T41 camera: the documented RTC write sequence works with the RTC clock gate cleared and read back correctly (RTCCR, RTCSR, RTCSAR, HWCR 0xd2ad2d28/29 = the vendor requests of modes 1/2), but the counter does not tick at 1 Hz and an armed alarm never fires: the board has no usable 32 kHz oscillator, so the wake-up itself cannot be shown here (board limit, not a driver gap)",
    "action": {
     "T41": "n.a."
    },
    "ref": {
-    "T41": "register-level device evidence (HWCR write/read-back with the RTC clock gate cleared; wake-up itself not demonstrable on this board: no 32 kHz clock); host test tests/core/su_base_wkup_test.c"
+    "T41": "host test (tests/core/su_base_wkup_test.c: the exact vendor request {0, 0x2c, 0xd2ad2d28/29} with a fake open/ioctl) and QEMU T41 (mode 0 refused by libimp.so). NOT proven on the camera: the function itself was not run there. Separate camera fact, by direct RTC register writes and not through this function: the documented write sequence (RTC clock gate cleared) reads back RTCCR, RTCSR, RTCSAR and HWCR with the values of modes 1/2; the counter does not tick and an alarm never fires (no usable 32 kHz clock), so neither the ioctl path on the device nor a wake-up is demonstrated."
    }
   },
   "SU_Base_Shutdown": {

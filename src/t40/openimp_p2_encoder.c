@@ -3350,6 +3350,14 @@ int IMP_Encoder_PollingStream(int channel, uint32_t timeout_ms)
 }
 
 #if defined(PLATFORM_T20)
+/* The ISP sharpness is one global value: deciding the next step (under the
+ * channel lock) and handing it to the ISP must not interleave with a run-time
+ * SetChnDemask that restores the application's sharpness, else a picture that
+ * was decided while the demask was on could set the override after the restore
+ * and leave it stuck (review 1103 L1).  Lock order: p2_demask_isp_lock, then the
+ * channel lock. */
+static pthread_mutex_t p2_demask_isp_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /* OEM do_channel_process_h264e after i264e_encode: with the demask enabled
  * the strategy runs again, the channel's sharpness word steps by 0x14
  * towards 0 (active) or 0x80 (idle) and goes to the ISP with
@@ -3362,6 +3370,7 @@ static void p2_demask_after_picture(P2EncoderChannel *ch, int channel)
     int call = 0, mode = 0, active = 0;
     uint32_t value = 0;
 
+    pthread_mutex_lock(&p2_demask_isp_lock);
     pthread_mutex_lock(&ch->lock);
     if (ch->demask.enable) {
         active = demask_after_picture(&ch->demask, &value, &mode);
@@ -3370,12 +3379,13 @@ static void p2_demask_after_picture(P2EncoderChannel *ch, int channel)
     (void)AL_Codec_Encode_GetPictureQp(ch->codec, &qp);
     demask_picture_qp(&ch->demask, qp);
     pthread_mutex_unlock(&ch->lock);
-    if (!call)
-        return;
-    if (ch->demask_logs++ < 16u || ch->demask_logs % 300u == 0u)
-        IMP_TRACE_LOG("Encoder", "ch %d demask: qp %d %s, sharpness 0x%02x (mode %d)",
-                      channel, qp, active ? "active" : "idle", (unsigned int)value, mode);
-    (void)IMP_ISP_Tuning_SetSharpness_internal(value, mode);
+    if (call) {
+        if (ch->demask_logs++ < 16u || ch->demask_logs % 300u == 0u)
+            IMP_TRACE_LOG("Encoder", "ch %d demask: qp %d %s, sharpness 0x%02x (mode %d)",
+                          channel, qp, active ? "active" : "idle", (unsigned int)value, mode);
+        (void)IMP_ISP_Tuning_SetSharpness_internal(value, mode);
+    }
+    pthread_mutex_unlock(&p2_demask_isp_lock);
 }
 #endif
 
@@ -6486,6 +6496,7 @@ int IMP_Encoder_SetChnDemask(int channel, const IMPEncoderAttrDemask *attr)
     if (!p2_valid_channel(channel) || !attr)
         return -1;
     EncoderInit();
+    pthread_mutex_lock(&p2_demask_isp_lock);
     pthread_mutex_lock(&p2_channels[channel].lock);
     restore = demask_set(&p2_channels[channel].demask, attr->enable, attr->isAutoMode,
                          attr->demaskCnt, attr->demaskThresd);
@@ -6493,6 +6504,7 @@ int IMP_Encoder_SetChnDemask(int channel, const IMPEncoderAttrDemask *attr)
     pthread_mutex_unlock(&p2_channels[channel].lock);
     if (restore)
         (void)IMP_ISP_Tuning_SetSharpness_internal(0x80u, 0);
+    pthread_mutex_unlock(&p2_demask_isp_lock);
     return 0;
 }
 
