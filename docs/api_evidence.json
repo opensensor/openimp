@@ -17379,10 +17379,11 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until the alarm fires); the vendor library code is the same one the T21/T23/T31 cells rate at audit level.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until the alarm fires); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T41 (issue #80): board limit, no RTC clock: the counter does not tick and an armed alarm never fires (no 32 kHz oscillator), so the blocking wait cannot return on this board.",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
-    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
+    "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)",
+    "T41": "board limit: no RTC clock (no 32 kHz oscillator; RTC registers write/read back, counter does not tick, alarm never fires)"
    }
   },
   "SU_Base_Raw2SUTime": {
@@ -17469,14 +17470,14 @@
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
-    "T41": "host"
+    "T41": "dev"
    },
-   "note": "T41: the board's neo-sysutils writes the mode into /sys/power/state (the kernel refuses it); the vendor libsysutils 1.2.5 opens /dev/rtc0 and sends ioctl 0x80045209 with {0, 0x2c, 0xd2ad2d28 (mode 1) / 0xd2ad2d29 (mode 2)}. OpenIMP's libimp.so now exports the vendor request (src/core/su_base_wkup.c, host test with fake open/ioctl; QEMU T41: mode 0 refused by libimp.so, modes 1/2 never sent: they arm an RTC wake-up). Camera run needed: ls -l /dev/rtc0, then mode 1 once with the result of the RTC driver",
+   "note": "T41: the board's neo-sysutils writes the mode into /sys/power/state (the kernel refuses it); the vendor libsysutils 1.2.5 opens /dev/rtc0 and sends ioctl 0x80045209 with {0, 0x2c, 0xd2ad2d28 (mode 1) / 0xd2ad2d29 (mode 2)}. OpenIMP's libimp.so now exports the vendor request (src/core/su_base_wkup.c, host test with fake open/ioctl; QEMU T41: mode 0 refused by libimp.so). T41 camera: the documented RTC write sequence works with the RTC clock gate cleared and read back correctly (RTCCR, RTCSR, RTCSAR, HWCR 0xd2ad2d28/29 = the vendor requests of modes 1/2), but the counter does not tick at 1 Hz and an armed alarm never fires: the board has no usable 32 kHz oscillator, so the wake-up itself cannot be shown here (board limit, not a driver gap)",
    "action": {
-    "T41": "implement"
+    "T41": "n.a."
    },
    "ref": {
-    "T41": "host test tests/core/su_base_wkup_test.c; QEMU T41 2026-10-31 mode 0 refusal"
+    "T41": "register-level device evidence (HWCR write/read-back with the RTC clock gate cleared; wake-up itself not demonstrable on this board: no 32 kHz clock); host test tests/core/su_base_wkup_test.c"
    }
   },
   "SU_Base_Shutdown": {

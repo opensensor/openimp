@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-02 (night), T41 `SU_Base_SetWkupMode`: RTC register-level proof, #80 closed
+
+- On the T41 camera the documented RTC write sequence (RTC clock gate cleared) writes and reads back RTCCR, RTCSR, RTCSAR and HWCR with the exact `SU_Base_SetWkupMode` requests (0xd2ad2d28/29). The counter does not tick and an alarm never fires: the board has no usable 32 kHz oscillator (hardware limit). API evidence only, no code change.
+
 ## 2026-11-02 (evening), T20: macroblock rate control on by default, FIXQP I pictures at QP - 3 (#191, #3, #5)
 
 - Why the first IDR was half the vendor's size: the OEM encoder runs the macroblock rate control by default (`i264e_param_default`), OpenIMP had it off. SMART at 200 kbit/s, 640x360, same camera: OEM IDR 3.5 kB with macroblock QPs 35..43, OpenIMP 1.6 kB flat at QP 45. With the table the first IDR has the OEM's macroblock QP range (min 35, mean 39.1, max 47 for both) and 91 % of its macroblock QPs equal (two OEM runs of the same scene agree in 82 %), and the second try is kept for the same pictures (OEM: all SBASE; OpenIMP before: 6 of 130 pictures kept the first try, after: 0). CPU at 1080p SMART: 2.4 s for 130 pictures, OEM library 2.3 s, without the table 0.2 s. `IMP_Encoder_SetMbRC` and `OPENIMP_T20_MBRC=0` switch it off. T10 is unchanged (no table in the OEM T10 either).
