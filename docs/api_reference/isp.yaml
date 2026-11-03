@@ -1164,8 +1164,13 @@ functions:
       enable: Pointer to `IMPISPTuningOpsMode`.
     returns: 0 on success; -4087 for NULL, -4084 for an input number of 2 or more; -1 when the driver refuses the value.
     notes: T41 only. Set sends the bypass ioctl of the ISP device (0x80085418) and remembers the value for the Get. Setting 0
-      (full ISP) works. Setting 1 (the real bypass) is refused by the open driver and the call returns -1, so the value is not
-      remembered and Get keeps returning 0 (issue 125). Without an open ISP device the value is only remembered.
+      (full ISP) works. Setting 1 (the real bypass, `IMPISP_TUNING_OPS_MODE_ENABLE` in the vendor raw sample) is refused by
+      the open driver by default and the call returns -1, so the value is not remembered and Get keeps returning 0. Optional
+      path (issue 125), with the driver loaded with `isp_bypass_graph=1` and the environment variable `OPENIMP_T41_BYPASS_GRAPH`
+      set, Set 1 routes frame channel 0 to the VIC MDMA and a `PIX_FMT_RAW` channel delivers RAW16 frames (T41 camera
+      with sc5336, 10 of 10 frames, 2880x1620, 9331200 bytes, 10-bit data MSB-aligned); Set 0 and a new channel give NV12 again
+      (25 of 25). The vendor 1.2.6 module and library hang the board in the same sequence (no vendor raw frame on that
+      board). Without an open ISP device the value is only remembered.
     soc: T41.
   ISP_Tuning_SetISPBypass:
     group: ldc

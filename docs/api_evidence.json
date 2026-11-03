@@ -1053,7 +1053,7 @@
     ]
    },
    "ref": {
-    "T41": "apitest ispbypass 2026-10-27 .34 (#125 branch, in next): Set 0 ret 0 (was -4095), Set 1 refused -1, Get stays 0, frames flow; real bypass needs the VIC MDMA path (#125)"
+    "T41": "apitest ispbypass 2026-10-27 .34 (#125 branch, in next): Set 0 ret 0 (was -4095), Set 1 refused -1, Get stays 0, frames flow; real bypass needs the VIC MDMA path (#125); 2026-11-03 T41 camera (open-tx-isp isp_bypass_graph=1 + OPENIMP_T41_BYPASS_GRAPH, module and library at run time, no flash, #125): vendor raw sample order, Set 1 ret 0, RAW16 channel 10/10 frames 2880x1620 9331200 bytes (10-bit MSB-aligned), Set 0 then NV12 25/25, 6 reload cycles, 0 oopses; the vendor 1.2.6 stack hangs the board after EnableChn of the raw channel (no vendor frame); default off"
    }
   },
   "ISP_Get/SetInternalChnAttr": {
