@@ -3,8 +3,9 @@
 # Do not weaken a threshold here without a decision of the maintainers.
 version: 1
 
-# SoCs the gates apply to (T30, T32 and T33 are not part of RC3 / Release 1)
-socs: [T10, T20, T21, T23, T31, T40, T41]
+# SoCs the gates apply to (T32 and T33 are not part of RC3 / Release 1; T30 joined RC3 on 2026-11-03, user decision:
+# the T30 lab camera exists now, every matrix cell must be verified on the device)
+socs: [T10, T20, T21, T23, T30, T31, T40, T41]
 
 # Fleet cameras by shorthand (".N" = last octet of the LAN address) -> SoC. Used by tools/status_soak.py.
 fleet:
@@ -16,6 +17,7 @@ fleet:
   ".28": T23
   ".30": T23
   ".124": T23
+  ".231": T30   # remote T30X lab camera (Jooan F2T): virtual shorthand, not a LAN octet (the camera is IPv6 only, via the router tunnel)
   ".21": T31
   ".25": T31
   ".26": T31
