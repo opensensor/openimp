@@ -1972,7 +1972,7 @@ int enc_transcfg_run(void) { return -1; }
  * "mode" (default 51) while a GOP uses more than level (default 3.0) times its budget; the picture QPs and sizes are compared
  * between the vendor library and OpenIMP on the host (tools/fisheye_mbqp.py).  Every picture is logged as "pic <n> <bytes>".
  *   RCTRIG_LEVEL (float; unset: SetChnRcTrigLevel is not called)  RCTRIG_MODE (new max QP, default 51)
- *   RCTRIG_BITRATE (kbit/s, default 20)  RCTRIG_MAXQP (default 40)  RCTRIG_MINQP (default 15)  RCTRIG_GOP (default 30)
+ *   RCTRIG_SMART=1 (SMART instead of CBR, RCTRIG_BITRATE = max kbit/s)  RCTRIG_BITRATE (kbit/s, default 20)  RCTRIG_MAXQP (default 40)  RCTRIG_MINQP (default 15)  RCTRIG_GOP (default 30)
  *   RCTRIG_FRAMES (default 120)  RCTRIG_AT (>=0: call SetChnRcTrigLevel before that picture instead of before the first one)
  *   RCTRIG_DUMP=<file>
  * ------------------------------------------------------------------------------------------ */
@@ -2011,6 +2011,14 @@ int enc_rctrig_run(void)
     a->rcAttr.attrRcMode.attrH264Cbr.outBitRate = br;
     a->rcAttr.attrRcMode.attrH264Cbr.maxQp = maxqp;
     a->rcAttr.attrRcMode.attrH264Cbr.minQp = minqp;
+    if ((e = getenv("RCTRIG_SMART")) && atoi(e)) {      /* RCTRIG_SMART=1: SMART (OEM method 3), RCTRIG_BITRATE = max kbit/s */
+        IMPEncoderAttrH264Smart *sm = &a->rcAttr.attrRcMode.attrH264Smart;
+
+        memset(&a->rcAttr.attrRcMode, 0, sizeof(a->rcAttr.attrRcMode));
+        a->rcAttr.attrRcMode.rcMode = ENC_RC_MODE_SMART;
+        sm->maxQp = maxqp; sm->minQp = minqp; sm->staticTime = 2; sm->maxBitRate = br;
+        sm->iBiasLvl = 0; sm->changePos = 80; sm->qualityLvl = 2; sm->frmQPStep = 3; sm->gopQPStep = 15; sm->gopRelation = false;
+    }
     r = IMP_Encoder_CreateChn(chn, a);
     printf("rctrig: CreateChn %d (bitrate %d maxqp %d minqp %d gop %d frames %d)\n", r, br, maxqp, minqp, gop, frames);
     if (r) { gfree(a); grp_down(0); return -1; }

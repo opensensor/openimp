@@ -385,6 +385,12 @@ Environment:
   (the price of meeting the rate).  `tests/rc_t20`: OEM vectors with it
   off, and a static scene (CBR 2.43 -> 1.16 x, VBR 2.01 -> 1.09 x).  The
   start log line shows `iaware` when it is on.
+  Camera A/B vs the OEM library 3.12.0 (T20, night scene, 1080p15, GOP 30,
+  apitest `rctrig`, #191): CBR 20 kbit/s OEM 58-62 kbit/s (mean QP 24.1),
+  OpenIMP 24.3 (QP 34.0); with `OPENIMP_T20_RC_IAWARE=0` 57.3 (QP 24.8), i.e.
+  the whole CBR difference is this extra.  SMART 20/200/1000 kbit/s (extra
+  off): OEM 124-129 / 156-162 / 579-588, OpenIMP 125 / 148 / 619 kbit/s, mean
+  QP 20.7-21.4 vs 20.7-21.1 (15.4-15.5 at 1000), first IDR 2.1-2.2 kB both.
 - `OPENIMP_T10_RC_SUPERFRM` (with the T10 OEM controller): an OpenIMP extra
   (`RcT10Params.superfrm_bits`), not OEM behaviour, **on by default**
   whenever the T10 OEM controller runs: the super-frame thresholds are
