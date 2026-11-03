@@ -1335,6 +1335,45 @@ static void test_ivs_only_stock_dq(void)
     CHECK(IMP_FrameSource_DestroyChn(0) == 0, "ivs only: destroy");
     check_clean("ivs only");
 }
+
+static void test_ivs_only_stock_dq_delay(void)
+{
+    IMPFSChnAttr a = attr_for(640, 360, 2);
+    void *frame = NULL;
+    unsigned int at_start, waited;
+
+    fake_stock_dq = 1;
+    fake_frame_budget = -1;
+    __atomic_store_n(&ivs_hook_frames, 0, __ATOMIC_RELAXED);
+    pthread_t thread;
+
+    CHECK(IMP_FrameSource_CreateChn(0, &a) == 0, "ivs only delay: create");
+    CHECK(IMP_FrameSource_SetMaxDelay(0, 3) == 0 && IMP_FrameSource_SetDelay(0, 2) == 0, "ivs only delay: delay");
+    CHECK(IMP_FrameSource_EnableChn(0) == 0, "ivs only delay: enable");
+    /* a reader (the encoder of an earlier test) pulls for a moment and
+     * leaves: the pull window (1 s) is open, so the next frames wait for
+     * a reader in the ready queue */
+    __atomic_store_n(&puller_stop, 0, __ATOMIC_RELAXED);
+    pthread_create(&thread, NULL, puller, NULL);
+    sleep_ms(100);
+    __atomic_store_n(&puller_stop, 1, __ATOMIC_RELAXED);
+    pthread_join(thread, NULL);
+    (void)VBMGetFrame(0, &frame);
+    sleep_ms(300);
+    at_start = __atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED);
+    CHECK(at_start >= 1, "ivs only delay: no frame at all");
+    for (waited = 0; waited < 3500 &&
+         __atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED) < at_start + 10;
+         waited += 10)
+        sleep_ms(10);
+    CHECK(__atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED) >= at_start + 10,
+          "ivs only delay: %u frames after the pull window (capture asleep in DQBUF)",
+          __atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED));
+    fake_stock_dq = 0;                  /* wakes nothing: the worker has a buffer by now */
+    CHECK(IMP_FrameSource_DisableChn(0) == 0, "ivs only delay: disable");
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "ivs only delay: destroy");
+    check_clean("ivs only delay");
+}
 #endif
 
 int main(void)
@@ -1376,6 +1415,7 @@ int main(void)
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T20)
     RUN(ivs_only_stock_dq);
+    RUN(ivs_only_stock_dq_delay);
 #endif
     if (failures) {
         fprintf(report, "fs_lifecycle_test: %d failure(s)\n", failures);

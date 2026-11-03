@@ -251,6 +251,18 @@ static int ca_getp(IMPIVSInterface *inf, void *p) { (void)inf; memcpy(p, g_ca_pa
 static int ca_setp(IMPIVSInterface *inf, void *p) { (void)inf; memcpy(g_ca_param, p, sizeof(g_ca_param)); return 0; }
 static int ca_flush(IMPIVSInterface *inf) { (void)inf; return 0; }
 
+extern int OpenIMP_FrameSource_DebugBuffers(int chn, int out[4]) __attribute__((weak));
+static void ivs_diag(const char *when)
+{
+    int d[4] = { -1, -1, -1, -1 };
+
+    if (!getenv("APITEST_IVS_DIAG") || !OpenIMP_FrameSource_DebugBuffers) return;
+    if (OpenIMP_FrameSource_DebugBuffers(CH_SUB, d) == 0)
+        rep(LBL("IVS diag"), 0, V_PASS, "%s: ch%d pool %d frames, ready queue %d, in userspace %d, last pull %d ms ago", when, CH_SUB, d[0], d[1], d[2], d[3]);
+    else
+        rep(LBL("IVS diag"), 0, V_PASS, "%s: ch%d has no pool", when, CH_SUB);
+}
+
 void t_ivs(void)
 {
     int r, o0 = 0, o1 = 0, i, got;
@@ -258,6 +270,11 @@ void t_ivs(void)
 
     rep_area("ivs");
     if (!IMP_IVS_CreateGroup) { rep_na(FN(IMP_IVS_CreateGroup)); return; }
+    /* T30: `enc,ivs` in one process failed the IVS cases while `ivs` alone passed (camera b10/b11).  APITEST_IVS_SETTLE=1 waits
+     * until the FrameSource pull window (1 s since the encoder's last pull) is over; APITEST_IVS_DIAG=1 prints the pool of ch1
+     * (frames, ready queue, in userspace, ms since the last pull) before and after the result loop. */
+    if (getenv("APITEST_IVS_SETTLE")) usleep(1500000);
+    ivs_diag("ivs start");
     r = IMP_IVS_CreateGroup(0);
     RET0(IMP_IVS_CreateGroup, r, "group 0");
     if (r) return;
@@ -300,6 +317,7 @@ void t_ivs(void)
                         IMP_IVS_ReleaseResult(0, *pres);
                         got++;
                     }
+                    ivs_diag("after result loop");
                     rep(LBL("IVS move: results keep coming"), 0, got == 8 ? V_PASS : V_FAIL, "%d of 8 further results", got);
                     gfree(pres);
                 }

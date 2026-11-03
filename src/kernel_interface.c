@@ -1970,6 +1970,32 @@ int VBMBuffersInDriver(int chn)
     pthread_mutex_unlock(&pool->queue_mutex);
     return n;
 }
+
+/* Diagnostics for the apitest (T30 ivs after enc): out[0] frames of the
+ * pool, out[1] in the ready queue, out[2] in userspace (dequeued, not
+ * returned: ready queue, delay FIFO, readers), out[3] msec since the last
+ * pull. 0, or -1 without a pool. */
+int OpenIMP_FrameSource_DebugBuffers(int chn, int out[4])
+{
+    VBMPool *pool;
+    int i, n = 0;
+
+    if (chn < 0 || chn >= MAX_VBM_POOLS || !out)
+        return -1;
+    pool = vbm_instance[chn];
+    if (!pool || !pool->buf_in_userspace)
+        return -1;
+    pthread_mutex_lock(&pool->queue_mutex);
+    for (i = 0; i < pool->frame_count; i++)
+        n += pool->buf_in_userspace[i] != 0;
+    out[0] = pool->frame_count;
+    out[1] = pool->queue_count;
+    pthread_mutex_unlock(&pool->queue_mutex);
+    out[2] = n;
+    out[3] = (int)(vbm_now_ms() -
+                   __atomic_load_n(&vbm_last_pull_ms[chn], __ATOMIC_RELAXED));
+    return 0;
+}
 #endif
 
 /* Return every frame still waiting in chn's ready queue to the driver while
