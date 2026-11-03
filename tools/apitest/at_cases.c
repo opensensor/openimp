@@ -4297,6 +4297,71 @@ static void cs_sensorattr_t40(void)
     }
 }
 
+
+/* ctmove_t40 (open-tx-isp #85, CT follow-up through the checked C chain): forced colour-temperature moves.  8 rounds of
+ * SetAwbAttr with a frozen CT of 3000 K, a frozen CT of 6500 K and the original (auto) attribute, 24 frames of FS ch1 each.
+ * Every CT event re-interpolates CCM / LSC / BCSH (and CLM where the bank runs it); the LUT writes follow the vendor frame
+ * cadence.  A LUT written half-way or out of step with the frame shows as a luma jump: the mean luma of consecutive frames
+ * must not step by more than CTM_MAX_STEP at a switch, no frame may be missing, the original attribute is restored.
+ * Explicit case only (APITEST_CASES=ctmove_t40, about 40 s). */
+#define CTM_ROUNDS 8
+#define CTM_FRAMES 24
+#define CTM_MAX_STEP 2.0
+static double ctm_luma(void)      /* one GetFrame of ch1, mean luma (every 53rd pixel), -1 = no frame */
+{
+    IMPFrameInfo *fr = NULL;
+    const unsigned char *y;
+    long i, n = 0, tot;
+    double s = 0;
+
+    if (IMP_FrameSource_GetFrame(1, &fr) < 0 || !fr) return -1;
+    y = (const unsigned char *)(uintptr_t)fr->virAddr; tot = (long)fr->width * fr->height;
+    if (y && tot > 0) for (i = 0; i < tot; i += 53) { s += y[i]; n++; }
+    IMP_FrameSource_ReleaseFrame(1, fr);
+    return n ? s / n : -1;
+}
+static void cs_ctmove_t40(void)
+{
+    NEED(IMP_ISP_Tuning_SetAwbAttr) NEED(IMP_ISP_Tuning_GetAwbAttr) NEED(IMP_FrameSource_GetFrame) {
+        static const unsigned cts[2] = { 3000, 6500 };
+        IMPISPWBAttr o, s, g;
+        double lmin = 1e9, lmax = -1, step = 0, sw_step = 0, prev = -1;
+        int r = 0, rr, round, ph, f, frames = 0, missing = 0;
+
+        memset(&o, 0, sizeof(o));
+        r |= IMP_ISP_Tuning_GetAwbAttr(IMPVI_MAIN, &o);
+        fprintf(stderr, "[T] ctmove start: mode %d ct %u frz %d\n", (int)o.mode, o.ct, (int)o.awb_frz);
+        for (round = 0; round < CTM_ROUNDS; round++)
+            for (ph = 0; ph < 3; ph++) {
+                s = o;
+                if (ph < 2) { s.awb_frz = IMPISP_TUNING_OPS_MODE_ENABLE; s.ct = cts[ph]; }
+                r |= IMP_ISP_Tuning_SetAwbAttr(IMPVI_MAIN, &s);
+                for (f = 0; f < CTM_FRAMES; f++) {
+                    double l = ctm_luma();
+
+                    if (l < 0) { missing++; continue; }
+                    frames++;
+                    if (l < lmin) lmin = l;
+                    if (l > lmax) lmax = l;
+                    if (prev >= 0) {
+                        double d = dabs(l - prev);
+                        if (d > step) step = d;
+                        if (f == 0 && d > sw_step) sw_step = d;   /* first frame after the switch */
+                    }
+                    prev = l;
+                }
+                memset(&g, 0, sizeof(g));
+                rr = IMP_ISP_Tuning_GetAwbAttr(IMPVI_MAIN, &g); r |= rr;
+                if (round == 0)
+                    fprintf(stderr, "[T] ctmove phase %d: set ct %u -> read ct %u mode %d luma %.1f\n", ph, ph < 2 ? cts[ph] : o.ct, g.ct, (int)g.mode, prev);
+            }
+        r |= IMP_ISP_Tuning_SetAwbAttr(IMPVI_MAIN, &o);
+        rep(LBL("ctmove_t40"), r, (!r && !missing && frames && sw_step <= CTM_MAX_STEP && flow()) ? V_PASS : V_FAIL,
+            "rt: 8 rounds of frozen CT 3000/6500/auto: %d frames, luma %.1f..%.1f, max frame step %.2f, max step at a switch %.2f, missing frames %d; original WB attr restored, frames flow",
+            frames, lmin, lmax, step, sw_step, missing);
+    }
+}
+
 #endif /* APITEST_T40 */
 
 /* T40 and T41 (same vendor protocol): case customalgo_t40 / customalgo_t41 */
@@ -4548,6 +4613,7 @@ void algo_post_t40(void) {}
 #if !defined(APITEST_T40)
 static void cs_t140c(void) {}
 static void cs_awbctstart_t40(void) {}
+static void cs_ctmove_t40(void) {}
 static void cs_framedrop_t40(void) {}
 static void cs_ratiohang_t40(void) {}
 static void cs_sensorattr_t40(void) {}
@@ -5268,7 +5334,7 @@ static void cs_decoder_t2x(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5394,6 +5460,7 @@ void t_cases(void)
     if (getenv("APITEST_CASES") && cs_on("framedrop_t40")) cs_framedrop_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("ratiohang_t40")) cs_ratiohang_t40(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("awbctstart_t40")) cs_awbctstart_t40(); wdog("cases", 60);
+    if (getenv("APITEST_CASES") && cs_on("ctmove_t40")) cs_ctmove_t40(); wdog("cases", 120);
     if (getenv("APITEST_CASES") && cs_on("tisp2open_t40")) cs_tisp2open_t40(); wdog("cases", 60);
     if (cs_on("sensorattr_t40")) cs_sensorattr_t40(); wdog("cases", 30);
     if (cs_on("emu")) { cs_emu(); wdog("cases", 30); }
