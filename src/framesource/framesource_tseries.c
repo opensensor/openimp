@@ -763,6 +763,11 @@ typedef struct FsChnCtx {
 
 static FsChnCtx g_fs_ctx[FS_MAX_CHANNELS];
 static pthread_mutex_t g_fs_lock = PTHREAD_MUTEX_INITIALIZER;
+/* Who holds g_fs_lock (function name, for a stall report by OpenIMP_FS_DebugHolder). */
+static const char *volatile g_fs_lock_who;
+#define FS_LOCK() do { pthread_mutex_lock(&g_fs_lock); g_fs_lock_who = __func__; } while (0)
+#define FS_UNLOCK() do { g_fs_lock_who = NULL; pthread_mutex_unlock(&g_fs_lock); } while (0)
+#define FS_TRYLOCK() (pthread_mutex_trylock(&g_fs_lock) == 0 && (g_fs_lock_who = __func__, 1))
 /* Flags shared between the API threads and the pooling worker, accessed
  * with FS_FLAG_LOAD/FS_FLAG_STORE (relaxed atomics: plain word loads and
  * stores on MIPS; ordering comes from g_fs_lock and pthread_join). */
@@ -1172,12 +1177,12 @@ static void *frame_pooling_thread(void *arg)
                  * after the join, so taking it here (never waiting for it)
                  * keeps any QBUF from racing the STREAMOFF/join, and
                  * running is rechecked under it. */
-                if (pthread_mutex_trylock(&g_fs_lock) == 0) {
+                if (FS_TRYLOCK()) {
                     if (FS_FLAG_LOAD(ctx->running) && fs_chan_get_state(chn) == 2) {
                         FS_STEP(chn, FS_STEP_IDLE_RECYCLE);
                         VBMRecycleIdleFrames(chn);
                     }
-                    pthread_mutex_unlock(&g_fs_lock);
+                    FS_UNLOCK();
                 }
 #endif
                 FS_STEP(chn, FS_STEP_IDLE_SLEEP);
@@ -1224,13 +1229,13 @@ static void *frame_pooling_thread(void *arg)
                      * pulled).  Without a buffer in the driver, hand idle
                      * frames back first and dequeue only after that. */
                     if (VBMBuffersInDriver(chn) == 0) {
-                        if (pthread_mutex_trylock(&g_fs_lock) == 0) {
+                        if (FS_TRYLOCK()) {
                             if (FS_FLAG_LOAD(ctx->running) &&
                                 fs_chan_get_state(chn) == 2) {
                                 FS_STEP(chn, FS_STEP_IDLE_RECYCLE);
                                 VBMRecycleIdleFrames(chn);
                             }
-                            pthread_mutex_unlock(&g_fs_lock);
+                            FS_UNLOCK();
                         }
                         if (VBMBuffersInDriver(chn) == 0) {
                             FS_STEP(chn, FS_STEP_DQ_EMPTY_SLEEP);
@@ -1514,10 +1519,10 @@ int IMP_FrameSource_SetChnAttr(int chnNum, IMPFSChnAttr *chn_attr)
     }
 #endif
     chn_attr = &fixed;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     memcpy(fs_channel_base(chnNum) + 0x20, chn_attr, sizeof(IMPFSChnAttr));
     memcpy(&g_fs_ctx[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -1681,11 +1686,11 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
          * fd under g_fs_lock, or the ioctl can land on a closed (or already
          * reused) descriptor. */
 #if !defined(PLATFORM_T20)
-        pthread_mutex_lock(&g_fs_lock);
+        FS_LOCK();
         if (fs_chan_get_state(chnNum) == 2 && g_fs_ctx[chnNum].fd >= 0) {
             fs_set_depth(g_fs_ctx[chnNum].fd, depth);
         }
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
 #endif
         /* T20: 0x800456c5 is VIDIOC_DEFAULT_CMD_SET_BANKS (the DMA bank
          * count of the next STREAMON), not a frame depth; libimp 3.12.0's
@@ -1766,7 +1771,7 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
         return -1;
     }
 
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     chan = fs_channel_base(chnNum);
 
     if (*(int32_t *)(chan + 0x1c) == 0) {
@@ -1839,7 +1844,7 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 
     memcpy(&g_fs_ctx[chnNum].attr, chn_attr, sizeof(IMPFSChnAttr));
     g_fs_ctx[chnNum].created = 1;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -1866,7 +1871,7 @@ int IMP_FrameSource_DestroyChn(int chnNum)
     }
     if (gFrameSource == NULL) return 0;
 
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
 
     if (fs_chan_get_state(chnNum) == 2) {
         imp_log_fun(6, IMP_Log_Get_Option(), 2, "Framesource",
@@ -1874,13 +1879,13 @@ int IMP_FrameSource_DestroyChn(int chnNum)
             0x622, tag,
             "%s(): channel %d is busy, please disable it firstly\n",
             tag, chnNum);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     if (fs_chan_get_state(chnNum) == 0) {
         /* vendor: a channel that was never created (or is already
          * destroyed) is a successful no-op */
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return 0;
     }
 
@@ -1897,7 +1902,7 @@ int IMP_FrameSource_DestroyChn(int chnNum)
 #if defined(FS_SW_ROTATE)
     fs_rotate_release(chnNum);
 #endif
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -1928,9 +1933,9 @@ int IMP_FrameSource_SetMaxDelay(int chnNum, int max_delay)
                         chnNum, max_delay, FS_MAX_DELAY_VBM);
         return -1;
     }
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     if (fs_chan_get_state(chnNum) != 1) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         IMP_LOG_LIMITED(LOG_ERR, "Framesource",
                         "SetMaxDelay(%d): only between CreateChn and EnableChn",
                         chnNum);
@@ -1939,20 +1944,20 @@ int IMP_FrameSource_SetMaxDelay(int chnNum, int max_delay)
     g_fs_ctx[chnNum].max_delay = max_delay;
     if (g_fs_ctx[chnNum].delay > max_delay)
         g_fs_ctx[chnNum].delay = max_delay;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
 int IMP_FrameSource_GetMaxDelay(int chnNum, int *max_delay)
 {
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || !max_delay) return -1;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     if (fs_chan_get_state(chnNum) == 0) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     *max_delay = g_fs_ctx[chnNum].max_delay;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -1962,10 +1967,10 @@ int IMP_FrameSource_SetDelay(int chnNum, int delay)
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS) return -1;
     if (delay < 0 || delay > FS_MAX_DELAY_LIBIMP) return -1;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     state = fs_chan_get_state(chnNum);
     if (state == 0 || delay > g_fs_ctx[chnNum].max_delay) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         IMP_LOG_LIMITED(LOG_ERR, "Framesource",
                         "SetDelay(%d): %d frames needs a created channel and "
                         "SetMaxDelay >= it (max %d)", chnNum, delay,
@@ -1974,24 +1979,24 @@ int IMP_FrameSource_SetDelay(int chnNum, int delay)
     }
     if (state == 2 && g_fs_ctx[chnNum].max_delay > 0 &&
         VBMDelaySetDelay(chnNum, delay) != 0) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     g_fs_ctx[chnNum].delay = delay;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
 int IMP_FrameSource_GetDelay(int chnNum, int *delay)
 {
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || !delay) return -1;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     if (fs_chan_get_state(chnNum) == 0) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     *delay = g_fs_ctx[chnNum].delay;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -2004,9 +2009,9 @@ int IMP_FrameSource_SetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr)
     int state;
 
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || attr == NULL) return -1;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     state = fs_chan_get_state(chnNum);
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     fs_trace("libimp/FS: SetChnFifoAttr ch=%d state=%d maxdepth=%d type=%d\n",
              chnNum, state, attr->maxdepth, (int)attr->type);
     if (state != 1 && state != 2)
@@ -2022,34 +2027,34 @@ int IMP_FrameSource_SetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr)
     if (attr->maxdepth <= 0) {
         if (attr->maxdepth < 0)
             return -1;
-        pthread_mutex_lock(&g_fs_lock);
+        FS_LOCK();
         if (state == 1) {
             g_fs_ctx[chnNum].max_delay = 0;
             g_fs_ctx[chnNum].delay = 0;
         }
         g_fs_ctx[chnNum].fifo = *attr;
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return 0;
     }
     if (IMP_FrameSource_SetMaxDelay(chnNum, attr->maxdepth) != 0)
         return -1;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     g_fs_ctx[chnNum].delay = g_fs_ctx[chnNum].max_delay;
     g_fs_ctx[chnNum].fifo = *attr;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
 int IMP_FrameSource_GetChnFifoAttr(int chnNum, IMPFSChnFifoAttr *attr)
 {
     if (chnNum < 0 || chnNum >= FS_MAX_CHANNELS || attr == NULL) return -1;
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     if (fs_chan_get_state(chnNum) == 0) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     *attr = g_fs_ctx[chnNum].fifo;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -2170,13 +2175,13 @@ int IMP_FrameSource_EnableChn(int chnNum)
     fs_bind_trace("libimp/FSB: EnableChn enter ch=%d gFrameSource=%p ra=%p\n",
                   chnNum, gFrameSource, fs_retaddr());
 
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     if (fs_chan_get_state(chnNum) == 2) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return 0;
     }
     if (fs_chan_get_state(chnNum) != 1) {
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         IMP_LOG_LIMITED(LOG_ERR, "Framesource",
                         "EnableChn(%d): channel was not created "
                         "(CreateChn first)", chnNum);
@@ -2196,7 +2201,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         ctx->fd = fs_open_device(chnNum);
         if (ctx->fd < 0) {
             fs_trace("libimp/FS: enable open-fail ch=%d\n", chnNum);
-            pthread_mutex_unlock(&g_fs_lock);
+            FS_UNLOCK();
             IMP_LOG_LIMITED(LOG_ERR, "Framesource",
                             "EnableChn(%d): cannot open the frame device "
                             "(ISP driver not loaded or sensor not enabled?)",
@@ -2226,7 +2231,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         fs_trace("libimp/FS: enable set-format-fail ch=%d fd=%d\n", chnNum, ctx->fd);
         IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): set format failed", chnNum);
         fs_close_chn_fd(chnNum, ctx);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     fs_trace("libimp/FS: enable set-format-ok ch=%d fd=%d sizeimage=%d\n",
@@ -2252,7 +2257,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
     delay_max = ctx->max_delay;
     if (delay_max > 0 && vbm_count + delay_max > VBM_DELAY_MAX_FRAMES) {
         fs_close_chn_fd(chnNum, ctx);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         IMP_LOG_LIMITED(LOG_ERR, "Framesource",
                         "EnableChn(%d): nrVBs %d + maxdelay %d exceed %d buffers",
                         chnNum, vbm_count, delay_max, VBM_DELAY_MAX_FRAMES);
@@ -2266,7 +2271,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         fs_trace("libimp/FS: enable VBMCreatePool-fail ch=%d\n", chnNum);
         IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot create the frame pool (rmem exhausted?)", chnNum);
         fs_close_chn_fd(chnNum, ctx);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
 
@@ -2274,7 +2279,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
                           delay_max > 0 ? ctx->delay : 0) != 0) {
         VBMDestroyPool(chnNum);
         fs_close_chn_fd(chnNum, ctx);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
 
@@ -2297,7 +2302,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot set the buffer count", chnNum);
         VBMDestroyPool(chnNum);
         fs_close_chn_fd(chnNum, ctx);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     fs_trace("libimp/FS: enable set-bufcnt-ok ch=%d req=%d got=%d\n",
@@ -2324,7 +2329,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
                             chnNum, banks);
             VBMDestroyPool(chnNum);
             fs_close_chn_fd(chnNum, ctx);
-            pthread_mutex_unlock(&g_fs_lock);
+            FS_UNLOCK();
             return -1;
         }
     }
@@ -2347,7 +2352,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
             fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
             FS_FLAG_STORE(ctx->running, 0);
-            pthread_mutex_unlock(&g_fs_lock);
+            FS_UNLOCK();
             return -1;
         }
         fs_trace("libimp/FS: enable set-banks-ok ch=%d fd=%d banks=%d depth=%d\n",
@@ -2361,7 +2366,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         IMP_LOG_LIMITED(LOG_ERR, "Framesource", "EnableChn(%d): cannot queue the frame buffers", chnNum);
         fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     initial_queued_ok = queued_ok;
@@ -2386,7 +2391,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
             fs_close_chn_fd(chnNum, ctx);
             VBMDestroyPool(chnNum);
             fs_chan_set_state(chnNum, 1);
-            pthread_mutex_unlock(&g_fs_lock);
+            FS_UNLOCK();
             return -1;
         }
         fs_trace("libimp/FS: enable pthread-create-ok ch=%d tid=%p arg=%p\n",
@@ -2411,7 +2416,7 @@ int IMP_FrameSource_EnableChn(int chnNum)
         fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
         fs_chan_set_state(chnNum, 1);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
     fs_trace("libimp/FS: enable stream-on-ok ch=%d fd=%d\n", chnNum, ctx->fd);
@@ -2472,13 +2477,13 @@ int IMP_FrameSource_EnableChn(int chnNum)
         fs_close_chn_fd(chnNum, ctx);
         VBMDestroyPool(chnNum);
         fs_chan_set_state(chnNum, 1);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return -1;
     }
 
     fs_trace("libimp/FS: enable done ch=%d state=%d fd=%d\n",
              chnNum, fs_chan_get_state(chnNum), ctx->fd);
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     DMA_RmemStreamStarted();
     return 0;
 }
@@ -2588,6 +2593,11 @@ static void framesource_dtor_stream_off(void)
 /* Debug word for a watchdog (async-signal-safe, no locks): per channel 0..3
  * a byte, the DisableChn stage in the low nibble and the pooling worker's
  * last step (T23/T31, else 0) in the high nibble. */
+const char *OpenIMP_FS_DebugHolder(void)
+{
+    return g_fs_lock_who;
+}
+
 unsigned int OpenIMP_FS_DebugState(void)
 {
     unsigned int w = 0;
@@ -2620,11 +2630,11 @@ int IMP_FrameSource_DisableChn(int chnNum)
     }
 
     FS_DSTAGE(chnNum, FS_DSTAGE_LOCK);
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     ctx = &g_fs_ctx[chnNum];
     if (fs_chan_get_state(chnNum) != 2) {
         FS_DSTAGE(chnNum, FS_DSTAGE_IDLE);
-        pthread_mutex_unlock(&g_fs_lock);
+        FS_UNLOCK();
         return 0;
     }
 
@@ -2747,7 +2757,7 @@ int IMP_FrameSource_DisableChn(int chnNum)
 
     fs_chan_set_state(chnNum, 1);
     FS_DSTAGE(chnNum, FS_DSTAGE_IDLE);
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 
@@ -2757,10 +2767,10 @@ int IMP_FrameSource_SetSource(int extchnNum, int sourcechnNum)
     if (sourcechnNum < 0 || sourcechnNum >= 3) return -1;
     if (gFrameSource == NULL) return -1;
 
-    pthread_mutex_lock(&g_fs_lock);
+    FS_LOCK();
     *(int32_t *)(fs_channel_base(extchnNum) + 0x240) = sourcechnNum;
     g_fs_ctx[extchnNum].source_chn = sourcechnNum;
-    pthread_mutex_unlock(&g_fs_lock);
+    FS_UNLOCK();
     return 0;
 }
 

@@ -200,6 +200,7 @@ static void jclose(void)
 /* OpenIMP only (issue #198): where a FrameSource stop is, one byte per channel
  * (low nibble DisableChn stage, high nibble pooling worker step). */
 extern unsigned int OpenIMP_FS_DebugState(void) __attribute__((weak));
+extern const char *OpenIMP_FS_DebugHolder(void) __attribute__((weak));
 
 static void on_alarm(int sig)
 {
@@ -219,6 +220,14 @@ static void on_alarm(int sig)
         for (i = 7; i >= 0; i--) st[n++] = hx[(w >> (4 * i)) & 0xf];
         st[n++] = '\n';
         if (write(1, st, (size_t)n) < 0) _exit(3);
+    }
+    if (OpenIMP_FS_DebugHolder) {
+        const char *h = OpenIMP_FS_DebugHolder();
+
+        if (write(1, "[E] fs lock holder: ", 20) < 0) _exit(3);
+        if (h && write(1, h, strlen(h)) < 0) _exit(3);
+        if (!h && write(1, "-", 1) < 0) _exit(3);
+        if (write(1, "\n", 1) < 0) _exit(3);
     }
     if (g_jfd >= 0 && write(g_jfd, "\n],\"watchdog\":true}\n", 19) < 0) _exit(3);
     _exit(3);
