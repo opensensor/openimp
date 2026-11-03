@@ -2751,7 +2751,7 @@
   {
    "number": 174,
    "title": "[T30] open-tx-isp: IMP_ISP_GetSensorRegister oopses the driver (NULL dereference)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/174",
    "labels": [
     "area:Driver",
@@ -2768,7 +2768,7 @@
   {
    "number": 175,
    "title": "[T30] open-tx-isp: fatal oops in the ISP IRQ path on start of the second FrameSource channel (about 1 run in 7, LIST_POISON2)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/175",
    "labels": [
     "area:Driver",
@@ -2785,7 +2785,7 @@
   {
    "number": 176,
    "title": "[T30] open-tx-isp: hvflip case oopses in the ISP state initialisation (reproducible)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/176",
    "labels": [
     "area:Driver",
@@ -2819,7 +2819,7 @@
   {
    "number": 178,
    "title": "[T30] FrameSource format ioctl: vendor sends 0x5c-byte form (0xc05c56c3/0x405c56c4), OpenIMP uses the 0x4c-byte form of the open driver; difference unexplained",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/178",
    "labels": [
     "area:FrameSource",
@@ -2864,7 +2864,7 @@
   {
    "number": 192,
    "title": "Review leftovers: imp_log set-id env override, PadFrame release at encode completion (T23/T21)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/192",
    "labels": [],
    "created": "2026-11-02T19:33:30Z",
@@ -2902,7 +2902,7 @@
   {
    "number": 197,
    "title": "T41: AE algorithm library released when its client dies (extra)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/197",
    "labels": [
     "area:ISP",
@@ -2914,6 +2914,48 @@
     "type:gap"
    ],
    "created": "2026-11-02T22:59:04Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 198,
+   "title": "T23 apitest teardown stall (sporadic, once after padframe_t23)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/198",
+   "labels": [
+    "area:FrameSource",
+    "prio:long-term",
+    "repo:openimp",
+    "severity:low",
+    "soc:T23",
+    "type:bug"
+   ],
+   "created": "2026-11-03T01:02:14Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 199,
+   "title": "T40 lifted code: 8 unresolved jalr call sites call a no-op instead of the OEM subdev op",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/199",
+   "labels": [],
+   "created": "2026-11-03T01:39:19Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 200,
+   "title": "Docs round 2026-11-03 (10)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/200",
+   "labels": [
+    "repo:open-tx-isp",
+    "repo:openimp",
+    "severity:low",
+    "type:wip"
+   ],
+   "created": "2026-11-03T05:18:13Z",
    "closed": null,
    "milestone": null
   }

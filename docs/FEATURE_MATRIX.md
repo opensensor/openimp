@@ -18,30 +18,24 @@ Rules (machine-readable: `docs/status/release.yaml`). **RC3** is green only if (
 
 Project board status of an open issue (https://github.com/users/Lu-Fi/projects/1): Todo, In progress, **Monitoring** (diagnostics are running, waiting for the next event of the kind), **Waiting** (blocked from outside, for example on test hardware or a measurement setup; the issue says what it waits for, such as a light box A/B), Review, Done. Monitoring and Waiting issues are still open: they keep counting for the gates above.
 
-- **RC3: 🔴 RED** (6 blocking issues)
+- **RC3: 🔴 RED** (3 blocking issues)
   - (a) streamer functions: 🟢 1787 of 1787 cells work, 0 missing
-  - (b) no open issue with severity critical or high: 🔴 5 critical, 1 high
-  - (c) no open issue in milestone RC3: 🔴 6 open
+  - (b) no open issue with severity critical or high: 🔴 2 critical, 1 high
+  - (c) no open issue in milestone RC3: 🔴 3 open
 - **Release 1: 🔴 RED** (0 of 7 SoCs reached 14 stable days; image –, soak as of 2026-11-02 06:57)
   - Not started: the 14-day counter starts when RC3 is published (tag pending) and runs only on the image built from that tag.
 
 ### RC3: blocking issues
 
-- **Critical (severity:critical): 5**
+- **Critical (severity:critical): 2**
   - [#94](https://github.com/Lu-Fi/openimp/issues/94) [T31] T31L watchdog reboot after 52 h without a kernel trace (severity critical; milestone RC3)
   - [#108](https://github.com/Lu-Fi/openimp/issues/108) T23: unexplained reboot on the agg47 image (~4.6 h after flash) (severity critical; milestone RC3)
-  - [#174](https://github.com/Lu-Fi/openimp/issues/174) [T30] open-tx-isp: IMP_ISP_GetSensorRegister oopses the driver (NULL dereference) (severity critical; milestone RC3)
-  - [#175](https://github.com/Lu-Fi/openimp/issues/175) [T30] open-tx-isp: fatal oops in the ISP IRQ path on start of the second FrameSource channel (about 1 run in 7, LIST_POISON2) (severity critical; milestone RC3)
-  - [#176](https://github.com/Lu-Fi/openimp/issues/176) [T30] open-tx-isp: hvflip case oopses in the ISP state initialisation (reproducible) (severity critical; milestone RC3)
 - **High (severity:high): 1**
   - [#84](https://github.com/Lu-Fi/openimp/issues/84) [T40] One full vendor-vs-open comparison pass (chart, day, night, CPU) (severity high; milestone RC3)
-- **RC3 milestone: 6**
+- **RC3 milestone: 3**
   - [#84](https://github.com/Lu-Fi/openimp/issues/84) [T40] One full vendor-vs-open comparison pass (chart, day, night, CPU) (severity high; milestone RC3)
   - [#94](https://github.com/Lu-Fi/openimp/issues/94) [T31] T31L watchdog reboot after 52 h without a kernel trace (severity critical; milestone RC3)
   - [#108](https://github.com/Lu-Fi/openimp/issues/108) T23: unexplained reboot on the agg47 image (~4.6 h after flash) (severity critical; milestone RC3)
-  - [#174](https://github.com/Lu-Fi/openimp/issues/174) [T30] open-tx-isp: IMP_ISP_GetSensorRegister oopses the driver (NULL dereference) (severity critical; milestone RC3)
-  - [#175](https://github.com/Lu-Fi/openimp/issues/175) [T30] open-tx-isp: fatal oops in the ISP IRQ path on start of the second FrameSource channel (about 1 run in 7, LIST_POISON2) (severity critical; milestone RC3)
-  - [#176](https://github.com/Lu-Fi/openimp/issues/176) [T30] open-tx-isp: hvflip case oopses in the ISP state initialisation (reproducible) (severity critical; milestone RC3)
 
 ### RC3: streamer functions that work
 
@@ -87,6 +81,7 @@ Open items: milestones [RC3](https://github.com/Lu-Fi/openimp/milestones) and Re
 
 ## Summary
 
+- **Update 2026-11-03, docs round 10 (state round; no cell and no symbol moved, counts unchanged: T10 300/329, T20 299/329, T21 304/333, T23 399/457, T31 365/406, T40 338/389, T41 373/427 works):** the issue cache was refreshed: #174 / #175 / #176 (T30, closed on QEMU evidence), #178, #179, #189, #190, #192 to #197 are closed, so the RC3 gate lists 3 blocking issues (#84, #94, #108) instead of 6. Wikis synchronised (Changelog, Beyond the Vendor, Module Parameters, Per-SoC Status, API pages). The T32/T33 backlog check (nm of the vendor libraries) proposes two `n.a.` candidates for T32 (`SU_CIPHER_Malloc_Buffer`, `SU_CIPHER_Free_Buffer`) and none for T33; not applied.
 - **Update 2026-11-03 (night), #197 (T41 custom AE library released when its client dies, an extra beyond the vendor: kernel behaviour, no API cell and no feature symbol moved; counts unchanged, T41 373/427 works):** the open-tx-isp T41 module unregisters the AE algorithm library at the release of the registering file (vendor: stays registered, next open EBUSY); the camera run (kill -9 with and without a thread in get, 100 close races, 50 reopen cycles, apitest `customalgo_t41` 31/0, 6 reload cycles, 0 oopses) is in the issue.
 - **Update 2026-11-03 (late night), #178 / #174 / #175 / #176 (T30 FrameSource format ioctl as the vendor libimp; QEMU only, no T30 camera: no cell moves above QEMU level, no feature symbol moved, API evidence cells unchanged `qemu`):** the vendor T30 libimp sends `0xc05c56c3` / `0x405c56c4` (0x5c bytes: the 48-byte pix header of a 4.x kernel, then crop, scaler, rate); OpenIMP now does the same, the open driver accepts both that and the old 0x4c form. QEMU `ingenic-t30` with a `slub_debug=FZPU` debug kernel: apitest area `fs` 39 PASS / 0 FAIL, area `sys` clean, format test in both forms equal, 6 driver reload cycles with the format test, the second-channel start and `GetSensorRegister`: 0 oopses, 0 slab reports. The done-when of #174 (apitest ISP area calls `GetSensorRegister`, value matches the sensor model), #175 (55 consecutive two-channel start cycles without an oops) and #176 (the hvflip case is refused cleanly, no oops) is met in QEMU, the issues are closed on that evidence; a T30 camera has not confirmed them.
 - **Update 2026-11-03 (night), #195 (T41 `SetAwbAlgoFunc` serves the custom algorithm, an extra beyond the vendor: API evidence `ISP_SetAwbAlgoFunc` T41 no-op -> dev, flagged better; T41 373/427 works unchanged, the cell was already counted as matched; no feature symbol moved):** the stock T41 module has no AWB library ioctl, so the vendor call registers the record, the open fails and the library is never called; the open-tx-isp T41 module now answers the four ioctls (0xc0045423..26, statistics of the native AWB, wake-up once per processed AWB frame, results as manual hardware gains in 0x200..0x1800 with 1024 = 1.0, the application's white balance back at the close, at a killed client and at `DisableSensor`) and libimp's T40 protocol works unchanged. T41 test camera (runtime swap of the module, dead-man armed, stock module restored): apitest `customalgo_t41` PASS 31 / FAIL 0 (AWB open 1 of 1, close 1 of 1; start gains r 1448 b 2348 U/V 124/123, r x2 / b x0.5 gave 118/130, r x0.5 / b x2 gave 133/118, start gains again 124/123), race client (100 close races, killed clients, re-open) all ok, 6 of 6 reload cycles, 0 oopses. Documented in `OPENIMP_BEYOND_VENDOR.md`; apitest case `customalgo_awb_vendor_t41` removed.
