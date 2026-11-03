@@ -38,9 +38,12 @@ mkdir -p "$OUT"
 exec 9> "$S/locks/cam-$NN.lock"; flock -w 3600 9 || { echo "cam lock busy"; exit 4; }
 tail -n 3 "$STATUS" | grep -qiE "stuck|deadlock|hung" && { echo "STATUS says stuck"; exit 5; }
 
-$SSH 'cat /etc/modules.d/20-isp /etc/modules.d/30-sensor 2>/dev/null; ls /etc/init.d | grep -E "timps|prudynt|raptor"; uname -r; lsmod | grep -E "tx_isp|sensor_"' > "$OUT/before.txt" 2>&1
+$SSH 'cat /etc/modules.d/20-isp /etc/modules.d/30-sensor* 2>/dev/null; ls /etc/init.d | grep -E "timps|prudynt|raptor"; uname -r; lsmod | grep -E "tx_isp|sensor_"' > "$OUT/before.txt" 2>&1
 ISPLINE=$(grep -E "^tx[-_]isp" "$OUT/before.txt" | head -1); ISPMOD=${ISPLINE%% *}; ISPARGS=${ISPLINE#"$ISPMOD"}; [ "$ISPARGS" = "$ISPLINE" ] && ISPARGS=
 SENS=$(grep -oE "^sensor_[a-z0-9_]*" "$OUT/before.txt" | awk '!seen[$0]++' | tr "\n" " " | sed "s/ *$//")      # ALL loaded sensor modules (the Eufy T40 has two: the ISP module cannot be removed while one is loaded)
+# the sensor modules' own arguments from /etc/modules.d (e.g. sensor_resolution=300 on the T30X, shvflip=1 on T10/T21):
+# a bare modprobe would bring the sensor up in another mode (T30X: 2304x1536 instead of 2048x1536)
+SENSLOAD=$(for m in $SENS; do a=$(grep -E "^$m( |$)" "$OUT/before.txt" | grep -vE "^$m +[0-9]+ +[0-9]" | head -1 | cut -s -d' ' -f2-); printf 'modprobe %s %s || echo FAIL-sensor; ' "$m" "$a"; done)
 STREAMER=$(grep -oE "^S[0-9]+(timps|prudynt|raptor)[A-Za-z0-9_-]*" "$OUT/before.txt" | grep -v -E "motion|onvif|webui" | head -1)
 KR=$(grep -E "^[0-9]+\.[0-9]+\.[0-9]+" "$OUT/before.txt" | head -1)
 STOCK=$($SSH "find /lib/modules /usr/lib/modules -name '${ISPMOD//_/-}.ko' 2>/dev/null | head -1")
@@ -50,7 +53,7 @@ MD5=$($SSH "md5sum $STOCK")
 
 st "start (cam-$NN.lock held, ~10 min): streamer stopped$([ "$KO" != - ] && echo ", runtime swap of $ISPMOD ($(basename "$KO"))")$([ "$LIB" != - ] && echo ", test libimp via LD_LIBRARY_PATH"), apitest $AREAS $CASES, stock module + streamer restored; no flash, no reboot, no vendor ko, no sound"
 restore() {
-  $SSH "killall apitest 2>/dev/null; sleep 1; [ \"$KO\" != - ] && lsmod | grep -q ^$ISPMOD && { for m in $SENS; do rmmod \$m; done; rmmod $ISPMOD || echo FAIL-rmmod-ours; insmod $STOCK $ISPARGS || echo FAIL-insmod-stock; for m in $SENS; do modprobe \$m || echo FAIL-sensor; done; }; rm -rf /tmp/rsw; /etc/init.d/$STREAMER start >/dev/null 2>&1; sleep 12; echo streamer=\$(ps | grep -c '[t]impsd\|[p]rudynt\|[r]aptor'); lsmod | grep -E 'tx_isp|sensor_'; md5sum $STOCK; dmesg | grep -ciE 'oops|BUG:|panic|unable to handle'" > "$OUT/restore.txt" 2>&1
+  $SSH "killall apitest 2>/dev/null; sleep 1; [ \"$KO\" != - ] && lsmod | grep -q ^$ISPMOD && { for m in $SENS; do rmmod \$m; done; rmmod $ISPMOD || echo FAIL-rmmod-ours; insmod $STOCK $ISPARGS || echo FAIL-insmod-stock; $SENSLOAD; }; rm -rf /tmp/rsw; /etc/init.d/$STREAMER start >/dev/null 2>&1; sleep 12; echo streamer=\$(ps | grep -c '[t]impsd\|[p]rudynt\|[r]aptor'); lsmod | grep -E 'tx_isp|sensor_'; md5sum $STOCK; dmesg | grep -ciE 'oops|BUG:|panic|unable to handle'" > "$OUT/restore.txt" 2>&1
   grep -q "$(echo "$MD5" | cut -d' ' -f1)" "$OUT/restore.txt" && st "done, free (stock module md5 ok, streamer restarted, /tmp/rsw removed, out $OUT)" || st "done, free BUT restore needs a check: see $OUT/restore.txt"
 }
 trap restore EXIT
@@ -62,7 +65,7 @@ cat "$BIN/apitest_$lc" | $SSH 'cat > /tmp/rsw/apitest; chmod 755 /tmp/rsw/apites
 $SSH 'last=; same=0; n=0; while [ $n -lt 300 ] && [ $same -lt 20 ]; do cur="$(grep -h -m1 Runing /proc/jz/isp/isp_info /proc/jz/isp/isp-m0 2>/dev/null)|$(cat /tmp/ircutmode.txt 2>/dev/null)"; if [ "$cur" = "$last" ]; then same=$((same+1)); else same=0; last="$cur"; fi; n=$((n+1)); sleep 2; done; echo "precheck stable=$same/20 after $((n*2))s: $last"' >> "$OUT/precheck.txt" 2>&1
 $SSH "/etc/init.d/$STREAMER stop >/dev/null 2>&1; sleep 3; dmesg -c >/dev/null"
 if [ "$KO" != - ]; then
-  $SSH "for m in $SENS; do rmmod \$m || echo FAIL-rmmod-sensor; done; rmmod $ISPMOD || echo FAIL-rmmod-stock; insmod /tmp/rsw/test.ko $ISPARGS || echo FAIL-insmod-ours; for m in $SENS; do modprobe \$m || echo FAIL-sensor; done; sleep 1; lsmod | grep -E 'tx_isp|sensor_'; echo osd_commits=\$(cat /sys/module/${ISPMOD}/parameters/osd_commits 2>/dev/null)" >> "$OUT/run.log" 2>&1
+  $SSH "for m in $SENS; do rmmod \$m || echo FAIL-rmmod-sensor; done; rmmod $ISPMOD || echo FAIL-rmmod-stock; insmod /tmp/rsw/test.ko $ISPARGS || echo FAIL-insmod-ours; $SENSLOAD; sleep 1; lsmod | grep -E 'tx_isp|sensor_'; echo osd_commits=\$(cat /sys/module/${ISPMOD}/parameters/osd_commits 2>/dev/null)" >> "$OUT/run.log" 2>&1
   grep -q FAIL- "$OUT/run.log" && { echo "swap failed, see $OUT/run.log"; exit 7; }
 fi
 for f in $PUSHF; do cat "${f%%:*}" | $SSH "cat > /tmp/rsw/$(basename "${f##*:}")"; done
