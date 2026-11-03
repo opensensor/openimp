@@ -723,7 +723,34 @@ static void live_common(int chn, int codec)
         c->st_roi[0].enable = false; IMP_Encoder_SetChnRoiAttr(chn, c);
         gfree(g); gfree(c);
     }
+#if defined(PLATFORM_T41) && HAS_IMP_Encoder_SetChnMapRoi
+    /* map: one byte per 16x16 block of the channel (low 2 bits mode: 2 = relative, high 6 bits a two's complement delta); a map of
+     * the wrong size, the absolute mode and a quality outside -26..25 are refused (vendor 1.2.6/1.3.1 checks); NULL/0 removes it */
+    NEED(IMP_Encoder_SetChnMapRoi) {
+        if (codec == CODEC_H264) {
+            int cols = (EW + 15) / 16, rows = (EH + 15) / 16, n = cols * rows, i, rbad, rmode, rq, rok, rnull;
+            IMPEncoderMapRoiAttr m;
+            uint8_t *map = (uint8_t *)calloc(n + 1, 1);
+
+            for (i = 0; i < n; i++) map[i] = (uint8_t)((((i % cols) < cols / 2 ? ((-8) & 63) : 6) << 2) | 2);      /* left half -8, right half +6 */
+            memset(&m, 0, sizeof(m)); m.map = map; m.mapSize = n; m.mode = IMP_ROI_QPMODE_DELTA; m.Quality = 0;
+            r = IMP_Encoder_SetChnMapRoi(chn, &m);
+            pull(chn, codec, 3, 0, 0, &si, 2000);
+            rok = si.frames == 3;
+            m.mapSize = n - 1; rbad = IMP_Encoder_SetChnMapRoi(chn, &m);
+            m.mapSize = n; m.mode = IMP_ROI_QPMODE_FIXED_QP; rmode = IMP_Encoder_SetChnMapRoi(chn, &m);
+            m.mode = IMP_ROI_QPMODE_DELTA; m.Quality = 26; rq = IMP_Encoder_SetChnMapRoi(chn, &m);
+            m.map = NULL; m.mapSize = 0; m.Quality = 0; rnull = IMP_Encoder_SetChnMapRoi(chn, &m);
+            pull(chn, codec, 3, 0, 0, &si, 2000);
+            CHECK(IMP_Encoder_SetChnMapRoi, r, rok && rbad != 0 && rmode != 0 && rq != 0 && rnull == 0 && si.frames == 3,
+                  "%dx%d blocks (%d bytes) stored, stream flows %d; size n-1 -> %d, absolute mode -> %d, quality 26 -> %d (all refused); NULL map removes it -> %d, stream flows %d",
+                  cols, rows, n, rok, rbad, rmode, rq, rnull, si.frames);
+            free(map);
+        }
+    }
+#else
     rep(FN(IMP_Encoder_SetChnMapRoi), 0, V_SKIP, "needs a per-macroblock QP map sized for the channel");
+#endif
 #endif
     /* MaxPictureSize */
 #if HAS_IMP_Encoder_GetChnMaxPictureSize

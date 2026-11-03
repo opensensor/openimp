@@ -451,7 +451,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -544,7 +544,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -622,7 +622,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -700,7 +700,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -778,7 +778,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -856,7 +856,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -934,7 +934,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -1174,7 +1174,8 @@
     "T33": "n.a.",
     "T40": "host",
     "T41": "n.a."
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported, not run on the camera (apitest category hardware: they change the sensor interface or the raw path; QEMU-first rule, no safe case)."
   },
   "ISP_LDC_Get/SetAttr": {
    "area": "ISP tuning",
@@ -1287,7 +1288,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -1366,7 +1367,7 @@
     "T40": "host",
     "T41": "n.a."
    },
-   "note": "audit: reaches the driver/kernel"
+   "note": "audit: reaches the driver/kernel T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported, not run on the camera (apitest category hardware: they change the sensor interface or the raw path; QEMU-first rule, no safe case)."
   },
   "ISP_SetCameraInputSelect": {
    "area": "ISP tuning",
@@ -1420,7 +1421,8 @@
     "T33": "n.a.",
     "T40": "host",
     "T41": "n.a."
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported, not run on the camera (apitest category hardware: they change the sensor interface or the raw path; QEMU-first rule, no safe case)."
   },
   "ISP_SetScalerLv": {
    "area": "ISP tuning",
@@ -1437,7 +1439,7 @@
     "T41": "n.a."
    },
    "ref": {
-    "T40": "apitest agg59 2026-10-31 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_SetStreamOut": {
@@ -1746,7 +1748,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -1983,7 +1985,7 @@
     "T41": "apitest agg47 2026-10-26 .34",
     "T21": "apitest rc3-cases 2026-10-26 .24",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetCsc_Attr": {
@@ -2248,7 +2250,7 @@
    "note": "T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested; T40: Get dev, Set host (only the Get is device-tested on cam-K 2026-10-10, OpenIMP vs vendor library)",
    "ref": {
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetHLDCAttr": {
@@ -2264,7 +2266,8 @@
     "T33": "n.a.",
     "T40": "host",
     "T41": "n.a."
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported, not run (apitest category wedges-isp: reprograms the ISP back end with tables the test camera does not have)."
   },
   "ISP_Tuning_Get/SetHVFLIP": {
    "area": "ISP tuning",
@@ -2305,7 +2308,7 @@
     "T41": "apitest agg47 2026-10-26 .34",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26 (API round trip, no visible effect expected)",
     "T23": "apitest agg47 stock 2026-10-27 .30 (API round trip, no visible effect expected)",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetHiLightDepress": {
@@ -2380,7 +2383,7 @@
    },
    "note": "T41: vendor 1.2.6 error ladder (claude/t41-isp-round2, not in agg-25); not device-tested",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -2555,7 +2558,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -2822,7 +2825,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T23": "apitest apitest-cov 2026-10-27 .30",
     "T21": "apitest apitest-cov 2026-10-27 .24",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetModule_Ratio": {
@@ -2919,7 +2922,7 @@
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
     "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetSensorHflip": {
@@ -3011,7 +3014,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest issue-90 runtime swap 2026-10-27 .34 (open-tx-isp 42691882 + OpenIMP c34c0196): 256-bin sum = 2880x1620, 5-bin split follows histThresh, zones 1..226"
    }
   },
@@ -3147,7 +3150,7 @@
    "ref": {
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_GetBlcAttr": {
@@ -3343,7 +3346,7 @@
     "T41": "n.a."
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_GetMaskBlock": {
@@ -3458,7 +3461,7 @@
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -3535,7 +3538,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -3820,7 +3823,7 @@
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
     "T30": "QEMU T30 2026-10-31 (no camera), see note",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_SetDPStrength": {
@@ -4208,7 +4211,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -4288,7 +4291,7 @@
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "QEMU T30 2026-10-31 (no camera), see note",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_SetSinterStrength": {
@@ -4586,7 +4589,7 @@
    },
    "ref": {
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_WDR_ENABLE": {
@@ -4657,7 +4660,7 @@
    "note": "T41: driver control, device-tested (claude/t41-driver-gaps, in agg-35) T41: driver control, device-tested (claude/t41-driver-gaps, in agg-35)",
    "ref": {
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_WDR_ENABLE_Get": {
@@ -4695,7 +4698,8 @@
    },
    "ref": {
     "T41": "apitest 2026-11-02 .32 (Vanhua T55A T41 gc5603, runtime swap of open-tx-isp next + c30c00ff and a test libimp, case t41isp with APITEST_RISKY=1, dead-man armed): linear start with imode DOL returns 0, frames flow; the module stores the non-zero mode byte like the stock module, mode 0 is refused with EFAULT as stock (-4090); no visible effect on this linear sensor (open-tx-isp #171, host test tx_isp_t41_devioctl_test)"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported; only valid before IMP_ISP_AddSensor (t40dev phase 1000, run on its own, not part of the safe mask), not run."
   },
   "ISP_SetAeAlgoFunc": {
    "area": "AE / AWB / AF",
@@ -4861,7 +4865,7 @@
    },
    "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; T41: driver claude/t41-connect (agg-25); host tests 58/58. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 r 256 g 256 b 256; Set ret=0 same value written, read back equal; R x1.5 case line: V 122.31 -> 122.17, AWB may pull it back). The three WB coefficient registers (0x4a8/0x4ac/0x4b0) are read and written.",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
@@ -4972,12 +4976,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "rt",
     "T41": "rt"
    },
    "ref": {
-    "T41": "apitest issue-90 runtime swap 2026-10-27 .34 (open-tx-isp 42691882 + OpenIMP c34c0196): mode on/off with the calibration list reads back, frames flow, mode 7 refused"
-   }
+    "T41": "apitest issue-90 runtime swap 2026-10-27 .34 (open-tx-isp 42691882 + OpenIMP c34c0196): mode on/off with the calibration list reads back, frames flow, mode 7 refused",
+    "T40": "apitest t40pass 2026-11-04 .184 (API round trip, no visible effect expected)"
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): Get and Set run with the new T40 variant of the apitest case aeexplist (QEMU first): the list read back after Set agrees within 3 % (the driver recomputes the ladder while the AE runs), list mode on and off keep the picture and the frame flow. The T40 driver (OEM code) stores any mode, so a mode 7 is not refused here (the T41 library refuses it)."
   },
   "ISP_Tuning_Get/SetAeExprInfo": {
    "area": "AE / AWB / AF",
@@ -5106,7 +5112,7 @@
     "T41": "n.a."
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetAeStrategy": {
@@ -5219,7 +5225,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
@@ -5310,7 +5316,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -5330,7 +5336,7 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_Get/SetAwbClust": {
@@ -5538,7 +5544,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
@@ -5783,7 +5789,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg5v 2026-11-01 .34 (open-tx-isp next ac1913e3, module loaded with t41_af=1): PASS, 30 min soak with a read every 10 s (180/180 ret 0, metric follows the scene), 6 reload cycles, 0 oopses; open-tx-isp #179"
    },
    "action": {
@@ -5986,7 +5992,7 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest issue-90 runtime swap 2026-10-27 .34 (open-tx-isp 42691882 + OpenIMP c34c0196): 256-bin sum = 2880x1620, 5-bin split follows histThresh, zones 1..226"
    }
   },
@@ -6048,7 +6054,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg5v 2026-11-01 .34 (open-tx-isp next ac1913e3, module loaded with t41_af=1): PASS, 30 min soak with a read every 10 s (180/180 ret 0, metric follows the scene), 6 reload cycles, 0 oopses; open-tx-isp #179"
    },
    "action": {
@@ -6100,7 +6106,7 @@
    },
    "note": "audit: reaches the driver/kernel",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -6134,7 +6140,7 @@
    },
    "note": "T40/T41: vendor 1.3.1 / 1.2.6 ABI `(IMPVI_NUM, IMPISPAWBStatisInfo *)`, 2700-byte block (three 15x15 u32 planes: zone means of the raw pre-WB R, G, B AWB statistics, stock `tisp_awb_get_zone`), 0 only with a block that holds statistics (T41: open driver `-EAGAIN` unless from a frame of the running stream within 1 s, needs open-tx-isp `claude/awbstats`; T40 vendor kernel driver: an all-zero block is -1), capability symbol `OpenIMP_Cap_AwbStatistics` (`claude/awbstats`, device-tested 2026-10-12: Eufy T40 identical to the vendor libimp, lamp response; T41 static); used by: timps 1.10.2 (night colour trigger)",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -6555,7 +6561,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -6633,7 +6639,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -6711,7 +6717,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -6789,7 +6795,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -6857,7 +6863,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -6948,7 +6954,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -7115,7 +7121,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -7160,7 +7166,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -7317,7 +7323,7 @@
    },
    "note": "not in the T31 vendor API (T31 column stays n.a.): OpenIMP exports it on T31 as a beyond-vendor ROI through the AVPU QP table, device-tested (dev), default on, `OPENIMP_T31_ROI=0` refuses the call; T40: experimental, off unless `OPENIMP_T40_ROI=1`, code only, not device-tested; T41 (also `SetChnMapRoi`): cache, the windows/map are stored and the EP2 QP table is written (off unless `OPENIMP_T41_ROI=1`), works since 2026-10-18 (CBR/VBR) and 2026-10-24 (FixQP), docs/ROI.md; same valid-H.264 clamp as the Helix paths (docs/ROI.md)",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)"
    },
    "better": [
@@ -7340,7 +7346,7 @@
    },
    "note": "T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "Encoder_Get/SetFisheyeEnableStatus": {
@@ -7357,7 +7363,7 @@
     "T40": "cache",
     "T41": "n.a."
    },
-   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T40 (vendor 1.3.1 disassembly, 0x6bd4c Set / 0x6be44 Get, 2026-10-31): channels 0..12, the flag is stored at +872 of the channel record only while the record is not created (-1 afterwards), the getter returns 0/1; the only reader is channel_encoder_init (0x66900), which hands it to the closed encoder code. OpenIMP behaves the same (host and apitest case), the flag has no consumer in the Helix/AVPU path (stays cache, class d). The vendor getter does not check a NULL pointer; OpenIMP returns -1 instead of faulting. | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41 T21 2026-11-02: the vendor copies the flag into the i264e parameters at CreateChn (channel +0x1ac, settable only before CreateChn); no consumer in the i264e rate-control or reference code was found, so the stored value is all that was identified. | T10/T20 3.12.0 (2026-11-02): not a stored value. CreateChn hands the flag to the encoder as i264e parameter 0x72 and its only reader is i264e_icodec_enc (0x4d740): with the flag the ROI table of every coding try is cleared (an application ROI is lost) and on I slices and at whole seconds of the frame rate (counter * fps_den % fps_num == 0) region 0 is set to the top-left 64x32 pixels at absolute QP min(slice QP, 15). OpenIMP's T10/T20 build does the same (src/fisheye, docs/T20_FISHEYE.md). Proof: unicorn oracle of i264e_icodec_enc (3815 cases, 0 differences), host test of the command list (region 0 programmed on IDR and whole-second pictures only), QEMU T10 and T20, cameras with the vendor library and OpenIMP on the same camera: the pictures that carry a macroblock at QP 15 or better are the same (IDR and every whole second; FixQP 30, FixQP 40, with an application ROI set, which the flag removes), and the region macroblocks' QPs are equal per picture (T10 100/100 in all three, T20 100/100 with the ROI and at QP 40, 99/100 at QP 30; the long T20 runs of 225 pictures: 14 of 15 whole-second pictures in OpenIMP, 15 of 15 in the vendor); streams decode clean (ffmpeg strict) with a real picture, equal to the vendor's statistics. Differences: OpenIMP keeps the H.264 limit of 25 between neighbouring macroblock QPs (an IDR at slice QP 45 gets its region at QP 20, the vendor writes QP 15, a step that ffmpeg hides); T20 CBR: the vendor's macroblock rate control limits the region to the picture QP - 12, OpenIMP's default CBR has no macroblock table, so the region reaches 15; a region whose macroblocks are all skipped shows no QP in the stream (the missing 1 of 15). T21 2026-11-02 (docs/T21_FISHEYE.md): the vendor i264e_icodec_enc (1.0.33, gcc 4.7.2 and 5.4.0) builds the same table as on T10/T20 (oracle: byte-identical vectors), but the T21 hardware path never reads it; cameras: vendor library with the flag set shows no region at QP 15 and no ROI effect, OpenIMP T21 now drops the application ROI table with the flag and codes no region, like the vendor; channel numbers of 6 and above are -1.",
+   "note": "T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T23+T31: kept for getter only (documented in source); class d: the flag only has an effect in the vendor's closed fisheye/i264e path, which OpenIMP does not contain (T31: closed IVS fisheye module; T23: i264e creation option of the OEM session); T10/T20/T21: a flag in the channel record, settable only on an idle channel (-1 once created), exactly as the vendor (disassembly T21 0x45454, T20 0x4776c); apitest PASS on T10, T20, T21; class d like T23/T31; T30 1.0.5: flag kept, settable before CreateChn only, as T21 (the closed fisheye motion search of the vendor encoder is not in the Helix path); host test; vendor check 2026-10-10 (libimp T23 1.3.0 and T31 1.1.6 disassembly): T31 1.1.6 sets the flag in the channel record only while the channel does not exist (channel below 9, else -1), as OpenIMP does; T23 1.3.0 likewise; the flag is read later by the closed encoder code T40 (vendor 1.3.1 disassembly, 0x6bd4c Set / 0x6be44 Get, 2026-10-31): channels 0..12, the flag is stored at +872 of the channel record only while the record is not created (-1 afterwards), the getter returns 0/1; the only reader is channel_encoder_init (0x66900), which hands it to the closed encoder code. OpenIMP behaves the same (host and apitest case), the flag has no consumer in the Helix/AVPU path (stays cache, class d). The vendor getter does not check a NULL pointer; OpenIMP returns -1 instead of faulting. | T41: not in the T41 1.2.5 libimp, not in the T41 1.2.6 library (ext/vlib41) and not in the T41 name list of the vendor builds; OpenIMP does not export it on T41 T21 2026-11-02: the vendor copies the flag into the i264e parameters at CreateChn (channel +0x1ac, settable only before CreateChn); no consumer in the i264e rate-control or reference code was found, so the stored value is all that was identified. | T10/T20 3.12.0 (2026-11-02): not a stored value. CreateChn hands the flag to the encoder as i264e parameter 0x72 and its only reader is i264e_icodec_enc (0x4d740): with the flag the ROI table of every coding try is cleared (an application ROI is lost) and on I slices and at whole seconds of the frame rate (counter * fps_den % fps_num == 0) region 0 is set to the top-left 64x32 pixels at absolute QP min(slice QP, 15). OpenIMP's T10/T20 build does the same (src/fisheye, docs/T20_FISHEYE.md). Proof: unicorn oracle of i264e_icodec_enc (3815 cases, 0 differences), host test of the command list (region 0 programmed on IDR and whole-second pictures only), QEMU T10 and T20, cameras with the vendor library and OpenIMP on the same camera: the pictures that carry a macroblock at QP 15 or better are the same (IDR and every whole second; FixQP 30, FixQP 40, with an application ROI set, which the flag removes), and the region macroblocks' QPs are equal per picture (T10 100/100 in all three, T20 100/100 with the ROI and at QP 40, 99/100 at QP 30; the long T20 runs of 225 pictures: 14 of 15 whole-second pictures in OpenIMP, 15 of 15 in the vendor); streams decode clean (ffmpeg strict) with a real picture, equal to the vendor's statistics. Differences: OpenIMP keeps the H.264 limit of 25 between neighbouring macroblock QPs (an IDR at slice QP 45 gets its region at QP 20, the vendor writes QP 15, a step that ffmpeg hides); T20 CBR: the vendor's macroblock rate control limits the region to the picture QP - 12, OpenIMP's default CBR has no macroblock table, so the region reaches 15; a region whose macroblocks are all skipped shows no QP in the stream (the missing 1 of 15). T21 2026-11-02 (docs/T21_FISHEYE.md): the vendor i264e_icodec_enc (1.0.33, gcc 4.7.2 and 5.4.0) builds the same table as on T10/T20 (oracle: byte-identical vectors), but the T21 hardware path never reads it; cameras: vendor library with the flag set shows no region at QP 15 and no ROI effect, OpenIMP T21 now drops the application ROI table with the flag and codes no region, like the vendor; channel numbers of 6 and above are -1. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays cache: Set answers -1 on a created channel as the stock library does (apitest PASS); the flag is kept for the getter only, see the note above.",
    "ref": {
     "T40": "apitest agg60 2026-10-31 .184: Set on a created channel refused (-1), idle channel 5 set 1 -> get 1, set 0 -> get 0 (API round trip as the vendor); vendor 1.3.1 disassembly match, see note",
     "T10": "apitest case fisheye 2026-11-02 .31 (vendor library and OpenIMP on the same camera, 6 scenarios of 100 pictures; region QPs equal per picture in the FixQP and ROI scenarios, see note)",
@@ -7513,7 +7519,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -7584,7 +7590,7 @@
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -7631,7 +7637,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -7742,7 +7748,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -7816,7 +7822,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -7909,7 +7915,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8010,7 +8016,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8098,7 +8104,7 @@
    "ref": {
     "T21": "apitest agg63 2026-10-31 .24",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "Encoder_PollingStream": {
@@ -8174,7 +8180,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8242,7 +8248,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8320,7 +8326,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8398,7 +8404,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8495,7 +8501,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -8586,7 +8592,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -8626,7 +8632,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -8682,12 +8688,13 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "dev"
    },
-   "note": " | T41 (vendor libimp 1.2.6 disassembly + device tests): stores the 10 windows / the map, the encoder builds the QP table before the next picture; works under CBR, VBR and, beyond the vendor, under FixQP (docs/ROI.md, roitest on the T41 test cameras 2026-10-18 and 2026-10-24)",
+   "note": " | T41 (vendor libimp 1.2.6 disassembly + device tests): stores the 10 windows / the map, the encoder builds the QP table before the next picture; works under CBR, VBR and, beyond the vendor, under FixQP (docs/ROI.md, roitest on the T41 test cameras 2026-10-18 and 2026-10-24) T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested (apitest enc): a 40x23 block map (one byte per 16x16 block of the 640x360 channel) is accepted and the stream keeps flowing, a map of the wrong size, the absolute mode and a quality of 26 are refused, a NULL map removes it. Return codes and stream flow only; the bit-rate effect is documented in docs/ROI.md.",
    "ref": {
-    "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)"
+    "T41": "docs/ROI.md T41 device tests (roitest .32/.34, 2026-10-18, FixQP 2026-10-24)",
+    "T40": "apitest t40pass 2026-11-04 .184"
    },
    "better": [
     "T41"
@@ -8777,7 +8784,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -8841,7 +8848,7 @@
    "note": "audit: userspace implementation. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Not run in QEMU. The vendor 1.0.5 (0xc44c8) accepts any value (non-zero = on) for channel < 6; ALIGNED: OpenIMP's T30 build now accepts any value (host test p2_gap_test_t30).",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "static audit + host test p2_gap_test_t30 2026-11-01 (OpenIMP claude/t30-audit)"
    }
@@ -8880,7 +8887,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34"
    }
   },
@@ -8901,7 +8908,7 @@
    "note": "T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) T31: vendor stores num/den and a helper hands the source frame back early; OpenIMP returns every frame as soon as the AVPU has consumed it, so the ratio has nothing to change (class a: no visible effect, matched) | T41 (vendor libimp 1.2.5 0x4b804, 1.2.6 0x4dd88): stores num/den under the channel mutex, 0x80040001 for a channel of 8 or more, 0x80040008 for a channel that was not created; OpenIMP matches that; no visible effect (same class a as T31/T40)",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg59 2026-10-31 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg5y 2026-11-01 .34 (open-tx-isp next a84b6be2 + OpenIMP next 246bf938, full-order cases run): case framerel PASS (0x80040008 uncreated, 0x80040001 channel 8, 1/2 and 1/1 on a running channel ret 0, 10 frames still pulled)"
    }
   },
@@ -9010,7 +9017,7 @@
    "note": "vendor T31 1.1.6 / T40 1.3.1 / T41 1.2.6 (disassembled): stores the share channel in the channel record (kept over CreateChn, set to -1 by DestroyChn; a negative value is valid and means no sharing) and CreateChn reads it for a JPEG channel only: the JPEG channel borrows the video channel's stream manager and stream contexts and skips building its own pool of stream buffers (CreateChn fails when that video channel does not exist yet; T41 also refuses the MMA option). OpenIMP: same value handling, argument checks and return codes (-1 on T31/T40, 0x80040001 on T41, both channel numbers below the channel limit); CreateChn only logs a warning where the vendor would fail. There is nothing to share: OpenIMP JPEG channels own no stream buffer pool (JPEG is software on T40/T41, T31 uses one hardware-JPEG stream buffer for all JPEG channels), so sharing would save no rmem; measured on a T40 camera (video 640x360 plus a JPEG channel in the same group, with and without the call): JPEG channel cost about 24-72 kB of free memory either way, snapshots valid, H.264 decodes without errors in software and VA-API decoders. Host tests for T31/T40/T41, device test T40 only vendor T31 1.1.6 / T40 1.3.1 / T41 1.2.6 (disassembled): stores the share channel in the channel record (kept over CreateChn, set to -1 by DestroyChn; a negative value is valid and means no sharing) and CreateChn reads it for a JPEG channel only: the JPEG channel borrows the video channel's stream manager and stream contexts and skips building its own pool of stream buffers (CreateChn fails when that video channel does not exist yet; T41 also refuses the MMA option). OpenIMP: same value handling, argument checks and return codes (-1 on T31/T40, 0x80040001 on T41, both channel numbers below the channel limit); CreateChn only logs a warning where the vendor would fail. There is nothing to share: OpenIMP JPEG channels own no stream buffer pool (JPEG is software on T40/T41, T31 uses one hardware-JPEG stream buffer for all JPEG channels), so sharing would save no rmem; measured on a T40 camera (video 640x360 plus a JPEG channel in the same group, with and without the call): JPEG channel cost about 24-72 kB of free memory either way, snapshots valid, H.264 decodes without errors in software and VA-API decoders. Host tests for T31/T40/T41, device test T40 only",
    "ref": {
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9087,7 +9094,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9165,7 +9172,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9243,7 +9250,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9269,7 +9276,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9312,7 +9319,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9350,7 +9357,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9375,7 +9382,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9400,7 +9407,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9443,7 +9450,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9505,7 +9512,7 @@
    },
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -9705,7 +9712,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9721,13 +9728,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
-    "T40": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested with the new apitest case inject_t40 (QEMU T40 first): an injected 320x192 NV12 channel bound to its own H.264 encoder channel, 20 queued pattern frames come out as 20 frames with increasing time stamps, channel 7 and a second Create are refused, Dequeue before Enable is refused, Disable and Destroy return 0, the sensor channels keep flowing."
   },
   "FrameSource_DestroyChn": {
    "area": "FrameSource",
@@ -9802,7 +9810,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9880,7 +9888,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9958,7 +9966,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -9974,13 +9982,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
-    "T40": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested with the new apitest case inject_t40 (QEMU T40 first): an injected 320x192 NV12 channel bound to its own H.264 encoder channel, 20 queued pattern frames come out as 20 frames with increasing time stamps, channel 7 and a second Create are refused, Dequeue before Enable is refused, Disable and Destroy return 0, the sensor channels keep flowing."
   },
   "FrameSource_ExternInject_DestroyChn": {
    "area": "FrameSource",
@@ -9993,13 +10002,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
-    "T40": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested with the new apitest case inject_t40 (QEMU T40 first): an injected 320x192 NV12 channel bound to its own H.264 encoder channel, 20 queued pattern frames come out as 20 frames with increasing time stamps, channel 7 and a second Create are refused, Dequeue before Enable is refused, Disable and Destroy return 0, the sensor channels keep flowing."
   },
   "FrameSource_ExternInject_DisableChn": {
    "area": "FrameSource",
@@ -10012,13 +10022,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
-    "T40": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested with the new apitest case inject_t40 (QEMU T40 first): an injected 320x192 NV12 channel bound to its own H.264 encoder channel, 20 queued pattern frames come out as 20 frames with increasing time stamps, channel 7 and a second Create are refused, Dequeue before Enable is refused, Disable and Destroy return 0, the sensor channels keep flowing."
   },
   "FrameSource_ExternInject_EnableChn": {
    "area": "FrameSource",
@@ -10031,13 +10042,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
-    "T40": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested with the new apitest case inject_t40 (QEMU T40 first): an injected 320x192 NV12 channel bound to its own H.264 encoder channel, 20 queued pattern frames come out as 20 frames with increasing time stamps, channel 7 and a second Create are refused, Dequeue before Enable is refused, Disable and Destroy return 0, the sensor channels keep flowing."
   },
   "FrameSource_Get/SetChnAttr": {
    "area": "FrameSource",
@@ -10112,7 +10124,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10180,7 +10192,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10220,7 +10232,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -10300,7 +10312,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 libimp swap 2026-10-27 .34 (depth semantics of the vendor 1.2.5 GetFrame: depth 0 -> no frame, N held, third waits 2 s -> 0x80012000)",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10335,7 +10347,7 @@
    },
    "note": "T40/T41: real hardware I2D rotate/flip/mirror since 2026-10-18 (`claude/i2d-t4x`, src/t40/p1_i2d.h + openimp_p1.c, marker `OpenIMP_Cap_I2dRotate`); T41 device-tested on .34, T40 host only (see row 21). Before: SetI2dAttr returned -1 T40/T41: real hardware I2D rotate/flip/mirror since 2026-10-18 (`claude/i2d-t4x`, src/t40/p1_i2d.h + openimp_p1.c, marker `OpenIMP_Cap_I2dRotate`); T41 device-tested on .34, T40 host only (see row 21). Before: SetI2dAttr returned -1",
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -10374,7 +10386,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -10462,7 +10474,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10482,7 +10494,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -10539,7 +10551,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10555,13 +10567,14 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
-    "T40": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested with the new apitest case inject_t40 (QEMU T40 first): an injected 320x192 NV12 channel bound to its own H.264 encoder channel, 20 queued pattern frames come out as 20 frames with increasing time stamps, channel 7 and a second Create are refused, Dequeue before Enable is refused, Disable and Destroy return 0, the sensor channels keep flowing."
   },
   "FrameSource_ReleaseFrame": {
    "area": "FrameSource",
@@ -10611,7 +10624,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10631,7 +10644,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34"
    }
   },
@@ -10749,7 +10762,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -10769,7 +10782,7 @@
     "T41": "n.a."
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Get/SetOSDAttr": {
@@ -10939,7 +10952,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "ISP_Tuning_SetOsdPoolSize": {
@@ -11067,7 +11080,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build T10 2026-11-03: new apitest case (APITEST_ATTACH=1, T10/T20/T21): FS -> ENC is bound, the OSD group is created, IMP_OSD_AttachToGroup(osd, enc) returns 0, GetBindbyDest shows ENC <- OSD and OSD <- FS, and 5 H.264 frames flow through the OSD group; run in the T10 QEMU first (PASS, no oops), then on the T10 camera (PASS). Device PASS.  T20 2026-11-04 (T20 camera, sensor JXF23; OpenIMP T20 build loaded from /tmp, installed library untouched; QEMU T20 first): the same case (APITEST_ATTACH=1): attach returns 0, bind table FS -> OSD -> ENC, 5 frames through the OSD group, no oops; device PASS.",
+   "note": "T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build T10/T20/T21: system_attach() as the vendor wrapper (src->to becomes src->from->to, rolled back on error, -1); host test with a fake bind table; the apitest skips it (deprecated, the chain is built with IMP_System_Bind); T30 1.0.5: the same system_attach() wrapper as T21 (disassembly compared); the T21 host test with a fake bind table also runs against the T30 build T10 2026-11-03: new apitest case (APITEST_ATTACH=1, T10/T20/T21): FS -> ENC is bound, the OSD group is created, IMP_OSD_AttachToGroup(osd, enc) returns 0, GetBindbyDest shows ENC <- OSD and OSD <- FS, and 5 H.264 frames flow through the OSD group; run in the T10 QEMU first (PASS, no oops), then on the T10 camera (PASS). Device PASS.  T20 2026-11-04 (T20 camera, sensor JXF23; OpenIMP T20 build loaded from /tmp, installed library untouched; QEMU T20 first): the same case (APITEST_ATTACH=1): attach returns 0, bind table FS -> OSD -> ENC, 5 frames through the OSD group, no oops; device PASS. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported, deprecated; the apitest attach test (APITEST_ATTACH) is built for T10/T20/T21 only.",
    "ref": {
     "T10": "apitest t10wrench 2026-11-03 .31",
     "T20": "apitest t20pass 2026-11-04 .107"
@@ -11146,7 +11159,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11224,7 +11237,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11246,7 +11259,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "OSD_DestroyGroup": {
@@ -11322,7 +11335,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11400,7 +11413,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11422,7 +11435,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "OSD_Exit_ISP": {
@@ -11436,13 +11449,15 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "host",
+    "T40": "dev",
     "T41": "host"
    },
    "ref": {
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet",
-    "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing"
-   }
+    "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
+    "T40": "apitest t40pass 2026-11-04 .184"
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested: Exit after the ISP-OSD regions were destroyed (new report line in the isposdapi case), frames still flow."
   },
   "OSD_Get/SetGrpRgnAttr": {
    "area": "OSD",
@@ -11517,7 +11532,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11595,7 +11610,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11617,7 +11632,8 @@
    "ref": {
     "T23": "picture type works (apitest isposd .30, #127); line/rect/cover draw blocks are stored only, no MSCA draw path yet",
     "T41": "apitest agg5u 2026-11-01 .34 (open-tx-isp next e1c958c3 image): line/rect type draws (top edge luma 173.8 -> 0.0, back to 173.8), Get reads the draw block back, cover block 64x64 reads back, vendor error codes for NULL/picture/sensor 2"
-   }
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: exported; needs an IMPOSDIspDraw set-up of its own, and the ISP-OSD controls oops tx_isp_t40 in our QEMU (APITEST_T40_ISPOSD_CTL), so by the QEMU-first rule they are not run on the camera."
   },
   "OSD_GetRegionLuma": {
    "area": "OSD",
@@ -11655,7 +11671,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "OSD_RegisterRgn": {
@@ -11731,7 +11747,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11753,7 +11769,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -11774,7 +11790,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -11793,7 +11809,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -11814,7 +11830,7 @@
    "note": "audit: userspace implementation",
    "ref": {
     "T23": "apitest agg47 2026-10-26 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -11891,7 +11907,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11914,7 +11930,7 @@
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "OSD_SetRgnAttrWithTimestamp": {
@@ -11970,7 +11986,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -11991,7 +12007,7 @@
    },
    "ref": {
     "T41": "apitest agg47 2026-10-28 .34",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
   "OSD_ShowRgn": {
@@ -12067,7 +12083,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -12165,7 +12181,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -12223,7 +12239,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -12301,7 +12317,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -12369,7 +12385,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -12427,7 +12443,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12495,7 +12511,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12563,7 +12579,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12631,7 +12647,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12689,7 +12705,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12767,7 +12783,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12845,7 +12861,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12923,7 +12939,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -12991,7 +13007,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13059,7 +13075,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13127,7 +13143,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13195,7 +13211,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13254,7 +13270,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
   },
@@ -13321,7 +13337,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13389,7 +13405,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13467,7 +13483,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13545,7 +13561,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -13709,7 +13725,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -13902,7 +13918,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -13999,7 +14015,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14095,7 +14111,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14116,7 +14132,7 @@
    },
    "ref": {
     "T23": "apitest rc3-cases 2026-10-27 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -14193,7 +14209,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14271,7 +14287,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14459,7 +14475,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14556,7 +14572,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14652,7 +14668,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14673,7 +14689,7 @@
    },
    "ref": {
     "T23": "apitest rc3-cases 2026-10-27 .30",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -14750,7 +14766,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14856,7 +14872,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -14876,7 +14892,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -14953,7 +14969,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15031,7 +15047,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15109,7 +15125,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15187,7 +15203,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15341,7 +15357,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15419,7 +15435,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15487,7 +15503,7 @@
    "ref": {
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -15544,7 +15560,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -15587,7 +15603,7 @@
    "ref": {
     "T23": "apitest rc3-cases 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34"
    }
   },
@@ -17061,7 +17077,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
@@ -17085,7 +17101,7 @@
     "T41": "dev"
    },
    "ref": {
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
@@ -17108,7 +17124,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the image kernel is built without the SADC aux driver, and the vendor libsysutils opens the same nodes).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17128,7 +17144,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the image kernel is built without the SADC aux driver, and the vendor libsysutils opens the same nodes).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17148,7 +17164,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the image kernel is built without the SADC aux driver, and the vendor libsysutils opens the same nodes).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17168,7 +17184,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the vendor libsysutils opens the same nodes). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). Not run (no ADC node in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no ADC node (/dev/ingenic_adc_aux_0 and /dev/jz_adc_aux_0 are absent), apitest N/A. The vendor T10 libsysutils exports the call, so the cell stays aud (not n.a.): it needs a board with the ADC driver.  T20 (2026-11-04, camera check of the device nodes): no /dev/ingenic_adc_aux_* and no /dev/jz_adc_aux_* node (no ADC driver on this board), apitest N/A. The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with the SADC kernel driver. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the image kernel is built without the SADC aux driver, and the vendor libsysutils opens the same nodes).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17188,7 +17204,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no /dev/rtc0 (the image kernel is built without RTC_CLASS; the vendor libsysutils opens the same node).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17208,7 +17224,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (an enabled RTC alarm can wake the camera); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (an enabled RTC alarm can wake the camera); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: not run, an enabled RTC alarm can wake or power the camera (and the camera has no /dev/rtc0 anyway).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17228,7 +17244,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no /dev/rtc0 (the image kernel is built without RTC_CLASS; the vendor libsysutils opens the same node).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17248,7 +17264,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): NA (device values not published). Not run (no /dev/rtc0 in the model); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no /dev/rtc0 (the image kernel is built without RTC_CLASS; the vendor libsysutils opens the same node).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17275,7 +17291,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
@@ -17301,7 +17317,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
@@ -17369,7 +17385,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
@@ -17388,7 +17404,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until the alarm fires); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T41 (issue #80): board limit, no RTC clock: the counter does not tick and an armed alarm never fires (no 32 kHz oscillator), so the blocking wait cannot return on this board. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.",
+   "note": "T20+T21+T23+T31: apitest N/A on the test boards, no /dev/rtc0 (the vendor libsysutils opens the same node). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until the alarm fires); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T41 (issue #80): board limit, no RTC clock: the counter does not tick and an armed alarm never fires (no 32 kHz oscillator), so the blocking wait cannot return on this board. T10 (2026-11-03, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T10 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC.  T20 (2026-11-04, camera check of the device nodes): no /dev/rtc0 and no /sys/class/rtc (no RTC driver on this board), apitest N/A for the whole alarm/time group; EnableAlarm is skipped on principle (an armed alarm can wake the camera). The vendor T20 libsysutils exports the call, so the cell stays aud: it needs a board with an RTC. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no /dev/rtc0 (the image kernel is built without RTC_CLASS; the vendor libsysutils opens the same node).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)",
@@ -17416,7 +17432,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
@@ -17435,7 +17451,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (reboots the machine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): never called on a camera. Code comparison only: the vendor T10 3.12.0 libsysutils and the image's libsysutils both run sync() and then kill(1, 15) (SIGTERM, busybox init reboots); the calls come from the board's libsysutils, not from OpenIMP. Stays aud: vendor-equal by code, no device call.  T20 (2026-11-04): never called on a camera; the vendor 3.12.0 libsysutils is the same file for T10 and T20, so the T10 code comparison above holds (sync(), then kill(1, 15)). Stays aud.",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (reboots the machine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): never called on a camera. Code comparison only: the vendor T10 3.12.0 libsysutils and the image's libsysutils both run sync() and then kill(1, 15) (SIGTERM, busybox init reboots); the calls come from the board's libsysutils, not from OpenIMP. Stays aud: vendor-equal by code, no device call.  T20 (2026-11-04): never called on a camera; the vendor 3.12.0 libsysutils is the same file for T10 and T20, so the T10 code comparison above holds (sync(), then kill(1, 15)). Stays aud. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: never called on a camera (reboots, suspends or powers it off); the vendor libraries send the same sequence (see the T10 pass of 2026-11-03).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17462,7 +17478,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
    }
@@ -17503,7 +17519,7 @@
     "T40": "host",
     "T41": "host"
    },
-   "note": "agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD T10 (2026-11-03): never called on a camera. Code comparison against the vendor libsysutils of T10, T20, T21, T23, T31 and T41: sync() and then kill(1, 17); on MIPS signal 17 is SIGUSR2 (busybox init powers off), not SIGCHLD (18) as written above, which is what the image's own libsysutils sends. OpenIMP defaults to SIGTERM (reboot, deliberate), OPENIMP_SU_SHUTDOWN=poweroff sends the vendor's SIGUSR2; the mode named vendor sends SIGCHLD. Stays host.  T20 (2026-11-04): never called on a camera; the vendor 3.12.0 libsysutils (T10 and T20 share it) sends kill(1, 17) = SIGUSR2 on MIPS after sync(), see above. Stays host."
+   "note": "agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD agg-37: OpenIMP exports it in `libimp.so` on every SoC (sync, then SIGTERM to init = reboot by default; `OPENIMP_SU_SHUTDOWN=poweroff` sends SIGUSR2, `=vendor` the vendor SIGCHLD); host test with a fake kill, not run on a camera. Before agg-37: kill(1,SIGCHLD) does not power off busybox init; fix in neo PR #1 (SIGUSR2), unmerged; no streamer uses it; class d: lives in libsysutils (not OpenIMP); the vendor does sync() + kill(1, SIGCHLD) exactly like it, busybox init ignores SIGCHLD T10 (2026-11-03): never called on a camera. Code comparison against the vendor libsysutils of T10, T20, T21, T23, T31 and T41: sync() and then kill(1, 17); on MIPS signal 17 is SIGUSR2 (busybox init powers off), not SIGCHLD (18) as written above, which is what the image's own libsysutils sends. OpenIMP defaults to SIGTERM (reboot, deliberate), OPENIMP_SU_SHUTDOWN=poweroff sends the vendor's SIGUSR2; the mode named vendor sends SIGCHLD. Stays host.  T20 (2026-11-04): never called on a camera; the vendor 3.12.0 libsysutils (T10 and T20 share it) sends kill(1, 17) = SIGUSR2 on MIPS after sync(), see above. Stays host. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: never called on a camera (reboots, suspends or powers it off); the vendor libraries send the same sequence (see the T10 pass of 2026-11-03)."
   },
   "SU_Base_Suspend": {
    "area": "System",
@@ -17519,7 +17535,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (suspends the machine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): never called on a camera. Code comparison only: the vendor T10 3.12.0 libsysutils writes \"mem\" to /sys/power/state (with the wake-lock and wakeup_count handling around it), the image's libsysutils writes \"mem\" to the same file; the calls come from the board's libsysutils, not from OpenIMP. Stays aud: no device call.  T20 (2026-11-04): never called on a camera; same vendor 3.12.0 libsysutils as T10 (\"mem\" to /sys/power/state), code comparison above. Stays aud.",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (suspends the machine); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): never called on a camera. Code comparison only: the vendor T10 3.12.0 libsysutils writes \"mem\" to /sys/power/state (with the wake-lock and wakeup_count handling around it), the image's libsysutils writes \"mem\" to the same file; the calls come from the board's libsysutils, not from OpenIMP. Stays aud: no device call.  T20 (2026-11-04): never called on a camera; same vendor 3.12.0 libsysutils as T10 (\"mem\" to /sys/power/state), code comparison above. Stays aud. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: never called on a camera (reboots, suspends or powers it off); the vendor libraries send the same sequence (see the T10 pass of 2026-11-03).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17603,7 +17619,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17623,7 +17639,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17643,7 +17659,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
    }
@@ -17662,7 +17678,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
    }
@@ -17681,7 +17697,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls"
    }
@@ -17700,7 +17716,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17720,7 +17736,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17740,7 +17756,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17760,7 +17776,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17780,7 +17796,7 @@
     "T40": "err",
     "T41": "aud"
    },
-   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers.",
+   "note": "T40: answers -1 with errno ENOTSUP by design: the vendor functions drive the Ingenic AES/DES kernel drivers (/dev/aes, /dev/jz-des), which the open stack does not ship (the vendor library answers -1 as well on a kernel without them); software AES/DES would be an extra beyond the vendor and is not offered T10 (2026-11-03, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T10 libsysutils exports the calls, so the cells stay aud: they need a board with the cipher drivers.  T20 (2026-11-04, camera check of the device nodes): no /dev/aes and no /dev/jz-des (no AES/DES engine driver), apitest skips the group. The vendor T20 libsysutils exports the calls, so the cell stays aud: it needs a board with the cipher drivers. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): classified as a documented limit, not a bug: the apitest answer is exactly the documented one (-1, errno ENOTSUP/122, 10 of 10 PASS), because the image ships neither /dev/aes nor /dev/jz-des; the cell stays err by design (software AES/DES would be an extra beyond the vendor).",
    "ref": {
     "T40": "apitest area su in QEMU T40 2026-10-31: -1 / ENOTSUP PASS for all 10 calls",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17825,7 +17841,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (masks a hardware key); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): the camera has the gpio-keys device (keys 28 and 102). With APITEST_KEYMASK=1 the apitest asks the kernel to mask key 28 first: the sysfs write to disabled_keys is refused (EINVAL, the board's buttons are not maskable), so SU_Key_DisableEvent/EnableEvent answer -1 as they would with the vendor library (apitest N/A, QEMU and camera alike). Stays aud: it needs a board with a maskable key.  T20 (2026-11-04, APITEST_KEYMASK=1 on the T20 camera, QEMU T20 first): SU_Key_OpenEvent/CloseEvent PASS; masking the first gpio-keys key (28) is refused by the kernel (sysfs disabled_keys write: EINVAL), the call answers -1; apitest N/A. Stays aud.",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (masks a hardware key); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): the camera has the gpio-keys device (keys 28 and 102). With APITEST_KEYMASK=1 the apitest asks the kernel to mask key 28 first: the sysfs write to disabled_keys is refused (EINVAL, the board's buttons are not maskable), so SU_Key_DisableEvent/EnableEvent answer -1 as they would with the vendor library (apitest N/A, QEMU and camera alike). Stays aud: it needs a board with a maskable key.  T20 (2026-11-04, APITEST_KEYMASK=1 on the T20 camera, QEMU T20 first): SU_Key_OpenEvent/CloseEvent PASS; masking the first gpio-keys key (28) is refused by the kernel (sysfs disabled_keys write: EINVAL), the call answers -1; apitest N/A. Stays aud. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: APITEST_KEYMASK=1 run, the kernel refuses to mask the gpio-keys key 28 (sysfs disabled_keys write: EINVAL, not a maskable button on this board), so the calls answer -1; SU_Key_OpenEvent answered -1 on this board ('no gpio_keys input device').",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17845,7 +17861,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (masks a hardware key); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): see SU_Key_DisableEvent: the kernel refuses to mask the board's buttons (EINVAL), the call answers -1; apitest N/A. Stays aud.  T20 (2026-11-04, APITEST_KEYMASK=1 on the T20 camera, QEMU T20 first): SU_Key_OpenEvent/CloseEvent PASS; masking the first gpio-keys key (28) is refused by the kernel (sysfs disabled_keys write: EINVAL), the call answers -1; apitest N/A. Stays aud.",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (masks a hardware key); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): see SU_Key_DisableEvent: the kernel refuses to mask the board's buttons (EINVAL), the call answers -1; apitest N/A. Stays aud.  T20 (2026-11-04, APITEST_KEYMASK=1 on the T20 camera, QEMU T20 first): SU_Key_OpenEvent/CloseEvent PASS; masking the first gpio-keys key (28) is refused by the kernel (sysfs disabled_keys write: EINVAL), the call answers -1; apitest N/A. Stays aud. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: APITEST_KEYMASK=1 run, the kernel refuses to mask the gpio-keys key 28 (sysfs disabled_keys write: EINVAL, not a maskable button on this board), so the calls answer -1; SU_Key_OpenEvent answered -1 on this board ('no gpio_keys input device').",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17890,7 +17906,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until a key is pressed); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): SU_Key_OpenEvent/CloseEvent PASS on the camera (gpio-keys event node); ReadEvent blocks until a physical key press and was not run. Stays aud: it needs a person pressing the board key.  T20 (2026-11-04): SU_Key_OpenEvent/CloseEvent PASS on the T20 camera (gpio-keys event node); ReadEvent blocks until a physical key press and was not run. Stays aud: it needs a person pressing the board key.",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (blocks until a key is pressed); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): SU_Key_OpenEvent/CloseEvent PASS on the camera (gpio-keys event node); ReadEvent blocks until a physical key press and was not run. Stays aud: it needs a person pressing the board key.  T20 (2026-11-04): SU_Key_OpenEvent/CloseEvent PASS on the T20 camera (gpio-keys event node); ReadEvent blocks until a physical key press and was not run. Stays aud: it needs a person pressing the board key. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: blocks until a key is pressed (a physical action on the camera's gpio-keys button).",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17910,7 +17926,7 @@
     "T40": "host",
     "T41": "aud"
    },
-   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (drives the board LED); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): the library drives /proc/board/power/led<N> (vendor T10 libsysutils and the image's libsysutils alike); that node does not exist on this camera (only /sys/class/leds/led_r, which the library does not use), so no device call. Stays aud: it needs a board with the proc LED nodes.  T20 (2026-11-04, camera check): no /proc/board/power/led* node (the board libsysutils drives it); OpenIMP's own SU_LED_Command exports sysfs GPIO <N>, and this camera's LEDs (/sys/class/leds/led_b, led_y) sit behind the leds-gpio driver, so a call would drive a guessed board pin; no call made. Stays aud: it needs a known LED pin on a board that has the node.",
+   "note": "audit: sysfs/ioctl/syscall path. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #27): Exported by the unchanged vendor libsysutils 1.0.5 that ships with the T30 image (OpenIMP has no SU_ code for T30). QEMU T30 (sc4236 model, no camera): SKIP (device values not published). Not run (drives the board LED); the vendor library code is the same one the T21/T23/T31 cells rate at audit level. T10 (2026-11-03): the library drives /proc/board/power/led<N> (vendor T10 libsysutils and the image's libsysutils alike); that node does not exist on this camera (only /sys/class/leds/led_r, which the library does not use), so no device call. Stays aud: it needs a board with the proc LED nodes.  T20 (2026-11-04, camera check): no /proc/board/power/led* node (the board libsysutils drives it); OpenIMP's own SU_LED_Command exports sysfs GPIO <N>, and this camera's LEDs (/sys/class/leds/led_b, led_y) sit behind the leds-gpio driver, so a call would drive a guessed board pin; no call made. Stays aud: it needs a known LED pin on a board that has the node. T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: not run, drives the board LED; the camera has no /proc/board/power/led* node.",
    "ref": {
     "T40": "host test tests/core/su_sysutils_test.c (fake ioctl and temp files, 2026-10-31); ported from the vendor libsysutils 1.3.1 disassembly; no camera run yet (the Eufy .184 may have no RTC / ADC / gpio_keys / LED, apitest reports N/A there)",
     "T30": "static audit 2026-10-31 (OpenIMP claude/t30-audit)"
@@ -17989,7 +18005,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -18067,7 +18083,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -18125,7 +18141,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -18193,7 +18209,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -18261,7 +18277,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -18339,7 +18355,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -18417,7 +18433,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg62 2026-10-31 .30",
     "T31": "apitest agg61 2026-10-31 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest agg61 2026-10-31 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -18459,7 +18475,7 @@
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184"
+    "T40": "apitest t40pass 2026-11-04 .184"
    },
    "note": "T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25) T23+T31: real memory pools (claude/t23t31-cacheonly, not in agg-25)"
   },
@@ -18516,7 +18532,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -18584,7 +18600,7 @@
     "T21": "apitest rc3gaps2 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
@@ -18662,7 +18678,7 @@
     "T21": "apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
     "T30": "apitest T30X lab 2026-11-03 .231"
    }
@@ -18721,7 +18737,7 @@
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest rc3gaps2 2026-10-27 .26",
     "T41": "apitest rc3gaps2 2026-10-27 .34",
-    "T40": "apitest agg65k 2026-11-01 .184",
+    "T40": "apitest t40pass 2026-11-04 .184",
     "T30": "apitest t30lab 2026-11-03 .231"
    }
   },
@@ -20994,15 +21010,16 @@
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
-    "T40": "qemu",
+    "T40": "dev",
     "T41": "aud"
    },
    "auto": true,
    "ref": {
     "T41": "OpenIMP claude/t4x-api-gaps (2026-10-26): static audit against the vendor libimp.a, no host test of its own; no camera run yet",
     "T23": "apitest isposd 2026-10-27 .30 (open-tx-isp 8cb942a7, #127): luma 111.3 -> 234.0, hide 111.2, destroy, frames flow; stock agg47 ko draws nothing",
-    "T40": "apitest isposdapi in QEMU T40 2026-10-31 (open-tx-isp agg59 ko, OpenIMP claude/t40-backlog): Init returns 0 twice in a row, region create/set/get/destroy follow, frames flow, 0 oops; no camera run yet. Vendor 1.3.1 (0xc3f14): allocates the pool and the 6x8 table, -1 when the allocation fails; OpenIMP is lazy and cannot fail"
-   }
+    "T40": "apitest t40pass 2026-11-04 .184"
+   },
+   "note": "T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): device-tested: Init twice returns 0 (isposdapi case, regions created and destroyed afterwards, frames flow)."
   },
   "OSD_UpdateRgnAttrData_ISP": {
    "area": "OSD",
@@ -21222,7 +21239,7 @@
     "T40": "host",
     "T41": "dev"
    },
-   "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*' | T41: needs the SADC kernel drivers; the standard image has no /dev/ingenic_adc_aux_N nodes (N/A there)",
+   "note": "T41: the vendor libsysutils 1.2.5 and the board's neo-sysutils both export it (libsysutils, not libimp) and open the six /dev/ingenic_adc_aux_N nodes; apitest is N/A without the node (QEMU T41: N/A, no ADC driver); the camera run needs 'ls /dev/*adc*' | T41: needs the SADC kernel drivers; the standard image has no /dev/ingenic_adc_aux_N nodes (N/A there) T40 pass 2026-11-04 (Eufy T40XP, OpenIMP libimp of next loaded from /tmp, apitest): stays host: N/A on the camera, no ADC node (/dev/ingenic_adc_aux_0 or /dev/jz_adc_aux_0; the image kernel is built without the SADC aux driver, and the vendor libsysutils opens the same nodes).",
    "action": {
     "T41": "n.a."
    },
