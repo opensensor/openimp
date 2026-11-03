@@ -197,13 +197,29 @@ static void jclose(void)
     if (g_jf) { fprintf(g_jf, "\n]}\n"); fclose(g_jf); g_jf = NULL; }
 }
 
+/* OpenIMP only (issue #198): where a FrameSource stop is, one byte per channel
+ * (low nibble DisableChn stage, high nibble pooling worker step). */
+extern unsigned int OpenIMP_FS_DebugState(void) __attribute__((weak));
+
 static void on_alarm(int sig)
 {
     static const char m[] = "\n[E] watchdog: no progress for 60 s, last function: ";
+    static const char hx[] = "0123456789abcdef";
+    char st[32];
+    int i, n = 0;
+
     (void)sig;
     if (write(1, m, sizeof(m) - 1) < 0) _exit(3);
     if (write(1, g_last, strlen(g_last)) < 0) _exit(3);
     if (write(1, "\n", 1) < 0) _exit(3);
+    if (OpenIMP_FS_DebugState) {
+        unsigned int w = OpenIMP_FS_DebugState();
+
+        memcpy(st, "[E] fs state 0x", 15); n = 15;
+        for (i = 7; i >= 0; i--) st[n++] = hx[(w >> (4 * i)) & 0xf];
+        st[n++] = '\n';
+        if (write(1, st, (size_t)n) < 0) _exit(3);
+    }
     if (g_jfd >= 0 && write(g_jfd, "\n],\"watchdog\":true}\n", 19) < 0) _exit(3);
     _exit(3);
 }

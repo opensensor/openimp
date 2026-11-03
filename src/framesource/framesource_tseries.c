@@ -773,7 +773,22 @@ static int g_fs_thread_enabled_seen[FS_MAX_CHANNELS];
 /* Set by the pooling worker when it leaves its loop (not when cancelled). */
 static int g_fs_thread_exited[FS_MAX_CHANNELS];
 
-#if defined(PLATFORM_T31)
+/* Where IMP_FrameSource_DisableChn is, per channel (0 = not in it): a stop
+ * that does not return is located by OpenIMP_FS_DebugState() (apitest
+ * watchdog, issue #198) without a debugger or /proc/<pid>/stack. */
+enum {
+    FS_DSTAGE_IDLE,
+    FS_DSTAGE_LOCK,         /* waiting for g_fs_lock */
+    FS_DSTAGE_STREAMOFF,    /* VIDIOC_STREAMOFF (driver drain wait) */
+    FS_DSTAGE_WORKER,       /* waiting for / joining the pooling worker */
+    FS_DSTAGE_FLUSH,        /* VBMFlushFrame (pool lock) */
+    FS_DSTAGE_CLOSE,        /* VBMWaitReleases + close(fd) */
+    FS_DSTAGE_POOL,         /* VBMDestroyPoolParked */
+};
+static volatile int g_fs_disable_stage[FS_MAX_CHANNELS];
+#define FS_DSTAGE(chn, st) (g_fs_disable_stage[(chn)] = (st))
+
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 /* Stop diagnostics: the pooling worker records where it is, so a
  * DisableChn that times out waiting for it can say where it waits. */
 enum {
@@ -817,7 +832,7 @@ static uint32_t fs_now_ms(void)
     return (uint32_t)ts.tv_sec * 1000u + (uint32_t)(ts.tv_nsec / 1000000L);
 }
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
 
 /* No clock read here: on the 3.10 MIPS kernels without a vDSO every
  * clock_gettime is a syscall, and this runs ~5 times per frame and
@@ -827,19 +842,22 @@ static uint32_t fs_now_ms(void)
         g_fs_step_seq[(chn)]++;                 \
     } while (0)
 
-static const char *fs_step_name(int step)
+static __attribute__((unused)) const char *fs_step_name(int step)
 {
     if (step < 0 || step >= (int)(sizeof(fs_step_names) / sizeof(fs_step_names[0])))
         return "?";
     return fs_step_names[step];
 }
 
-static const char *fs_dq_step_name(int step)
+static __attribute__((unused)) const char *fs_dq_step_name(int step)
 {
     if (step < 0 || step >= (int)(sizeof(fs_dq_step_names) / sizeof(fs_dq_step_names[0])))
         return "?";
     return fs_dq_step_names[step];
 }
+#endif
+
+#if defined(PLATFORM_T31)
 
 /* Which T31 ISP driver is loaded, for the log only: the stop order and
  * the cancel fallback depend on the DQBUF behaviour fs_dqbuf() observed
@@ -872,7 +890,8 @@ static void fs_t31_log_isp_driver(void)
     IMP_LOG(LOG_NOTICE, "Framesource", "T31 ISP driver: %s",
                  fs_t31_isp_driver_name());
 }
-#else
+#endif
+#if !defined(PLATFORM_T31) && !defined(PLATFORM_T23)
 #define FS_STEP(chn, step) do { } while (0)
 #endif
 
@@ -1067,7 +1086,7 @@ static void *frame_pooling_thread(void *arg)
         pthread_testcancel();
         poll_count++;
         FS_STEP(chn, FS_STEP_LOOP);
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
         g_fs_step_iter[chn] = poll_count;
 #endif
         if (poll_count <= 2) {
@@ -2477,7 +2496,7 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
 {
     uint32_t start = fs_now_ms();
     uint32_t waited = 0;
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
     unsigned int seq = g_fs_step_seq[chn];
 
     /* The worker stays in its current step at least from now on; every
@@ -2487,7 +2506,7 @@ static int fs_wait_worker_exit(int chn, int timeout_ms)
     while (!FS_FLAG_LOAD(g_fs_thread_exited[chn])) {
         uint32_t now = fs_now_ms();
 
-#if defined(PLATFORM_T31)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
         if (g_fs_step_seq[chn] != seq) {
             seq = g_fs_step_seq[chn];
             g_fs_step_seen_ms[chn] = now;
@@ -2566,6 +2585,24 @@ static void framesource_dtor_stream_off(void)
 }
 #endif
 
+/* Debug word for a watchdog (async-signal-safe, no locks): per channel 0..3
+ * a byte, the DisableChn stage in the low nibble and the pooling worker's
+ * last step (T23/T31, else 0) in the high nibble. */
+unsigned int OpenIMP_FS_DebugState(void)
+{
+    unsigned int w = 0;
+    int chn;
+
+    for (chn = 0; chn < FS_MAX_CHANNELS && chn < 4; chn++) {
+        unsigned int b = (unsigned int)g_fs_disable_stage[chn] & 0xf;
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+        b |= ((unsigned int)g_fs_step[chn] & 0xf) << 4;
+#endif
+        w |= b << (8 * chn);
+    }
+    return w;
+}
+
 int IMP_FrameSource_DisableChn(int chnNum)
 {
     FsChnCtx *ctx;
@@ -2582,14 +2619,17 @@ int IMP_FrameSource_DisableChn(int chnNum)
         return -1;
     }
 
+    FS_DSTAGE(chnNum, FS_DSTAGE_LOCK);
     pthread_mutex_lock(&g_fs_lock);
     ctx = &g_fs_ctx[chnNum];
     if (fs_chan_get_state(chnNum) != 2) {
+        FS_DSTAGE(chnNum, FS_DSTAGE_IDLE);
         pthread_mutex_unlock(&g_fs_lock);
         return 0;
     }
 
     FS_FLAG_STORE(ctx->running, 0);
+    FS_DSTAGE(chnNum, FS_DSTAGE_STREAMOFF);
 #if defined(PLATFORM_T31)
     /* STREAMOFF first, then let the worker leave by itself. Where the
      * worker can be waiting depends on the driver's DQBUF, which fs_dqbuf()
@@ -2686,22 +2726,27 @@ int IMP_FrameSource_DisableChn(int chnNum)
     if (ctx->fd >= 0) {
         fs_stream_off(ctx->fd);
     }
+    FS_DSTAGE(chnNum, FS_DSTAGE_WORKER);
     /* The drivers wake the worker on STREAMOFF (open tx-isp T23: the DQBUF
      * wait ends with -EPIPE; vb2 on T20/T21: poll reports POLLERR and DQBUF
      * fails) and it checks running before every DQBUF, so it leaves by
      * itself; the cancel is only the fallback for a worker that does not. */
     fs_stop_worker(chnNum, ctx);
 #endif
+    FS_DSTAGE(chnNum, FS_DSTAGE_FLUSH);
     VBMFlushFrame(chnNum);
+    FS_DSTAGE(chnNum, FS_DSTAGE_CLOSE);
     /* Close before the pool memory goes back to the allocator: freed pool
      * pages are handed out again.  The open T23 driver waits at STREAMOFF
      * until the MSCA consumed the queued addresses (stock drain wait), but
      * keeps the output enabled while the input runs; the pool is parked
      * (T21/T23, see vbm_parked in kernel_interface.c), not freed. */
     fs_close_chn_fd(chnNum, ctx);
+    FS_DSTAGE(chnNum, FS_DSTAGE_POOL);
     VBMDestroyPoolParked(chnNum);
 
     fs_chan_set_state(chnNum, 1);
+    FS_DSTAGE(chnNum, FS_DSTAGE_IDLE);
     pthread_mutex_unlock(&g_fs_lock);
     return 0;
 }
