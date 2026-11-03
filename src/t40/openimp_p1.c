@@ -94,6 +94,8 @@
 #define TISP_FIELD_STOCK_PROGRESSIVE 4U
 #define TISP_COLORSPACE_STOCK        8U
 #define TISP_PIX_FMT_NV12_ENUM      10U
+#define TISP_PIX_FMT_RAW_ENUM       34U   /* PIX_FMT_RAW */
+#define TISP_OUTPUT_FMT_RAW16       7U    /* tx-isp isp_output_fmt: RAW16, BGGR */
 #define TISP_OUTPUT_FMT_NV12         0U
 #define TISP_BUFFER_WORDS           17
 
@@ -1715,6 +1717,24 @@ int IMP_FrameSource_GetChnFifoAttr(int channel, IMPFSChnFifoAttr *attr)
     return 0;
 }
 
+#if defined(PLATFORM_T41)
+/*
+ * Real ISP bypass (issue 125): a RAW16 channel is only offered when the
+ * application opted in with OPENIMP_T41_BYPASS_GRAPH and the driver was
+ * loaded with isp_bypass_graph=1 (it refuses IMP_ISP_SetISPBypass otherwise).
+ * Without the variable PIX_FMT_RAW stays refused: no change by default.
+ */
+static int p1_raw_enabled(void)
+{
+    return getenv("OPENIMP_T41_BYPASS_GRAPH") != NULL;
+}
+#else
+static int p1_raw_enabled(void)
+{
+    return 0;
+}
+#endif
+
 static void fill_frame_format(struct tisp_frame_format *format,
                               const IMPFSChnAttr *attr)
 {
@@ -1728,7 +1748,8 @@ static void fill_frame_format(struct tisp_frame_format *format,
      * isp_output_fmt table and SDK both identify semi-planar Y/CbCr 4:2:0 as
      * output format 0.
      */
-    format->pix.pixelformat = TISP_OUTPUT_FMT_NV12;
+    format->pix.pixelformat = attr->pixFmt == (int32_t)TISP_PIX_FMT_RAW_ENUM ?
+                              TISP_OUTPUT_FMT_RAW16 : TISP_OUTPUT_FMT_NV12;
     format->pix.field = TISP_FIELD_STOCK_PROGRESSIVE;
     format->pix.colorspace = TISP_COLORSPACE_STOCK;
     format->crop_enable = (uint32_t)attr->crop.enable;
@@ -2475,7 +2496,9 @@ int IMP_FrameSource_EnableChn(int channel)
         return -1;
     }
     if (chn->attr.picWidth <= 0 || chn->attr.picHeight <= 0 ||
-        chn->attr.pixFmt != (int32_t)TISP_PIX_FMT_NV12_ENUM) {
+        (chn->attr.pixFmt != (int32_t)TISP_PIX_FMT_NV12_ENUM &&
+         !(chn->attr.pixFmt == (int32_t)TISP_PIX_FMT_RAW_ENUM &&
+           p1_raw_enabled()))) {
         syslog(LOG_ERR,
                "openimp-p1: enable chn=%d invalid format %dx%d pixfmt=%d expected=%u",
                channel, chn->attr.picWidth, chn->attr.picHeight,

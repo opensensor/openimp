@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-03, T41 optional ISP bypass: RAW16 channel (`OPENIMP_T41_BYPASS_GRAPH=1`, #125; QEMU only, not proven on a camera)
+
+- With `OPENIMP_T41_BYPASS_GRAPH` set, `IMP_FrameSource_EnableChn` on T41 accepts a `PIX_FMT_RAW` channel and sets the frame-channel pixel format 7 (RAW16 BGGR, 2 bytes per pixel; the driver returns the line and frame size). The channel only works after `IMP_ISP_SetISPBypass(ENABLE)` with a driver loaded as `isp_bypass_graph=1` (open-tx-isp `claude/issue-125-v2`); without the variable `PIX_FMT_RAW` stays refused and nothing changes. QEMU T41: SetISPBypass, CreateChn, EnableChn clean, no frame (the QEMU VIC has no MDMA); after `SetISPBypass(DISABLE)` and recreating the channel NV12 delivers 25 of 25 frames. The vendor reference run on a Cinnado T41 froze the board, so there is no camera frame yet.
+
 ## 2026-11-03, #129: T23 optional ISP bypass graph (OPENIMP_T23_BYPASS_GRAPH, device-tested on a T23 camera)
 
 - T23 `IMP_ISP_Tuning_SetISPBypass(DISABLE)` runs the vendor five-step link rebuild (DISABLE_LINKS, DESTROY_LINKS, control 0, CREATE_LINKS(1), ENABLE_LINKS) when `OPENIMP_T23_BYPASS_GRAPH` is set and the driver is loaded with `isp_bypass_graph=1` (open-tx-isp `next`); `ENABLE` afterwards rebuilds the normal graph (CREATE_LINKS(0)). `PIX_FMT_RAW` maps to `RG12` (2 bytes per pixel) on T23. Without the variable `DISABLE` stays refused (-1) and `ENABLE` a no-op: no change by default.
