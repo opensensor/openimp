@@ -1218,9 +1218,12 @@ static void *frame_pooling_thread(void *arg)
 #if defined(PLATFORM_T31)
                     openimp_vbm_dq_step[chn] = VBM_DQ_STEP_NONE;
 #endif
-#if defined(PLATFORM_T20)
-                    /* tx-isp-t20 reports the fd readable and sleeps in
-                     * DQBUF, O_NONBLOCK or not, while it holds no buffer.
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
+                    /* tx-isp-t20 (and tx-isp-t30, stock and open: the
+                     * frame channel has no poll and its DQBUF waits for a
+                     * buffer, O_NONBLOCK ignored) reports the fd readable
+                     * and sleeps in DQBUF, O_NONBLOCK or not, while it
+                     * holds no buffer.
                      * When a reader stops with every buffer parked in the
                      * ready queue (and the delay FIFO), this thread slept
                      * there for good: the idle recycle never ran, the

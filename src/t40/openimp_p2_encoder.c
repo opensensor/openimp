@@ -13,6 +13,11 @@
 #include <time.h>
 #include <unistd.h>
 
+/* The real T30 build (not T20/T21/T23, which define PLATFORM_T30 below). */
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T21) && !defined(PLATFORM_T20) && \
+    !defined(PLATFORM_T23)
+#define P2_T30_NATIVE 1
+#endif
 /* T21 and T30 expose the same legacy public encoder ABI and both use the
  * source-only Helix /dev/soc_vpu backend.  Keep that compatibility local to
  * the encoder translation unit: their ISP and FrameSource ioctls differ. */
@@ -2262,6 +2267,108 @@ int IMP_Encoder_CreateChn(int channel, IMPEncoderCHNAttr *attr)
     return p2_create_chn(channel, attr);
 }
 
+#if defined(P2_T30_NATIVE)
+/* T30 super-frame configuration (vendor T30 1.0.5 libimp; IMP_Encoder_Set/
+ * GetSuperFrameCfg -> i264e parameter 13, i264e_super_rc_set/get,
+ * i264e_validate_parameters 0x588ec, channel_i264e_encoder_init 0xb7f40,
+ * IMP_Encoder_CreateChn 0xbb2b4; camera A/B in audit/t30/b1-all).
+ *
+ * Start values: mode REENCODE (2), priority BITRATE_FIRST (1); the I
+ * threshold is the channel's stream buffer ((size - 0x1080) * 8 bits, the
+ * default buffer (w * h * 3 / 2) / div + 0x1080 with div 2 for pictures up
+ * to 800x600, else 3), limited to [area * 3 / 50, area * 12 / (w > 800 ? 6
+ * : 3)] with area = 16-aligned w * h; P = clip(0xd64925, lo, I / 1.4f), B =
+ * clip(0xa4d5ce, lo, P / 1.3f) (floats as the OEM).  640x360: I 942080,
+ * P 672914 (the camera read-back).
+ *
+ * Set: any mode is clipped to 0..2 (NONE, DISCARD, REENCODE), the priority
+ * likewise, the I threshold is limited to the stream buffer, the others are
+ * stored as given; 0 on success.  JPEG and not created channels: 0 and
+ * nothing (the OEM table slot is empty).  The OEM stages the values and the
+ * controller takes them with the next picture, so a Get right after a Set
+ * shows the old values until then; OpenIMP shows them at once.  The values
+ * are kept and returned; OpenIMP's controller does not re-encode or drop
+ * pictures by them (OEM effect not ported, docs/T30_SUPERFRAME.md). */
+static int32_t p2_t30_clip3(int32_t value, int32_t low, int32_t high)
+{
+    return value < low ? low : value > high ? high : value;
+}
+
+static uint32_t p2_t30_stream_buffer(const P2EncoderChannel *ch,
+                                     const IMPEncoderCHNAttr *attr)
+{
+    uint32_t w = attr->encAttr.picWidth, h = attr->encAttr.picHeight;
+
+    if (ch->stream_buf_size != 0u)
+        return ch->stream_buf_size;
+    return (w * h * 3u / 2u) / (w < 0x321u && h < 0x259u ? 2u : 3u) + 0x1080u;
+}
+
+static void p2_t30_superframe_defaults(P2EncoderChannel *ch)
+{
+    const IMPEncoderCHNAttr *attr = &ch->attr;
+    uint32_t w = attr->encAttr.picWidth, h = attr->encAttr.picHeight;
+    int32_t area, low, high, i_thr, p_thr, b_thr;
+
+    memset(&ch->superframe, 0, sizeof(ch->superframe));
+    if (ch->codec_type == IMP_ENC_TYPE_JPEG || !w || !h)
+        return;
+    area = (int32_t)(((w + 15u) & ~15u) * ((h + 15u) & ~15u));
+    low = area * 3 / 50;
+    high = area * 12 / (w < 0x321u ? 3 : 6);
+    i_thr = p2_t30_clip3((int32_t)((p2_t30_stream_buffer(ch, attr) -
+                                    0x1080u) * 8u), low, high);
+    p_thr = p2_t30_clip3(14043429, low, (int32_t)((float)i_thr / 1.4f));
+    b_thr = p2_t30_clip3(10802638, low, (int32_t)((float)p_thr / 1.3f));
+    ch->superframe.superFrmMode = IMP_RC_SUPERFRM_REENCODE;
+    ch->superframe.superIFrmBitsThr = (uint32_t)i_thr;
+    ch->superframe.superPFrmBitsThr = (uint32_t)p_thr;
+    ch->superframe.superBFrmBitsThr = (uint32_t)b_thr;
+    ch->superframe.rcPriority = IMP_RC_PRIORITY_BITRATE_FIRST;
+}
+
+static int p2_t30_superframe_set(int channel,
+                                 const IMPEncoderSuperFrmCfg *config)
+{
+    P2EncoderChannel *ch;
+    uint32_t limit;
+
+    if (!p2_valid_channel(channel) || channel > 5 || !config)
+        return -1;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (!ch->created || ch->codec_type == IMP_ENC_TYPE_JPEG) {
+        pthread_mutex_unlock(&ch->lock);
+        return 0;
+    }
+    limit = (p2_t30_stream_buffer(ch, &ch->attr) - 0x1080u) * 8u;
+    ch->superframe.superFrmMode = (IMPEncoderSuperFrmMode)p2_t30_clip3(
+        (int32_t)config->superFrmMode, 0, 2);
+    ch->superframe.superIFrmBitsThr =
+        config->superIFrmBitsThr < limit ? config->superIFrmBitsThr : limit;
+    ch->superframe.superPFrmBitsThr = config->superPFrmBitsThr;
+    ch->superframe.superBFrmBitsThr = config->superBFrmBitsThr;
+    ch->superframe.rcPriority = (IMPEncoderRcPriority)p2_t30_clip3(
+        (int32_t)config->rcPriority, 0, 2);
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+
+static int p2_t30_superframe_get(int channel, IMPEncoderSuperFrmCfg *config)
+{
+    P2EncoderChannel *ch;
+
+    if (!p2_valid_channel(channel) || channel > 5 || !config)
+        return -1;
+    ch = &p2_channels[channel];
+    pthread_mutex_lock(&ch->lock);
+    if (ch->created && ch->codec_type != IMP_ENC_TYPE_JPEG)
+        *config = ch->superframe;
+    pthread_mutex_unlock(&ch->lock);
+    return 0;
+}
+#endif
+
 /* channel: a public channel or a hidden unbound-encoder slot (P2_YUV_SLOTS) */
 static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
 {
@@ -2644,6 +2751,9 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
         (void)AL_Codec_Encode_SetJpegQl(ch->codec, 1,
                                         ch->jpeg_quality.qmem_table);
 #endif
+#endif
+#if defined(P2_T30_NATIVE)
+    p2_t30_superframe_defaults(ch);
 #endif
     ch->created = 1;
 #if defined(PLATFORM_T31)
@@ -5948,9 +6058,10 @@ int IMP_Encoder_SetChnROI(int channel, const IMPEncoderROICfg *config)
      * Non-H.264 channels: nothing, success (T21 OEM). */
     if (ch->codec_type != IMP_ENC_TYPE_AVC)
         return 0;
-#if !defined(PLATFORM_T21)
-    /* T30: its command list's ROI registers are not known; an enabled
-     * region is refused instead of being stored without effect */
+#if !defined(PLATFORM_T21) && !defined(P2_T30_NATIVE)
+    /* T31/T40/T41: no Helix command list; an enabled region is refused
+     * instead of being stored without effect.  T30 programs the regions
+     * (OEM H264E_T30_SliceInit 0x45590: 0x40044.., src/t30). */
     if (config->bEnable)
         return -1;
 #endif
@@ -6734,6 +6845,9 @@ int IMP_Encoder_GetMbRC(int channel, int *enabled)
 int IMP_Encoder_SetSuperFrameCfg(int channel,
                                 const IMPEncoderSuperFrmCfg *config)
 {
+#if defined(P2_T30_NATIVE)
+    return p2_t30_superframe_set(channel, config);
+#else
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);
 
     if (!ch || !config)
@@ -6769,11 +6883,15 @@ int IMP_Encoder_SetSuperFrameCfg(int channel,
 #endif
     pthread_mutex_unlock(&ch->lock);
     return 0;
+#endif /* !P2_T30_NATIVE */
 }
 
 int IMP_Encoder_GetSuperFrameCfg(int channel,
                                 IMPEncoderSuperFrmCfg *config)
 {
+#if defined(P2_T30_NATIVE)
+    return p2_t30_superframe_get(channel, config);
+#else
     P2EncoderChannel *ch = p2_legacy_config_channel(channel);
 
     if (!ch || !config)
@@ -6782,6 +6900,7 @@ int IMP_Encoder_GetSuperFrameCfg(int channel,
     *config = ch->superframe;
     pthread_mutex_unlock(&ch->lock);
     return 0;
+#endif
 }
 
 #if defined(PLATFORM_T21)

@@ -295,7 +295,11 @@ p2_t1x_test_t20: $(P2_T1X_SOURCES) $(ROOT)/src/demask/demask.c
 p2_t1x_test_t21: $(P2_T1X_SOURCES)
 	$(CC) $(CFLAGS) $(P2_T1X_FLAGS) -DPLATFORM_T21 $(ROOT)/src/core/imp_log_emit.c -o $@ $(P2_T1X_SOURCES) -lpthread
 
-check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
+p2_t30_enc_test: p2_t30_enc_test.c $(ROOT)/src/t40/openimp_p2_encoder.c
+	$(CC) $(CFLAGS) -DPLATFORM_T30 $(P2_T1X_FLAGS) $(ROOT)/src/core/imp_log_emit.c -o $@ p2_t30_enc_test.c \
+		$(ROOT)/src/openimp_profile.c $(ROOT)/src/t40/openimp_p2_encoder.c $(ROOT)/src/t40/t31_stream_layout.c -lpthread
+
+check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 	t21_sinter_map_test t21_front_crop_test helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_framework_test_t30 ivs_move_bench_t20 \
@@ -312,6 +316,7 @@ check: isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestat
 	./isp_t31_awbzone_test
 	./p2_t1x_test_t20
 	./p2_t1x_test_t21
+	./p2_t30_enc_test
 	./rmem_highwater_test
 	./ref_ring_test
 	./ref_ring_test_t23
@@ -416,6 +421,7 @@ dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c
 		-o $@ dmic_t30_test.c -pthread -ldl
 
 clean:
+	$(RM) p2_t30_enc_test
 	$(RM) p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	$(RM) isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test isp_t1x_test_t20 isp_t1x_test_t21 p2_t1x_test_t20 p2_t1x_test_t21
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \

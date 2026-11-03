@@ -184,6 +184,10 @@ static int fake_closed_streaming; /* closed while streaming */
 static int fake_inject;
 static int fake_streamoffs;
 static unsigned int fake_dqbuf_delay_us; /* time spent "in the driver" */
+/* The stock frame channel (T20, and the open tx-isp-t30 that copies it):
+ * select() is always ready and DQBUF sleeps while no buffer is queued,
+ * O_NONBLOCK ignored.  Off: a vb2 driver (EAGAIN, a real poll). */
+static int fake_stock_dq;
 /* frames the driver may still complete (-1: any number) and the capture
  * timestamp of the last one (40 ms apart, from 40 ms) */
 static int fake_frame_budget = -1;
@@ -251,6 +255,19 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
     /* A DQBUF that sleeps in the driver: STREAMOFF can come meanwhile. */
     if ((uint32_t)request == 0xc0445611u && fake_dqbuf_delay_us)
         usleep(fake_dqbuf_delay_us);
+    if ((uint32_t)request == 0xc0445611u && fake_stock_dq) {
+        int waited, ready = 0;
+
+        /* sleep until a buffer is queued (the test bounds it: 4 s) */
+        for (waited = 0; waited < 4000 && !ready; waited++) {
+            pthread_mutex_lock(&fake_lock);
+            ready = fd < 0 || fd >= FAKE_FDS || !fake[fd].open ||
+                    !fake[fd].streaming || fake[fd].queued;
+            pthread_mutex_unlock(&fake_lock);
+            if (!ready)
+                usleep(1000);
+        }
+    }
     pthread_mutex_lock(&fake_lock);
     if (fd < 0 || fd >= FAKE_FDS || !fake[fd].open) {
         fake_bad_ioctl++;
@@ -370,6 +387,10 @@ int __wrap_select(int n, fd_set *r, fd_set *w, fd_set *e, struct timeval *tv)
 
     (void)w;
     (void)e;
+    if (fake_stock_dq) {
+        usleep(200);
+        return 1;               /* always ready, as a device without poll */
+    }
     for (;;) {
         int ready = 0;
 
@@ -1260,6 +1281,62 @@ static void test_format_abi(void)
 }
 #endif
 
+#if defined(PLATFORM_T30) || defined(PLATFORM_T20)
+/* IVS as the only consumer (no reader pulls the channel) on the stock
+ * frame channel.  A reader pulled a moment ago, so the first buffers are
+ * parked in the ready queue; the driver has none left and DQBUF sleeps.
+ * The capture worker must hand the parked buffers back once the pull window
+ * (1 s) is over instead of sleeping in DQBUF for good: IVS keeps getting
+ * frames (T30 camera, apitest ivs: 3 results, then none). */
+int VBMGetFrame(int chn, void **frame);
+static unsigned int ivs_hook_frames;
+
+void openimp_t31_ivs_capture(int fs_chn, const void *frame)
+{
+    (void)fs_chn;
+    (void)frame;
+    __atomic_add_fetch(&ivs_hook_frames, 1u, __ATOMIC_RELAXED);
+}
+
+static void test_ivs_only_stock_dq(void)
+{
+    IMPFSChnAttr a = attr_for(640, 360, 2);
+    void *frame = NULL;
+    unsigned int at_start, waited;
+
+    fake_stock_dq = 1;
+    fake_frame_budget = -1;
+    __atomic_store_n(&ivs_hook_frames, 0, __ATOMIC_RELAXED);
+    pthread_t thread;
+
+    CHECK(IMP_FrameSource_CreateChn(0, &a) == 0, "ivs only: create");
+    CHECK(IMP_FrameSource_EnableChn(0) == 0, "ivs only: enable");
+    /* a reader (the encoder of an earlier test) pulls for a moment and
+     * leaves: the pull window (1 s) is open, so the next frames wait for
+     * a reader in the ready queue */
+    __atomic_store_n(&puller_stop, 0, __ATOMIC_RELAXED);
+    pthread_create(&thread, NULL, puller, NULL);
+    sleep_ms(100);
+    __atomic_store_n(&puller_stop, 1, __ATOMIC_RELAXED);
+    pthread_join(thread, NULL);
+    (void)VBMGetFrame(0, &frame);
+    sleep_ms(300);
+    at_start = __atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED);
+    CHECK(at_start >= 1, "ivs only: no frame at all");
+    for (waited = 0; waited < 3500 &&
+         __atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED) < at_start + 10;
+         waited += 10)
+        sleep_ms(10);
+    CHECK(__atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED) >= at_start + 10,
+          "ivs only: %u frames after the pull window (capture asleep in DQBUF)",
+          __atomic_load_n(&ivs_hook_frames, __ATOMIC_RELAXED));
+    fake_stock_dq = 0;                  /* wakes nothing: the worker has a buffer by now */
+    CHECK(IMP_FrameSource_DisableChn(0) == 0, "ivs only: disable");
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "ivs only: destroy");
+    check_clean("ivs only");
+}
+#endif
+
 int main(void)
 {
     report = fdopen(dup(2), "w");
@@ -1296,6 +1373,9 @@ int main(void)
     RUN(rotate);
 #if defined(PLATFORM_T30)
     RUN(format_abi);
+#endif
+#if defined(PLATFORM_T30) || defined(PLATFORM_T20)
+    RUN(ivs_only_stock_dq);
 #endif
     if (failures) {
         fprintf(report, "fs_lifecycle_test: %d failure(s)\n", failures);

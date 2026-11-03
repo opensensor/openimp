@@ -677,9 +677,9 @@ static void live_common(int chn, int codec)
                 rep(FN(IMP_Encoder_SetChnROI), r, V_NA, "enabling a region is refused: no macroblock QP map in this SoC's OpenIMP encoder");
                 rep(FN(IMP_Encoder_GetChnROI), r2, V_NA, "nothing to read back (SetChnROI refused)");
             } else {
-            /* T10/T20/T21 vendor (T20 3.12.0 0x4899c/0x48c3c, T21 1.0.33, T23 1.3.0 0x53ea0/0x54164: sra 4 in Set, sll 4 in Get): Set stores the corners /16 (truncating) as
+            /* T10/T20/T21/T30 vendor (T20 3.12.0 0x4899c/0x48c3c, T21 1.0.33, T23 1.3.0 0x53ea0/0x54164, T30 1.0.5 0xc1ec0/0xc22e8: sra 4 in Set, sll 4 in Get): Set stores the corners /16 (truncating) as
              * macroblock bytes and Get returns them x16, so the read-back is the rect rounded down to 16 */
-#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
             CHECK(IMP_Encoder_SetChnROI, r, r2 == 0 && g->bEnable && g->rect.p0.x == 64 && g->rect.p0.y == 64 && g->rect.p1.x == 304 && g->rect.p1.y == 240 && g->s32Qp == -4,
 #else
             CHECK(IMP_Encoder_SetChnROI, r, r2 == 0 && g->bEnable && g->rect.p0.x == 64 && g->rect.p1.x == 319 && g->s32Qp == -4,
@@ -841,6 +841,11 @@ static void live_old(int chn, int codec)
         }
 #else
         r2 = IMP_Encoder_SetSuperFrameCfg(chn, &n);
+#if defined(PLATFORM_T30)
+        /* vendor T30 1.0.5: i264e_super_rc_set only stages the values, the controller takes them with the next picture
+         * (a Get right after the Set shows the old ones, camera A/B 2026-11-03): read after a few pictures */
+        pull(chn, codec, 3, 0, 0, &si, 2000);
+#endif
         r = IMP_Encoder_GetSuperFrameCfg ? IMP_Encoder_GetSuperFrameCfg(chn, g) : -1; gchk(g);
         if (r2 != 0 && REFUSES_UNSUPPORTED)
             rep(FN(IMP_Encoder_SetSuperFrameCfg), r2, V_NA, "mode %d refused: the Helix eprc controller of OpenIMP has no frame discard (T20: re-encode only, T21: none)", (int)n.superFrmMode);

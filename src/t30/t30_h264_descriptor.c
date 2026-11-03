@@ -232,10 +232,8 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     uint32_t min_qp;
 #endif
     uint32_t max_qp;
-#if defined(PLATFORM_T20)
     uint32_t roi_words[10];
     uint8_t roi[8][7];
-#endif
     unsigned int i;
 
     if (!config || !config->descriptor || !config->cabac_state ||
@@ -304,12 +302,22 @@ int T30_H264_BuildDescriptor(const T30H264SliceConfig *config,
     for (i = 0; i < 8u; i++)
         EMIT(roi_position_registers[i], roi_words[2 + i]);
 #else
-    EMIT(0x40044, 0);
-    EMIT(0x40048, 0);
+    /* T30 (OEM H264E_T30_SliceInit 0x45590, libimp T30 1.0.5): sixteen ROI
+     * slots; 0x40044/0x40048/0x40130/0x40134 hold the flag bytes
+     * (qp << 2 | rel << 1 | en) of regions 0..3/4..7/8..11/12..15 and
+     * 0x4004c..0x40068, 0x40138..0x40154 their rectangles.  The OEM
+     * i264e_icodec_enc copies the eight entries of the IMP table
+     * (IMP_Encoder_SetChnROI) to slice +0x114 (regions 0..7); regions
+     * 8..15 stay zero.  All zero: no ROI, the list is the former one. */
+    (void)Helix_H264_RoiSanitize(config->roi, roi, (int)config->qp,
+                                 (int)min_qp, (int)max_qp);
+    Helix_H264_RoiRegisters((const uint8_t (*)[7])roi, roi_words);
+    EMIT(0x40044, roi_words[0]);
+    EMIT(0x40048, roi_words[1]);
     EMIT(0x40130, 0);
     EMIT(0x40134, 0);
     for (i = 0; i < 16u; i++)
-        EMIT(roi_position_registers[i], 0);
+        EMIT(roi_position_registers[i], i < 8u ? roi_words[2 + i] : 0u);
 #endif
 #if defined(PLATFORM_T20)
     /* OEM H264E_T20_SliceInit 0x20f40: table length in words, VPU memory

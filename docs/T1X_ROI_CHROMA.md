@@ -90,8 +90,15 @@ changes the PPS alone.
   of its fixed PPS, which has scaling matrices
   (`OpenIMP_T21_PpsWithChromaOffset`; offset 0 gives the stock PPS bit for
   bit). T10 keeps 0 in both and logs a warning.
-- T30: there is no RE for this register, so an enabled region and a
-  non-zero offset are refused.
+- T30: the ROI is programmed as the OEM `H264E_T30_SliceInit` does
+  (libimp T30 1.0.5 0x45590): sixteen slots, flag bytes qp << 2 | rel << 1 | en
+  in `0x40044` (regions 0..3), `0x40048` (4..7), `0x40130` (8..11), `0x40134`
+  (12..15), rectangles x0 | x1 << 8 | y0 << 16 | y1 << 24 in `0x4004c..0x40068`
+  (0..7) and `0x40138..0x40154` (8..15); the OEM `i264e_icodec_enc` copies the
+  eight IMP entries to slice +0x114, so regions 8..15 stay zero (as OpenIMP).
+  The register layout is from the disassembly, the picture effect is not yet
+  measured on a camera (T20/T21 are). The chroma QP offset is `0x40120`
+  (`param_1[0xda] & 0x1f`); a non-zero offset is still refused on T30.
 - The `/tmp/roic` software map is not reproduced.
 
 Tests: `tests/t30/helix_encoder_test.c` `test_roi_chroma` (register words,

@@ -2692,7 +2692,8 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
      * T23: the OEM 1.3.0 i264e copies the table into slice +752 of every
      * picture (hwicodec_pf_h264e_t21_enc 0x29468, H264E_T21_SliceInit
      * 0x40044..0x40068); the native encoder does the same.
-     * OPENIMP_T23_ROI=0 switches it off (docs/ROI.md). */
+     * OPENIMP_T23_ROI=0 switches it off (docs/ROI.md).
+     * T30: the OEM H264E_T30_SliceInit programs them (vendor behaviour). */
 #if defined(PLATFORM_T23)
     {
         const char *roi_env = getenv("OPENIMP_T23_ROI");
@@ -2708,7 +2709,10 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
 #elif defined(PLATFORM_T20)
     encoder->roi_hw = 1;
 #else
-    encoder->roi_hw = 0;        /* T30: the regions are not known */
+    /* T30: the OEM H264E_T30_SliceInit programs the eight IMP regions
+     * (0x40044.., see T30_H264_BuildDescriptor); with no region set the
+     * registers are zero as before */
+    encoder->roi_hw = 1;
 #endif
 #if !defined(PLATFORM_T23)
     encoder->chroma_qp_offset = 0;

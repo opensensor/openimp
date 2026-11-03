@@ -1949,7 +1949,7 @@ int VBMWaitReady(int chn, unsigned int sequence, uint32_t timeout_us)
 
 #endif /* PLATFORM_T31 || T23 || T20: frame-ready events */
 
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
 /* Buffers the driver holds (queued by QBUF, not dequeued yet), -1 when the
  * pool does not track it.  Read without the capture thread's own updates
  * racing (it is the only one that marks a buffer dequeued). */

@@ -1781,7 +1781,7 @@ static int32_t pps_chroma_offset(int32_t *second)
 /* IMP_Encoder_SetChnROI (OpenIMP_T30_HelixSetRoi) and
  * IMP_Encoder_SetH264TransCfg (HWEncoderParams.chroma_qp_offset): the OEM
  * EFE ROI words in every command list (T10/T20, T21 unless
- * OPENIMP_T21_ROI=0; T30: none), the chroma QP offset in the PPS and
+ * OPENIMP_T21_ROI=0; T30: as the OEM), the chroma QP offset in the PPS and
  * 0x40120 from the next IDR on (T10: neither) */
 static void test_roi_chroma(int t10)
 {
@@ -1825,7 +1825,7 @@ static void test_roi_chroma(int t10)
     roi_hw = 1;                 /* beyond vendor; OPENIMP_T21_ROI=0: off */
     chroma_hw = 1;
 #else
-    roi_hw = 0;
+    roi_hw = 1;                 /* T30: OEM H264E_T30_SliceInit programs them */
     chroma_hw = 0;
 #endif
     (void)t10;
@@ -1854,8 +1854,11 @@ static void test_roi_chroma(int t10)
         } else {
 #if defined(PLATFORM_T20)
             assert(list_roi[1] == (0x0eu << 8 | 0x85u << 24));
-#else
+#elif defined(PLATFORM_T21)
             assert(list_roi[1] == (0x0eu << 8 | 0xa5u << 24));
+#else
+            /* T30: picture QP 30 -> absolute 51 of region 7 becomes 43 */
+            assert(list_roi[1] == (0x0eu << 8 | 0xadu << 24));
 #endif
             assert(list_roi[0] == (0x51u | (0xecu | 3u)
                                    << 8 | 0x23u << 24));
