@@ -2076,6 +2076,42 @@ void enc_chain_down(void)
     grp_down(0);
 }
 
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
+/* IMP_OSD_AttachToGroup (deprecated vendor call): FS -> ENC is bound, the call inserts the OSD group between them
+ * (src->to becomes src->from->to); the encoder then runs through the OSD group.  Returns 0 when the call was exercised. */
+int enc_attach_osd(void)
+{
+    IMPCell fs = { DEV_ID_FS, enc_fs_ch(), 0 }, enc = { DEV_ID_ENC, GRP, 0 }, osd = { DEV_ID_OSD, GRP, 0 };
+    int r, ok1 = 0, ok2 = 0, frames;
+    SI si;
+
+    if (!IMP_OSD_AttachToGroup || !IMP_OSD_CreateGroup) return -1;
+    if (grp_up(0, 0) != 0) { rep(FN(IMP_OSD_AttachToGroup), -1, V_FAIL, "FS -> ENC chain could not be built"); return 0; }
+    r = IMP_OSD_CreateGroup(GRP);
+    if (r) { rep(FN(IMP_OSD_AttachToGroup), r, V_FAIL, "OSD CreateGroup %d failed", GRP); grp_down(0); return 0; }
+    r = IMP_OSD_AttachToGroup(&osd, &enc);
+    g_osd = (r == 0);                    /* grp_down then unbinds FS -> OSD -> ENC; a failed attach leaves FS -> ENC bound */
+    if (r == 0) {
+        G(IMPCell, a); G(IMPCell, b);
+        ok1 = IMP_System_GetBindbyDest(&enc, a) == 0 && a->deviceID == DEV_ID_OSD && a->groupID == GRP;
+        ok2 = IMP_System_GetBindbyDest(&osd, b) == 0 && b->deviceID == DEV_ID_FS && b->groupID == enc_fs_ch();
+        gfree(a); gfree(b);
+        frames = 0;
+        if (chn_up(0, CODEC_H264, 0, 1) == 0) { pull(0, CODEC_H264, 5, 0, 0, &si, 3000); frames = si.frames; chn_down(0, 0); }
+        rep(FN(IMP_OSD_AttachToGroup), r, (ok1 && ok2 && frames > 0) ? V_PASS : V_FAIL,
+            "FS -> ENC became FS -> OSD -> ENC (ENC<-OSD %d, OSD<-FS %d), %d frames through the OSD group", ok1, ok2, frames);
+    } else {
+        rep(FN(IMP_OSD_AttachToGroup), r, V_FAIL, "attach of OSD group %d to ENC group %d refused (%d)", GRP, GRP, r);
+    }
+    grp_down(0);
+    if (r) IMP_OSD_DestroyGroup(GRP);
+    (void)fs;
+    return 0;
+}
+#else
+int enc_attach_osd(void) { return -1; }
+#endif
+
 int enc_pull_h264(int n)        /* frames still flowing? */
 {
     SI si;

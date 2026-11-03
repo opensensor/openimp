@@ -3,6 +3,8 @@
 #endif
 /* apitest: sysutils (SU_*) functions.  They live in libsysutils.so, resolved with dlsym
  * (type-checked against the vendor headers). Never called: SU_Base_Shutdown/Reboot/Suspend. */
+#include <fcntl.h>
+#include <errno.h>
 #include <errno.h>
 #include <unistd.h>
 #include "apitest.h"
@@ -178,8 +180,53 @@ void t_su(void)
         }
     }
     rep(FN(SU_Key_ReadEvent), 0, V_SKIP, "blocks until a key is pressed");
-    rep(FN(SU_Key_EnableEvent), 0, V_SKIP, "masks a hardware key in the input driver");
-    rep(FN(SU_Key_DisableEvent), 0, V_SKIP, "masks a hardware key in the input driver");
+    {
+        /* APITEST_KEYMASK=1: mask the first key of the gpio-keys driver (sysfs disabled_keys), check the node, unmask, check the node is back to
+         * the original text. Needs /sys/devices/platform/gpio-keys/{keys,disabled_keys}; N/A without them (QEMU). Default: SKIP (masks a hardware key). */
+        const char *kd = "/sys/devices/platform/gpio-keys/disabled_keys", *kk = "/sys/devices/platform/gpio-keys/keys";
+        char orig[256] = "", cur[256] = "", keys[256] = "";
+        int code = -1, have = 0;
+        FILE *fp = fopen(kk, "r");
+        if (fp) { if (fgets(keys, sizeof(keys), fp)) code = atoi(keys); fclose(fp); }
+        fp = fopen(kd, "r");
+        if (fp) { have = 1; if (!fgets(orig, sizeof(orig), fp)) orig[0] = 0; fclose(fp); }
+        orig[strcspn(orig, "\n")] = 0;
+        if (!getenv("APITEST_KEYMASK") || strcmp(getenv("APITEST_KEYMASK"), "1")) {
+            rep(FN(SU_Key_EnableEvent), 0, V_SKIP, "masks a hardware key in the input driver (APITEST_KEYMASK=1 masks and unmasks the first gpio-keys key)");
+            rep(FN(SU_Key_DisableEvent), 0, V_SKIP, "masks a hardware key in the input driver (APITEST_KEYMASK=1 masks and unmasks the first gpio-keys key)");
+        } else if (!have || code <= 0 || orig[0]) {
+            const char *why = !have ? "no /sys/devices/platform/gpio-keys/disabled_keys on this board" : code <= 0 ? "no key code in gpio-keys/keys" : "a key is masked already, not touched";
+            rep(FN(SU_Key_EnableEvent), -1, V_NA, "%s", why);
+            rep(FN(SU_Key_DisableEvent), -1, V_NA, "%s", why);
+        } else if (({ int pfd = open(kd, O_WRONLY), pw = -1, pe = 0; char cs[24]; snprintf(cs, sizeof(cs), "%d\n", code);
+                      if (pfd >= 0) { pw = write(pfd, cs, strlen(cs)); pe = errno; if (pw >= 0) { lseek(pfd, 0, SEEK_SET); (void)!write(pfd, "\n", 1); } close(pfd); }
+                      errno = pe; pw < 0; })) {
+            /* the kernel's gpio-keys driver masks only buttons with can_disable set: the sysfs write is refused (EINVAL) on this board, so the SU_Key calls answer -1 */
+            rep(FN(SU_Key_EnableEvent), -1, V_NA, "the kernel refuses to mask key %d (sysfs disabled_keys write: %s): not a maskable button on this board", code, strerror(errno));
+            rep(FN(SU_Key_DisableEvent), -1, V_NA, "the kernel refuses to mask key %d (sysfs disabled_keys write: %s): not a maskable button on this board", code, strerror(errno));
+        } else {
+            SUNEED(SU_Key_DisableEvent) {
+                char want[32];
+                __typeof__(&SU_Key_OpenEvent) fo = SUSYM(SU_Key_OpenEvent); __typeof__(&SU_Key_CloseEvent) fc = SUSYM(SU_Key_CloseEvent);
+                int efd = fo ? fo() : -1;       /* the key table is loaded by OpenEvent (Disable/Enable answer -1 without it) */
+                int rd = f_SU_Key_DisableEvent(code);
+                snprintf(want, sizeof(want), "%d", code);
+                fp = fopen(kd, "r"); cur[0] = 0;
+                if (fp) { if (!fgets(cur, sizeof(cur), fp)) cur[0] = 0; fclose(fp); }
+                cur[strcspn(cur, "\n")] = 0;
+                rep(FN(SU_Key_DisableEvent), rd, (rd == 0 && strstr(cur, want)) ? V_PASS : V_FAIL, "key %d masked, disabled_keys = \"%s\"", code, cur);
+                SUNEED(SU_Key_EnableEvent) {
+                    int re = f_SU_Key_EnableEvent(code);
+                    fp = fopen(kd, "r"); cur[0] = 0;
+                    if (fp) { if (!fgets(cur, sizeof(cur), fp)) cur[0] = 0; fclose(fp); }
+                    cur[strcspn(cur, "\n")] = 0;
+                    rep(FN(SU_Key_EnableEvent), re, (re == 0 && !cur[0]) ? V_PASS : V_FAIL, "key %d unmasked, disabled_keys = \"%s\" (was \"%s\")", code, cur, orig);
+                    if (cur[0]) { fp = fopen(kd, "w"); if (fp) { fputs("\n", fp); fclose(fp); } }   /* never leave a key masked */
+                    if (efd >= 0 && fc) fc(efd);
+                }
+            }
+        }
+    }
     rep(FN(SU_LED_Command), 0, V_SKIP, "drives the board LED");
 #ifdef APITEST_T40
     /* T40 open stack: no AES/DES kernel driver, the SU_CIPHER_* of libimp answer -1 / ENOTSUP (a vendor libsysutils.so is not loaded first) */

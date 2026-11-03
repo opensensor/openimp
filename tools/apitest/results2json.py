@@ -785,9 +785,10 @@ class Acc:
             # keep the worst verdict of repeated reports of the same member
             order = {"FAIL": 0, "PART": 1, "RT": 2, "PASS": 3, "SKIP": 4, "NA": 5}
             # either: the function is proven by ONE case with a visible effect (sharpness: low or high direction; module control: any block whose
-            # bypass changes the picture, every bit flip is read back by its own case; module ratio: any module that has an effect on the scene)
+            # bypass changes the picture, every bit flip is read back by its own case; module ratio: any module that has an effect on the scene; SetWB: any manual gain or preset that shifts U/V)
             either = nn in ("ISP_Tuning_SetSharpness", "ISP_Tuning_GetSharpness", "ISP_Tuning_SetModuleControl", "ISP_Tuning_GetModuleControl",
-                            "ISP_Tuning_SetModule_Ratio", "ISP_Tuning_GetModule_Ratio")
+                            "ISP_Tuning_SetModule_Ratio", "ISP_Tuning_GetModule_Ratio",
+                            "ISP_Tuning_SetWB")                    # white balance: the auto case is a mode read back (RT), the manual gains / presets show the colour shift
             if self.override and src == "imgfx" and (verdict == "PASS" or old is None or old[0] != "PASS"):       # a later colour pass (--imgfx twice) replaces what the first pass said about the same member
                 d[nn] = (verdict, detail, src); continue
             if src == "imgfx" and verdict in ("PART", "RT") and old is not None and old[0] == "PASS" and (old[2] != "imgfx" or either):

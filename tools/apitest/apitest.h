@@ -169,6 +169,7 @@ void t_system_exit(int ret);
 /* encoder chain (H.264 chn 0 in group 0, optionally with an OSD group in between) for the OSD test */
 int enc_chain_up(void);
 void enc_chain_down(void);
+int enc_attach_osd(void);
 int enc_pull_h264(int n);
 int enc_hskip_run(void);     /* case "hskip" (explicit only) */
 int enc_demask_run(void);    /* case "demask" (explicit only, T10/T20) */
