@@ -3889,7 +3889,7 @@
    "cells": {
     "T10": "rt",
     "T20": "rt",
-    "T21": "rt",
+    "T21": "no-op",
     "T23": "rt",
     "T30": "stub",
     "T31": "rt",
@@ -3931,8 +3931,8 @@
    "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: ENABLE (= full ISP pipeline, the running state) ret 0, frames flow). ENABLE (full pipeline) is a no-op returning 0, DISABLE returns -1: OpenIMP does not implement the bypass. The vendor 1.0.5 (0xd541c) runs a sequence of ioctls on the ISP fd (0x800456d3, d1, d0, d2) around S_CTRL 0x8000164.",
    "ref": {
     "T40": "apitest rc3-cases 2026-10-26 .184 (API round trip, no visible effect expected)",
-    "T21": "apitest ispbypass_old 2026-10-27 .24 (open-tx-isp + OpenIMP next, #119/#126): ENABLE (full ISP, the streamer call) ret 0, DISABLE (real bypass) refused with -1 like the vendor T21, nothing touched, frames flow; real bypass = #129",
-    "T23": "apitest ispbypass_old 2026-10-27 .30 (open-tx-isp + OpenIMP next, #119/#126): ENABLE (full ISP, the streamer call) ret 0, DISABLE (real bypass) refused with -1 like the vendor T21, nothing touched, frames flow; real bypass = #129",
+    "T21": "vendor stack on a T21 test camera 2026-11-03 (vendor tx-isp-t21 module and vendor libimp 1.0.33 loaded at run time, no flash; #129): after the vendor sample order (CreateChn, SetISPBypass DISABLE) the call returns -1 and the vendor driver logs 'link(1) is invalid!': its link table has one link set, so the five-step link rebuild of the vendor library fails at CREATE_LINKS and leaves the links destroyed. The vendor T21 has no real bypass. OpenIMP: ENABLE ret 0 (no-op), DISABLE refused with -1 before anything is touched, the running pipeline keeps streaming (apitest ispbypass_old 2026-10-27 .24, #119/#126); vendor-equal return values, better behaviour",
+    "T23": "apitest ispbypass_old 2026-10-27 .30 (open-tx-isp + OpenIMP next, #119/#126): ENABLE (full ISP, the streamer call) ret 0, DISABLE refused with -1, nothing touched, frames flow. Vendor reference 2026-11-03 (vendor ISVP-T23 1.3.0 module and libimp loaded at run time on a T23 test camera, no flash): DISABLE before the channel is enabled returns 0 and the RAW channel delivers 10/10 frames, 1280x720 RG12 (2 bytes/pixel, 1843200 bytes); the open T23 driver has no bypass graph yet (#129)",
     "T10": "OpenIMP claude/issue-129-t20-bypass 2026-11-01 .31 (open-tx-isp next, own process with the new libimp, timps stopped; #129): ENABLE ret 0, runtime DISABLE ret 0 (vendor 3.12.0 sends one S_CTRL 0x98e907 and returns its result): ISP top registers 0x40/0x44 read back ds1_dma_source 0/raw_bypass 0/processing_bypass_mode 0 -> 1/1/2 (raw bypass, picture darker, SSIM 0.37 vs processed) -> 0/0/0 after ENABLE, SSIM 0.98 vs before, RTSP decode clean, snapshot 200, oops 0; DISABLE before FrameSource (raw channel) not built",
     "T20": "OpenIMP claude/issue-129-t20-bypass 2026-11-01 .107 (open-tx-isp next, own process with the new libimp, timps stopped; #129): ENABLE ret 0, runtime DISABLE ret 0: ISP top registers 0x40/0x44 read back ds1_dma_source 0/raw_bypass 0/processing_bypass_mode 0 -> 1/1/2 -> 0/0/0 after ENABLE, SSIM 0.99 vs before, RTSP decode clean, snapshot 200, oops 0; DISABLE before FrameSource (raw channel) not built",
     "T31": "apitest ispbypass_old 2026-10-27 .26 (open-tx-isp + OpenIMP next, #119/#126): ENABLE (full ISP, the streamer call) ret 0, DISABLE (real bypass) refused with -1 like the vendor T21, nothing touched, frames flow; real bypass = #129",
