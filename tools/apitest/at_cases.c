@@ -4581,7 +4581,7 @@ static void *t23_pad_feeder(void *arg)
 }
 
 extern size_t at_stream_gather(const IMPEncoderStream *s, unsigned char *buf, size_t cap, int *trunc);
-static FILE *g_pad_dump;    /* APITEST_PAD_DUMP: the pad-off phase is written out (decode + picture check on the host) */
+static FILE *g_pad_dump;    /* APITEST_PAD_DUMP: the whole session (scene, pad frames, scene again) is written out (decode + picture check on the host) */
 static void t23_stream_stats(int ms, int *frames, double *avg)
 {
     int64_t t0 = now_us();
@@ -4648,6 +4648,7 @@ static void cs_padframe_t23(void)
         if (!up) {
             rep(FN(IMP_Encoder_PadFrame), -1, V_FAIL, "encoder set-up failed");
         } else {
+            if (getenv("APITEST_PAD_DUMP")) g_pad_dump = fopen(getenv("APITEST_PAD_DUMP"), "wb");   /* whole session: starts with the IDR + SPS/PPS */
             t23_stream_stats(2000, &f0, &s0);                        /* scene */
             memset(attr, 0, sizeof(attr));
             r1 = IMP_Encoder_SetPadFrameAttr(1, 1, attr);          /* free mode */
@@ -4671,7 +4672,6 @@ static void cs_padframe_t23(void)
             rel2 = g_pad_rel - rel2;
             g_pad_run = 0; pthread_join(th, NULL);
             r3 = IMP_Encoder_SetPadFrameAttr(1, 0, NULL);
-            if (getenv("APITEST_PAD_DUMP")) g_pad_dump = fopen(getenv("APITEST_PAD_DUMP"), "wb");
             t23_stream_stats(2000, &f3, &s3);
             if (g_pad_dump) { fclose(g_pad_dump); g_pad_dump = NULL; }
             IMP_Encoder_StopRecvPic(1); IMP_System_UnBind(&fs1, &en1); IMP_Encoder_UnRegisterChn(1); IMP_Encoder_DestroyChn(1); IMP_Encoder_DestroyGroup(1);
