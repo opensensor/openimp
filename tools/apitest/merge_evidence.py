@@ -54,7 +54,7 @@ for spec in files:
                 report["kept"].append((soc, k, v["v"], cur))
             continue
         if v["v"] == "PASS":
-            if cur in ("aud", "host", "?", "run"):
+            if cur in ("aud", "host", "?", "run", "qemu"):    # qemu: a device PASS replaces the QEMU-only evidence
                 cells[soc] = "dev"; report["dev"].append((soc, k, cur))
             elif cur == "miss":
                 # exported by the refreshed docs/api_exports.json (checked above) and PASS on the device: the gap is closed
@@ -65,9 +65,9 @@ for spec in files:
                 cells[soc] = "dev"; report["dev"].append((soc, k, cur))
             elif cur in ("cache", "stub", "err"):
                 report["kept"].append((soc, k, "PASS", cur)); print("KEPT-GAP", soc, k, cur, "(PASS, but the cell records a known defect/stub: review)")
-            if cur in ("aud", "host", "?", "run", "dev", "dev+", "no-op", "miss") or cells[soc] == "dev": F[k].setdefault("ref", {})[soc] = ref
+            if cur in ("aud", "host", "?", "run", "qemu", "dev", "dev+", "no-op", "miss") or cells[soc] == "dev": F[k].setdefault("ref", {})[soc] = ref
         elif v["v"] == "RT":
-            if cur in ("aud", "host", "?", "run", "miss") or (cur == "err" and F[k].get("ref", {}).get(soc, "").startswith("FAIL apitest ")):
+            if cur in ("aud", "host", "?", "run", "miss", "qemu") or (cur == "err" and F[k].get("ref", {}).get(soc, "").startswith("FAIL apitest ")):
                 cells[soc] = "rt"; report["dev"].append((soc, k, cur))
                 F[k].setdefault("ref", {})[soc] = ref + " (API round trip, no visible effect expected)"
             else:

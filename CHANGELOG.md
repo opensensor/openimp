@@ -8,6 +8,14 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-03, T30: first device evidence from the T30X lab camera (API cells only, no symbol moved)
+
+- Device: T30X lab camera (`.231`, sensor SC4236 at its configured 2048x1536 mode). The stock image runs the vendor module and library; the open-tx-isp module (dc7783fd) was loaded at run time, the OpenIMP library (b1011a03) from /tmp; no flash. The stock state was restored by reboot.
+- apitest, all areas except picture (`sys,fs,enc,osd,ivs,audio,isp,su`, no audio output): open stack 216 PASS / 10 FAIL, 0 oopses; vendor stack on the same camera 207 PASS / 18 FAIL (reference).
+- Open FAILs: `Encoder_Get/SetChnROI`, `Encoder_SetSuperFrameCfg` (known T30 encoder gaps; the vendor reads both back), `Encoder_Get/SetChangeRef` (no effect, as on the vendor), and IVS move results stopping after 2 of 8, `IVS_SetParam` sense readback and `IVS_PollingResult` timeouts. The vendor library fails `IVS_CreateGroup` on this camera.
+- API evidence: 119 T30 cells `qemu` -> `dev` (device PASS). `tools/apitest/merge_evidence.py` now lets a device PASS/RT replace a `qemu` cell (before, it only upgraded aud/host/?/run/miss).
+- `tools/apitest/run_swap.sh` reloads sensor modules with their `/etc/modules.d` arguments (#201: a bare `modprobe` had brought the T30X sensor up at 2304x1536).
+
 ## 2026-11-03, FrameSource stall diagnostics (#198; T23 camera, 20 of 20 clean loops, issue stays open)
 
 - `IMP_FrameSource_DisableChn` records its stage per channel (lock, STREAMOFF, worker, flush, close, pool) and who holds the FrameSource lock; the pooling worker's step is tracked on T23 as on T31. `OpenIMP_FS_DebugState()` / `OpenIMP_FS_DebugHolder()` (exported, no locks) return them; the apitest 60 s watchdog prints both, so a sporadic teardown stall names the place without a debugger (the 3.10 kernel has no `/proc/<pid>/stack`). No behaviour change. Host test `tests/t30/fs_lifecycle_test.c` checks both are idle after every lifecycle.
