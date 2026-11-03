@@ -14,9 +14,10 @@
  *   FrameSource channel N: no sensor signal for 2000 ms, delivering fallback frames
  *   FrameSource channel N: sensor signal is back, fallback frames stopped (K generated)
  *
- * Default OFF (the vendor library has no such function).  Switch on with
- * OPENIMP_FALLBACK_FRAME=1 (all channels, at start; the dwell time is
- * OPENIMP_FALLBACK_TIMEOUT_MS, 200..60000, default 2000) or per channel with
+ * Default ON for T40 and T41 since 26.10. (the vendor library has no such
+ * function).  OPENIMP_FALLBACK_FRAME=0 switches it off for all channels (read
+ * at start; the dwell time is OPENIMP_FALLBACK_TIMEOUT_MS, 200..60000,
+ * default 2000); per channel it can be changed at any time with
  * OpenIMP_FrameSource_SetFallback().  A build that has the API exports the
  * constant OpenIMP_Cap_FallbackFrame (1).
  *
@@ -51,7 +52,13 @@ typedef struct OpenIMPFallbackState {
     uint32_t timeout_ms;    /* dwell time without a real frame */
     uint32_t generated;     /* synthetic frames since the channel was enabled */
     uint32_t activations;   /* switches into fallback since then */
-    uint32_t last_real_age_ms; /* time since the last real frame (0 when not streaming) */
+    uint32_t last_real_age_ms; /* time since the last real frame (0 when not streaming);
+                                * the clock is set at EnableChn and by real frames
+                                * dequeued through GetFrame (a consumer that was away
+                                * for a while restarts it).  A channel that only feeds
+                                * the bound encoder is never read through GetFrame, so
+                                * there it is just the time since EnableChn: not
+                                * meaningful for such a channel. */
 } OpenIMPFallbackState;
 
 /* on != 0 arms the fallback of FrameSource channel chn, 0 disarms it (an active

@@ -8,6 +8,13 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-03 (evening), docs round 11: T30 joins the RC3 gate, fallback frame header corrected, T40 forced colour-temperature test case
+
+- RC3 gate (`docs/status/release.yaml`): T30 is now a gate SoC (the lab camera exists, every T30 cell must be device-verified). The generated gate shows 1907 of 2017 streamer cells working, 110 missing, all on T30; the other seven gate SoCs are complete.
+- `include/openimp_fallback.h` said the fallback frame is default OFF; it is ON by default on T40/T41 since 26.10. (`OPENIMP_FALLBACK_FRAME=0` switches it off), as the code and the other documents say. `last_real_age_ms` of `OpenIMP_FrameSource_GetFallback` is set at `EnableChn` and by real frames dequeued through `GetFrame`; for a channel that only feeds the bound encoder it is just the time since `EnableChn` and not meaningful there (header and `docs/OPENIMP_BEYOND_VENDOR.md`).
+- apitest: case `ctmove_t40` forces colour-temperature moves on T40 (open-tx-isp #85); `run_swap.sh` reloads sensor modules with their `/etc/modules.d` arguments (#201, see the T30 entry above).
+- Driver side of today's merges (T40 #85, #199, #204 part 1; T30 #202; T32 #97): see the open-tx-isp CHANGELOG.
+
 ## 2026-11-03, T30: first device evidence from the T30X lab camera (API cells only, no symbol moved)
 
 - Device: T30X lab camera (`.231`, sensor SC4236 at its configured 2048x1536 mode). The stock image runs the vendor module and library; the open-tx-isp module (dc7783fd) was loaded at run time, the OpenIMP library (b1011a03) from /tmp; no flash. The stock state was restored by reboot.
