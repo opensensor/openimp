@@ -5332,9 +5332,103 @@ static void cs_decoder_t2x(void) { cs_decoder_t23(); }
 static void cs_decoder_t2x(void) {}
 #endif
 
+
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20)
+/* ---------------------------------------------------------------------- SetMeshShadingScale (T10/T20, case "meshscale")
+ * The vendor writes the scale into bits 2..4 of the lens-shading register 0x380 through its own register mapping.  The open driver has the control
+ * 0x80000a3 for it: the value is written at the frame-end interrupt, G_CTRL reads the field back from the register.  Per scale (L M H U = 0..3):
+ * Set, wait a few frames, read the control back (VIDIOC_G_CTRL on the tuning node /dev/video0) and the driver's "last written" parameter
+ * (t20_mesh_scale_cur, when the module has it); the original value is written back at the end and frames must still flow.  Needs frames
+ * (the write happens between frames); no picture effect is claimed here (the picture cases shading-low/ultra measure the corners). */
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <glob.h>
+static int mesh_getctrl(int fd, unsigned int id, int *val)
+{
+    struct { unsigned int id; int value; } c = { id, 0 };
+
+    if (fd < 0) { errno = EBADF; return -1; }
+    if (ioctl(fd, 0xc008561b, &c) != 0) return -1;
+    *val = c.value;
+    return 0;
+}
+
+static int mesh_tunefd(void)          /* libimp's own descriptor of the tuning node (the node may be single-open), else a new open */
+{
+    char l[64], t[64];
+    int i, n;
+
+    for (i = 3; i < 64; i++) {
+        snprintf(l, sizeof(l), "/proc/self/fd/%d", i);
+        n = readlink(l, t, sizeof(t) - 1);
+        if (n > 0) { t[n] = 0; if (!strcmp(t, "/dev/video0")) return i; }
+    }
+    return -1;
+}
+
+/* bits 2..4 of ISP core register 0x380 (ISP core block at physical 0x13380000, read-only mapping of /dev/mem), -1 when not readable */
+static int mesh_reg(void)
+{
+    int fd = open("/dev/mem", O_RDONLY | O_SYNC), v = -1;
+    volatile unsigned int *m;
+
+    if (fd < 0) return -1;
+    m = mmap(NULL, 4096, PROT_READ, MAP_SHARED, fd, 0x13380000);
+    if (m != MAP_FAILED) { v = (int)((m[0x380 / 4] >> 2) & 7); munmap((void *)m, 4096); }
+    close(fd);
+    return v;
+}
+
+static int mesh_param(void)           /* the driver's last written value, -2 = module has no such parameter */
+{
+    glob_t g;
+    int v = -2;
+
+    if (glob("/sys/module/tx_isp_t*/parameters/t20_mesh_scale_cur", 0, NULL, &g) == 0) {
+        FILE *f = fopen(g.gl_pathv[0], "r");
+        if (f) { if (fscanf(f, "%d", &v) != 1) v = -2; fclose(f); }
+        globfree(&g);
+    }
+    return v;
+}
+
+static void cs_meshscale(void)
+{
+    NEED(IMP_ISP_Tuning_SetMeshShadingScale) {
+        int fd = mesh_tunefd(), own = 0, orig = -1, got[4] = { -9, -9, -9, -9 }, par[4] = { -9, -9, -9, -9 }, rs[4], reg[4] = { -1, -1, -1, -1 }, i, ok = 1, haveg = 0, havep = 0, haver = 0, rr;
+        char msg[260] = "";
+        int ge = 0;
+
+        if (fd < 0) { fd = open("/dev/video0", O_RDWR); own = 1; }
+        if (mesh_getctrl(fd, 0x80000a3, &orig) == 0) haveg = 1;
+        else { int bv = 0, bok, be; orig = mesh_reg(); bok = mesh_getctrl(fd, 0x980900, &bv) == 0; be = errno; snprintf(msg, sizeof(msg), "G_CTRL of brightness %s (errno %d); ", bok ? "works" : "fails", bok ? 0 : be); }
+        for (i = 0; i < 4; i++) {
+            rs[i] = IMP_ISP_Tuning_SetMeshShadingScale((IMPISPMeshShadingScale)i);
+            usleep(600 * 1000);
+            if (mesh_getctrl(fd, 0x80000a3, &got[i]) != 0) { got[i] = -1; ge = errno; }
+            par[i] = mesh_param();
+            reg[i] = mesh_reg();
+            if (reg[i] >= 0) haver = 1;
+            if (par[i] != -2) havep = 1;
+            if (rs[i] != 0 || (haveg && got[i] != i) || (par[i] != -2 && par[i] != i)) ok = 0;
+            snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), "%s%d:ctl %d drv %d reg %d", i ? ", " : "", i, got[i], par[i], reg[i]);
+        }
+        rr = IMP_ISP_Tuning_SetMeshShadingScale((IMPISPMeshShadingScale)(orig >= 0 && orig <= 3 ? orig : 1));     /* restore (M = vendor default if unreadable) */
+        usleep(600 * 1000);
+        haver = (reg[0] == 0 && reg[1] == 1 && reg[2] == 2 && reg[3] == 3);     /* the register counts only when it follows all four settings (else the mapping is not the mesh register) */
+        if (!haveg && !havep && !haver) ok = 0;            /* nothing to read back: not a proof */
+        rep(FN(IMP_ISP_Tuning_SetMeshShadingScale), rs[0] | rs[1] | rs[2] | rs[3] | rr, (ok && rr == 0 && flow()) ? V_PASS : V_FAIL,
+            "scale L/M/H/U set, control 0x80000a3 (register 0x380 bits 2..4) read back after 0.6 s [%s]; original %d restored, frames flow (tuning fd %d, G_CTRL errno %d, register %s)", msg, orig, fd, ge, haver ? "read back" : "not used");
+        if (own && fd >= 0) close(fd);
+    }
+}
+#else
+static void cs_meshscale(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5436,6 +5530,7 @@ void t_cases(void)
     if (cs_on("fscb_t31")) cs_fscb_t31(); wdog("cases", 60);
     if (cs_on("evstart_t31")) cs_evstart_t31(); wdog("cases", 60);
     if (cs_on("shading_t31")) cs_shading_t31(); wdog("cases", 90);
+    if (cs_on("meshscale")) cs_meshscale(); wdog("cases", 90);
     if (cs_on("override_t31")) cs_override_t31(); wdog("cases", 90);
     if (cs_on("encgrp_t31")) cs_encgrp_t31(); wdog("cases", 120);
     if (cs_on("osdhelp_t31")) cs_osdhelp_t31(); wdog("cases", 60);
