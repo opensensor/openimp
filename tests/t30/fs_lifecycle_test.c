@@ -537,8 +537,16 @@ static int fake_streaming_count(void)
     return n;
 }
 
+extern unsigned int OpenIMP_FS_DebugState(void);
+extern const char *OpenIMP_FS_DebugHolder(void);
+
 static void check_clean(const char *what)
 {
+    /* no stop in progress and nobody holds the FrameSource lock (#198) */
+    CHECK((OpenIMP_FS_DebugState() & 0x0f0f0f0fu) == 0,
+          "%s: DisableChn stage state 0x%x", what, OpenIMP_FS_DebugState());
+    CHECK(OpenIMP_FS_DebugHolder() == NULL, "%s: g_fs_lock held by %s", what,
+          OpenIMP_FS_DebugHolder() ? OpenIMP_FS_DebugHolder() : "-");
     CHECK(fake_open_count == 0, "%s: %d frame-channel fds left open", what,
           fake_open_count);
     CHECK(dma_count() == 0, "%s: %d DMA buffers left allocated", what,
