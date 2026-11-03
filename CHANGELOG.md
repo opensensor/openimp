@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: device evidence for the encoder ROI / SuperFrame and IVS cells (T30X lab camera, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp module and OpenIMP library at run time, no flash): `Encoder_Get/SetChnROI` and `Encoder_Get/SetSuperFrameCfg` PASS with the vendor values (ROI read back en 1 (64,64)-(304,240) qp -4; SuperFrame initial mode 2 I 942080 P 672914, set mode 1 I 400000 P 200000 read back) -> `err` -> `dev`. On a cold start `enc,ivs` in one process passes IVS (move results 8 of 8, `IVS_SetParam` sense read back 2): `IVS_Get/SetParam`, `IVS_ReleaseData` `qemu` -> `dev`.
+- The earlier IVS failures (move results 1-2 of 8, polling timeouts) only appeared late in long sessions on this unit, which also fails to boot on about one power-on in four (stuck in the first boot stage): treated as a lab power problem, not as a library fault; those runs were not used as evidence.
+
 ## 2026-11-03 (evening), docs round 11: T30 joins the RC3 gate, fallback frame header corrected, T40 forced colour-temperature test case
 
 - RC3 gate (`docs/status/release.yaml`): T30 is now a gate SoC (the lab camera exists, every T30 cell must be device-verified). The generated gate shows 1907 of 2017 streamer cells working, 110 missing, all on T30; the other seven gate SoCs are complete.
