@@ -1623,7 +1623,7 @@ static int tseries_v4l2_get(int32_t id, int32_t *value)
 }
 #endif /* !PLATFORM_T23 */
 
-#if defined(PLATFORM_T21) /* T21 and T20 */
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30) /* T21, T20 and T30 */
 /*
  * Port of the vendor's local isp_table_tuning_ratio() (T21 1.0.33 libimp
  * 0x4eab0, T20 3.12.0 0x57fc0; both identical).  SetSinterStrength (table
@@ -1764,6 +1764,9 @@ static __attribute__((unused)) int tseries_table_tuning_ratio(uint32_t table, ui
     return result == 0 ? 0 : -1;
 }
 
+#endif /* PLATFORM_T21 || PLATFORM_T30: table ratio */
+
+#if defined(PLATFORM_T21)
 /*
  * T21 1.0.33 / T20 3.12.0 SetISPRunningMode: after 0x80000e1 succeeds the
  * vendor re-sends contrast, brightness, saturation and sharpness through
@@ -2040,6 +2043,12 @@ int IMP_ISP_Tuning_SetISPRunningMode(IMPISPRunningMode mode)
             tseries_running_mode_reapply_bcs(isp, (uint32_t)mode);
         }
 #endif
+        if (mode != tseries_running_mode) {
+            tseries_table_baseline_reset();
+        }
+#endif
+#if defined(PLATFORM_T30)
+        /* the driver may load the other day/night table: drop the strength baseline */
         if (mode != tseries_running_mode) {
             tseries_table_baseline_reset();
         }
@@ -2521,7 +2530,7 @@ int IMP_ISP_Tuning_GetBacklightComp(uint32_t *pstrength)
     return result;
 }
 
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
 /* T20 SDK attribute struct behind TISP_CID_DRC_ATTR (struct
  * isp_core_drc_attr in tx-isp-core-tuning.h).  The driver
  * copy_from_user()s the whole struct, so fill every field. */
@@ -2557,9 +2566,9 @@ static uint32_t tseries_t20_nr_percent(uint32_t v)
 }
 #endif
 
-#if defined(PLATFORM_T21) /* T21 and T20 */
-/* Same for sinter strength on T21 and T20. */
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30) /* T21, T20 and T30 */
+/* Same for sinter strength on T21, T20 and T30. */
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
 static uint32_t tseries_t2x_sinter_ratio = 128; /* neutral, see tseries_t20_nr_percent */
 #else
 static uint32_t tseries_t2x_sinter_ratio = 128; /* T21: neutral, see isp_t21_sinter.h */
@@ -3235,7 +3244,7 @@ int IMP_ISP_Tuning_GetHiLightDepress(uint32_t *pstrength)
 
 int IMP_ISP_Tuning_SetTemperStrength(uint32_t ratio)
 {
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
     /* T20 3.12.0: isp_table_tuning_ratio(132, min(ratio, 200)); the driver
      * has no temper-strength control.  Value on the 128-neutral scale. */
     int result = tseries_table_tuning_ratio(TSERIES_TABLE_TEMPER,
@@ -3260,7 +3269,7 @@ int IMP_ISP_Tuning_GetTemperStrength(uint32_t *pratio)
         return -1;
     }
 
-#if defined(PLATFORM_T20)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T30)
     (void)value;
     result = 0;
     *pratio = tseries_t20_temper_ratio;
@@ -3287,8 +3296,8 @@ int IMP_ISP_Tuning_SetSinterStrength(uint32_t ratio)
         tseries_t2x_sinter_ratio = ratio;
     }
     return result;
-#elif defined(PLATFORM_T21) /* T20 */
-    /* T20 3.12.0: isp_table_tuning_ratio(109, min(ratio, 200));
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30) /* T20, T30 */
+    /* T20 3.12.0 and T30 1.0.5 (0xdb0dc): isp_table_tuning_ratio(109, min(ratio, 200));
      * the drivers reject 0x8000086 and have no sinter-strength control.
      * Value on the 128-neutral scale, see tseries_t20_nr_percent. */
     int result = tseries_table_tuning_ratio(TSERIES_TABLE_SINTER,
@@ -3326,7 +3335,7 @@ int IMP_ISP_Tuning_GetSinterStrength(uint32_t *pratio)
                       : tseries_t2x_sinter_ratio;
         return result;
     }
-#elif defined(PLATFORM_T21) /* T20 */
+#elif defined(PLATFORM_T21) || defined(PLATFORM_T30) /* T20, T30 */
     (void)value;
     result = 0;
     *pratio = tseries_t2x_sinter_ratio;
@@ -4122,7 +4131,7 @@ int IMP_ISP_Tuning_SetVideoDrop(void *attr)
     return openimp_video_drop_set((void (*)(void))attr);
 }
 
-#if defined(PLATFORM_T21) || defined(PLATFORM_T31) /* T21, T20 and T31 */
+#if defined(PLATFORM_T21) || defined(PLATFORM_T30) || defined(PLATFORM_T31) /* T21, T20, T30 and T31 */
 /* T21 1.0.33 (0x3150/0x31b8/0x324c/0x32b4): VIDIOC_S/G_CTRL with the V4L2
  * scene-mode and colour-effect controls; Get stores the value only when
  * the ioctl succeeds. The T20 3.12.0 kernel handles both controls
@@ -4130,7 +4139,10 @@ int IMP_ISP_Tuning_SetVideoDrop(void *attr)
  * The stock T31 libimp does not export these calls (undefined symbol) and
  * the stock T31 kernel accepts both controls as no-ops; the open-tx-isp
  * T31 driver serves them (scene stored, colorfx AUTO/BW/VIVID/NEGATIVE),
- * so T31 uses the same V4L2 controls (beyond vendor). */
+ * so T31 uses the same V4L2 controls (beyond vendor).  T30 1.0.5 sends the
+ * same two controls; the stock T30 scene handler returns before it touches
+ * anything and the colour effect goes to the firmware.  The open T30 driver
+ * stores the scene value (no picture effect, like T31) and applies colorfx. */
 #define TSERIES_V4L2_CID_SCENE_MODE 0x009a091a
 #define TSERIES_V4L2_CID_COLORFX    0x0098091f
 
@@ -4173,7 +4185,7 @@ int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
     }
     return result;
 }
-#else /* T30 (T23 has its own, T31 uses the T21 form): no scene/colour-effect ctl */
+#else /* T23 has its own; no scene/colour-effect ctl here */
 /* These are declared in the public header for every SoC but the vendor only
  * wires them on T20/T21. Export failing stubs so a T30 app links
  * (instead of hitting an undefined symbol) and reports the missing control
@@ -4222,7 +4234,7 @@ int IMP_ISP_Tuning_GetColorfxMode(IMPISPColorfxMode *pmode)
     tseries_scene_colorfx_unsupported("IMP_ISP_Tuning_GetColorfxMode", &reported);
     return -1;
 }
-#endif /* PLATFORM_T21 || PLATFORM_T31 */
+#endif /* PLATFORM_T21 || PLATFORM_T30 || PLATFORM_T31 */
 
 int IMP_ISP_Tuning_SetShading(void *attr)
 {

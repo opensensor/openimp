@@ -1,6 +1,6 @@
 {
  "_comment": "Machine-readable evidence for the API coverage tables of docs/FEATURE_MATRIX.md (generated section) and docs/feature-matrix.html. Edit THIS file, then run python3 tools/gen_feature_matrix_html.py. cells: dev (device-tested), host (host tests only), aud (connected per static audit, no device test), no-op (vendor no-op, matched), cache, stub, err, miss (not exported), n.a. (not in that SoC's vendor API), ? (not determined), nob (no OpenIMP build for this SoC yet). better: SoCs where OpenIMP is better than the vendor (dev only). ref: evidence reference per SoC. used: streamers per SoC (p prudynt, r raptor, t timps; a dagger = source only, no binary checked). feature_links: a function cell 'aud' becomes 'dev' while the linked main-matrix feature cell is device-tested (supported).",
- "asof": "2026-11-02",
+ "asof": "2026-11-03",
  "socs": [
   "T10",
   "T20",
@@ -1085,7 +1085,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -1124,7 +1124,7 @@
      "r†"
     ]
    },
-   "note": "T41: claude/t41-isp-round2 (not in agg-25); not device-tested; T23: bus type read at the stock offset (was \"There isn't sensor!\"); apitest read PASS, write skipped; T41: request with vinum at 32 and bus type at 36, device-tested (claude/t41-driver-gaps, in agg-35). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): SKIP (ISP_GetSensorRegister: ret=0 APITEST_SKIPFN: oopses the driver; ISP_SetSensorRegister: ret=0 writes ). GetSensorRegister (same ioctl 0xc0385650 as the vendor) oopses the open T30 driver (NULL dereference at offset 0xc, reproducible with the image's libimp and with this one); the apitest runs with APITEST_SKIPFN for it. SetSensorRegister is not run (writes the sensor).",
+   "note": "T41: claude/t41-isp-round2 (not in agg-25); not device-tested; T23: bus type read at the stock offset (was \"There isn't sensor!\"); apitest read PASS, write skipped; T41: request with vinum at 32 and bus type at 36, device-tested (claude/t41-driver-gaps, in agg-35). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30, no camera): GetSensorRegister PASS in the apitest isp area (ret=0 reg 0x0 = 0x0) and in tests/t30_qemu/sensor_register.c (sc4236 chip id registers 0x3107/0x3108 read 0x32/0x35), 6 module reload cycles with the register read at the end, 0 oopses. The oops of 2026-10-31 (NULL dereference in the ioctl, the lifted handler copied the 0x38-byte request over 4-byte locals) was fixed by #174 (open-tx-isp 648eddd7); SetSensorRegister is not run (it writes the sensor).",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
@@ -1132,7 +1132,7 @@
     "T23": "apitest agg47-cases 2026-10-26 .30 (API round trip, no visible effect expected)",
     "T31": "apitest issue-113 2026-10-26 .26 (open-tx-isp 3e9a5d2c + OpenIMP 662b0d8c): chip id 0xcb3a read, same-value write round trip PASS; QEMU T31 equal",
     "T40": "apitest agg47-cases 2026-10-26 .184 (API round trip, no visible effect expected)",
-    "T30": "FAIL QEMU T30 2026-10-31 (no camera), see note"
+    "T30": "QEMU T30 2026-11-03 (no camera), tests/t30_qemu/sensor_register.c + apitest isp area"
    }
   },
   "ISP_GetCameraInputMode": {
@@ -1680,7 +1680,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -1739,7 +1739,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAntiFlickerAttr: ret=-1 attr 0; ISP_Tuning_SetAntiFlickerAttr: ret=0 same 0 written, read back 0). Set reaches the driver (rc 0); Get returns -1 because the lifted open T30 driver answers the V4L2 get 0x980918 with ENOSYS (driver gap, not OpenIMP).",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 attr 0, Set ret=0 same 0 written, read back 0). The open driver stores the mode and answers V4L2 0x980918 (before: ENOSYS, Get -1).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -1748,7 +1748,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg65k 2026-11-01 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAntiFlickerAttr: ret=-1 attr 0; ISP_Tuning_SetAntiFlickerAttr: ret=0 same 0 written, read back 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetBacklightComp": {
@@ -1876,7 +1876,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -1897,7 +1897,7 @@
      "t"
     ]
    },
-   "note": "T21: B/W, negative and vivid change the picture (imgfx); SEPIA works (beyond vendor, was -1): CCM saturation 0 plus a tinted CSC matrix, dU/dV +10/+9 and +17/+19 in two runs; T10/T20 re-test pending (RC imgfx ran in the dark). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetColorfxMode: ret=-1 mode 0, readback of the 4 modes set WRONG; ISP_Tuning_SetColorfxMode: ret=-1 rt: bw no (C30.4 U128.6 V128.5 Y136.8) negative no (Y136.8 ). OpenIMP refuses with -1 ('not supported on this SoC', by design). The vendor 1.0.5 sends V4L2 0x98091f; the lifted T30 driver answers ENOSYS, so there is no effect to reach. T10/T20/T21 do this in OpenIMP userspace; not ported to T30.",
+   "note": "T21: B/W, negative and vivid change the picture (imgfx); SEPIA works (beyond vendor, was -1): CCM saturation 0 plus a tinted CSC matrix, dU/dV +10/+9 and +17/+19 in two runs; T10/T20 re-test pending (RC imgfx ran in the dark). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Set ret=0, Get ret=0 'readback of the 4 modes set ok'). OpenIMP sends V4L2 0x98091f like the vendor 1.0.5 and T31; the open driver maps NONE/BW/SEPIA/NEGATIVE/VIVID to the firmware colour modes (COLOR_MODE_ID). QEMU shows the round trip only: the sensor model's frames do not change with the effect ('bw no ...' in the case line), so the picture effect is not proven.",
    "better": [
     "T21"
    ],
@@ -1905,7 +1905,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest agg47-cases 2026-10-26 .24",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetColorfxMode: ret=-1 mode 0, readback of the 4 modes set WRONG; ISP_Tuning_SetColorfxMode: ret=-1 rt: bw no (C30.4 U128.6 V128.5 Y136.8) negative no (Y136.8 vs inv. base 118.4) vivid no (C30.4 vs 30.5) sepia"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetContrast": {
@@ -2167,7 +2167,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2200,7 +2200,7 @@
      "r†"
     ]
    },
-   "note": "T23: applied at once (beyond stock); curve test, falling curve rejected, restore ok on cam-B 2026-10-05. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetGamma: ret=-1 g[0]=0 g[64]=0 g[128]=0 (0 of 129 points non-zero)). Get returns -1 (all 129 points zero): gamma get is not served by the open T30 driver.",
+   "note": "T23: applied at once (beyond stock); curve test, falling curve rejected, restore ok on cam-B 2026-10-05. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0, the 129 points of the gamma table are read from the ISP gamma memory at 0x10400; Set ret=0).",
    "better": [
     "T23"
    ],
@@ -2210,7 +2210,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T20": "apitest issue-121 2026-10-27 .107 (open-tx-isp b4d8eae0): Get returns the active curve (128/129 points, was all 0); same curve written back: luma unchanged; x^0.3 vs linear Y 131.6 vs 42.3",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetGamma: ret=-1 g[0]=0 g[64]=0 g[128]=0 (0 of 129 points non-zero)"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetGammaAttr": {
@@ -2315,7 +2315,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2354,14 +2354,14 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetHiLightDepress: ret=0 readback equals the value set (3, 6, 10); ISP_Tuning_SetHiLightDepress: ret=-1 strength 3:Y136.4/H1.84 6:Y137.3/H2.20 10:Y136.7/H1.99 ). Set returns -1: the open T30 driver does not serve the control (default branch of its tuning handler).",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Set ret=0, Get ret=0 'readback equals the value set (3, 6, 10)', frames flow, picture restored). The open driver writes element 2 of the balanced AE calibration table like the stock tuning code.",
    "ref": {
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47-cases 2026-10-26 .30",
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T31": "apitest agg47-cases 2026-10-26 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetHiLightDepress: ret=0 readback equals the value set (3, 6, 10); ISP_Tuning_SetHiLightDepress: ret=-1 strength 3:Y136.4/H1.84 6:Y137.3/H2.20 10:Y136.7/H1.99 vs base Y137.3/H2.20 (orig 0): alive; picture rest"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetISPCSCAttr": {
@@ -2439,7 +2439,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2472,14 +2472,14 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetISPHflip: ret=-1 hflip 0; ISP_Tuning_SetISPHflip: ret=-1 rt: same value 0 written (ret -1), read back 0, frames flow). Set -1 and Get -1: V4L2 0x980914 is an unimplemented inline case (ENOSYS) in the lifted open T30 driver. MISMATCH (minor): the vendor 1.0.5 (0xd7e14) also reads the temper denoise attribute and, when its type is 1, switches it to a 0x28 variant around the flip and restores it after a pause; OpenIMP only sends the control.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0, Set ret=0 same value written and read back, frames flow; toggle h 0->1 read back, restored). V4L2 0x980914/0x980915 are served (value kept in the tuning object, flip state and change flag set for the frame-done handler; the vflip also notifies the sensor). The vendor 1.0.5 (0xd7e14) also reads the temper denoise attribute and, when its type is 1, switches it to a 0x28 variant around the flip and restores it after a pause; OpenIMP only sends the control (minor difference, not replicated).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetISPHflip: ret=-1 hflip 0; ISP_Tuning_SetISPHflip: ret=-1 rt: same value 0 written (ret -1), read back 0, frames flow"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetISPRunningMode": {
@@ -2489,7 +2489,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -2548,7 +2548,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetISPRunningMode: ret=0 mode 0 (day requested at start); ISP_Tuning_SetISPRunningMode: ret=-1 set 1, read back 0). Day mode round-trips; night (mode 1) returns -1 (control 0x80000e1 value 1 refused by the open T30 driver).",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 mode 0, Set ret=0 'set 1, read back 1'). Night mode (0x80000e1 value 1) is accepted when the calibration parameters are loaded (the day/night switch flag is set for the core, as in the stock code) and a no-op when the mode does not change.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -2557,7 +2557,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg65k 2026-11-01 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetISPRunningMode: ret=0 mode 0 (day requested at start); ISP_Tuning_SetISPRunningMode: ret=-1 set 1, read back 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetISPVflip": {
@@ -2567,7 +2567,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2600,14 +2600,14 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetISPVflip: ret=-1 vflip 0; ISP_Tuning_SetISPVflip: ret=-1 rt: same value 0 written (ret -1), read back 0, frames flow). Set -1 and Get -1: V4L2 0x980915 is an unimplemented inline case (ENOSYS) in the lifted open T30 driver. Same temper-denoise detour in the vendor as for Hflip, not replicated.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0, Set ret=0, toggle read back, frames flow). V4L2 0x980915 is served, see Hflip. Same temper-denoise detour in the vendor as for Hflip, not replicated.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetISPVflip: ret=-1 vflip 0; ISP_Tuning_SetISPVflip: ret=-1 rt: same value 0 written (ret -1), read back 0, frames flow"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetIntegrationTime": {
@@ -2617,7 +2617,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2638,12 +2638,12 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetIntegrationTime: ret=-1 mode 0 it 0 max 0; ISP_Tuning_SetIntegrationTime: ret=0 (gain caps not pinned) 30 lines Y 137.5 -> 240 lines Y 136.9 via SetExpr man). Get returns -1 (tuning get not served by the open T30 driver).",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): Get PASS (ret=0 mode 0 it 3 max 3196; manual 30 lines read back: yes). Set ret=0, but the case's exposure-effect check FAILs ('NO EXPOSURE EFFECT'): the sensor model's frames do not depend on the exposure, so QEMU cannot show the effect; the effect needs a camera.",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest inttime 2026-10-27 .107, night (open-tx-isp 4e961167, #128): 30 -> 240 lines Y 5.6 -> 37.3, readback 30/240; AE no longer overrides the manual time",
     "T21": "apitest issue-110 2026-10-27 .24 (open-tx-isp 28b26d20, stock libimp): Get mode/it/max 0/1350/2246, manual 30 read back; Set 30->240 lines Y 16.1->78.9; QEMU T21 equal (beyond vendor: stock T21 ignores the block)",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetIntegrationTime: ret=-1 mode 0 it 0 max 0; ISP_Tuning_SetIntegrationTime: ret=0 (gain caps not pinned) 30 lines Y 137.5 -> 240 lines Y 136.9 via SetExpr manual + FWFreeze (AE out of the loop; GetExpr after "
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetMask": {
@@ -2851,7 +2851,7 @@
     "T20": "dev",
     "T21": "rt",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -2910,7 +2910,7 @@
      "t†"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. t30-tune (QEMU 2026-10-31): Set rc 0, Get returns 0 (set 160): the open T30 driver's G_CTRL 0x980902 does not hand back the stored value. OpenIMP's Get is the vendor's (G_CTRL, byte cached). Not in the apitest for T30 (no picture cases).",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (tuning_strength QEMU test: Set 160, Get 160; Set 128 restores). The open driver keeps the value in the tuning object and applies the customer mid-node scaling like the stock code (before: Get read 0).",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -2918,7 +2918,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "FAIL QEMU T30 2026-10-31 (no camera), see note",
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177",
     "T40": "apitest agg65k 2026-11-01 .184"
    }
   },
@@ -3184,7 +3184,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -3233,7 +3233,7 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested) audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. t30-tune (QEMU 2026-10-31): rc 0 but the value read is 0 after Set 90: the open T30 driver's G_CTRL 0x980900 does not return the stored value. OpenIMP's Get is the vendor's (G_CTRL).",
+   "note": "audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested) audit: reaches the driver/kernel; T40: returned -1 on cam-K 2026-10-10 (vendor library returns the value); fixed after RC1: the getters return the vendor per-input cache (host-tested). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (tuning_strength QEMU test: Set 90, Get 90; Set 128 restores). Value kept in the tuning object, customer mid-node scaling as in the stock code (before: Get read 0).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
@@ -3241,7 +3241,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "FAIL QEMU T30 2026-10-31 (no camera), see note"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_GetEVAttr": {
@@ -3251,7 +3251,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -3290,14 +3290,14 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ev 0 expr 0 us again 0 dgain 0). Get returns -1: the tuning get is not served by the open T30 driver.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (ret=0 ev 0 expr 133 us again 0 dgain 0). Needs the firmware calibration type 6 (exposure/gain log2), which the lifted apical_command did not dispatch.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 ev 0 expr 0 us again 0 dgain 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_GetHVFlip": {
@@ -3405,19 +3405,19 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (mode 0, readback of the 3 modes set WRONG). OpenIMP refuses with -1 (by design); the vendor sends V4L2 0x9a091a (G_CTRL), which the lifted T30 driver does not handle.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 'readback of the 3 modes set ok'). OpenIMP sends V4L2 0x9a091a like the vendor 1.0.5 and T31; the stock T30 handler returns before it changes anything (no scene effect in the stock driver either); the open driver keeps the value so the getter reads it back (same as the open T31 driver). No picture effect.",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest rc3-cases 2026-10-27 .24",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 mode 0, readback of the 3 modes set WRONG"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_GetSensorAttr": {
@@ -3851,19 +3851,19 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "n.a.",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (rt: freeze on/off, frames flow (1/1), Y 136.9 -> 136.8 frozen). FIXED transport: now S_CTRL 0x8000165 with the mode as value and the vendor's cache (0xdba84), was the tuning ioctl. Host test isp_gap_test_t30. QEMU: the driver rejects the control ('tuning set id=08000165 failed ret=-1').",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #22): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (rt: freeze on/off, frames flow (1/1), Y 136.2 -> 136.8 frozen). The control 0x8000165 is served: value kept, firmware freeze bit written (ext register 0x40100).",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest agg47-cases 2026-10-26 .24 (API round trip, no visible effect expected)",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 rt: freeze on/off, frames flow (1/1), Y 136.9 -> 136.8 frozen"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_SetFixedContraster": {
@@ -4105,7 +4105,7 @@
     "T20": "dev",
     "T21": "no-op",
     "T23": "n.a.",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4126,12 +4126,12 @@
      "t"
     ]
    },
-   "note": "T21: vendor kernel no-op (imgfx: no picture change, same on the vendor stack by design). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (readback WRONG; base Y136.8 H1.84 C30.4; mode 8: Y137.3 H2.20 C30.5, back to mode 0 ok (Y136.9); mode 13: Y137.3 H2.12 C30.5, back to mode 0 ok (Y136.8); mode 11: Y136.9 ). OpenIMP refuses with -1 (by design). The vendor 1.0.5 sends V4L2 0x9a091a; the lifted T30 driver has no handler for it.",
+   "note": "T21: vendor kernel no-op (imgfx: no picture change, same on the vendor stack by design). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Set ret=0 'rt: readback ok', mode 8 and 13 and back to 0). See GetSceneMode: stored value, no picture effect (the stock T30 handler is a no-op too).",
    "ref": {
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest scene 2026-10-27 .24 (#120): ret 0, NIGHT/AUTO no picture change on the open and the stock stack (stock oem-t21 handler returns 0 without effect)",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 readback WRONG; base Y136.8 H1.84 C30.4; mode 8: Y137.3 H2.20 C30.5, back to mode 0 ok (Y136.9); mode 13: Y137.3 H2.12 C30.5, back to mode 0 ok (Y136.8); mode 11: Y136.9 H1.96 C30.5, back to mode 0 ok (Y136.9)"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_SetSensorFPS": {
@@ -4141,7 +4141,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -4200,7 +4200,7 @@
      "t†"
     ]
    },
-   "note": "T41: reaches the sensor (agg-25); -EOPNOTSUPP on the gc5603 of cam-F. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (same 25/1 written, read back 25/1). Set returns -1: the open T30 driver does not handle the FPS control (default branch); GetSensorFPS works (25/1).",
+   "note": "T41: reaches the sensor (agg-25); -EOPNOTSUPP on the gc5603 of cam-F. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Set ret=0 same 15/1 written, read back 15/1; Get 15/1). The control 0xe0 is served (sensor fps event, then the firmware fps mode). The lifted set_sensor_fps read the sensor's fps callback as one byte (jump to address 0) and used a wrong id table; both are fixed.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -4209,7 +4209,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg65k 2026-11-01 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 same 25/1 written, read back 25/1"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_SetSharpness": {
@@ -4297,7 +4297,7 @@
     "T20": "aud",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4336,13 +4336,13 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. t30-tune (QEMU): -1. MISMATCH with the vendor: 1.0.5 (0xdb0dc) scales driver table 109 through isp_table_tuning_ratio (value capped at 200), OpenIMP sends control 0x8000086. The open T30 driver serves neither that control nor the table control 0x8000161.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (tuning_strength QEMU test: Set 128/200, Get 200, 2 cycles, rc 0). OpenIMP now scales driver table 109 through the table control 0x8000161 like the vendor 1.0.5 (0xdb0dc) isp_table_tuning_ratio (value capped at 200, 128-neutral scale like T20); the open driver serves the table get (geometry and data) and set. Host test isp_gap_test_t30 checks the table protocol. No picture effect shown in QEMU.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
-    "T30": "FAIL QEMU T30 2026-10-31 (no camera), see note"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_SetTemperDnsCtl": {
@@ -4373,7 +4373,7 @@
     "T20": "aud",
     "T21": "aud",
     "T23": "aud",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "aud",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4412,10 +4412,10 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. t30-tune (QEMU): -1. MISMATCH with the vendor: 1.0.5 (0xdaff0) scales driver table 132 through isp_table_tuning_ratio (value capped at 200), OpenIMP sends control 0x8000085. The open T30 driver serves neither that control nor the table control 0x8000161.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (tuning_strength QEMU test: Set 100/128, Get 100, 2 cycles, rc 0). OpenIMP scales driver table 132 through 0x8000161 like the vendor 1.0.5 (0xdaff0); see SetSinterStrength. No picture effect shown in QEMU.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
-    "T30": "FAIL QEMU T30 2026-10-31 (no camera), see note"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_SetTmoFaceae": {
@@ -4747,7 +4747,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4774,10 +4774,10 @@
      "r†"
     ]
    },
-   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; used by: T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #23): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_AE_GetROI: ret=-1 roi 0x00000000). FIXED: OpenIMP sent control 0x8000035 through a pointer (the T30 driver refuses 0x8000035); the vendor 1.0.5 (0xd9688/0xd978c) sends 0x8000024 with the four ROI bytes by value and Set checks b[3] < b[1] && b[2] < b[0]. Now equal; host test isp_gap_test_t30. Set reaches the driver (apical_command 3/0x5a); Get returns -1 because the open T30 driver has no get case for 0x8000024.",
+   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; used by: T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #23): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 roi 0x4040c0c0; case aeroi PASS). The control 0x8000024 get is served (firmware AE ROI).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_AE_GetROI: ret=-1 roi 0x00000000"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_AwbSync": {
@@ -4823,7 +4823,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4856,12 +4856,12 @@
      "r†"
     ]
    },
-   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; T41: driver claude/t41-connect (agg-25); host tests 58/58. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_Awb_GetRgbCoefft: ret=-1 r 0 g 0 b 0; ISP_Tuning_Awb_SetRgbCoefft: ret=-1 rt: same value written (set ret -1), read back equal; R x1.5: V 129.10 -> 129.98 (AWB). Get and Set -1: not served by the open T30 driver.",
+   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; T41: driver claude/t41-connect (agg-25); host tests 58/58. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 r 256 g 256 b 256; Set ret=0 same value written, read back equal; R x1.5 case line: V 122.31 -> 122.17, AWB may pull it back). The three WB coefficient registers (0x4a8/0x4ac/0x4b0) are read and written.",
    "ref": {
     "T40": "apitest agg65k 2026-11-01 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
     "T10": "apitest rc3-cases 2026-10-26 .31",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_Awb_GetRgbCoefft: ret=-1 r 0 g 0 b 0; ISP_Tuning_Awb_SetRgbCoefft: ret=-1 rt: same value written (set ret -1), read back equal; R x1.5: V 129.10 -> 129.98 (AWB may pull it back); picture restored (Y 137.3)"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAeAttr": {
@@ -4897,7 +4897,7 @@
     "T20": "dev",
     "T21": "n.a.",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4931,13 +4931,13 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAeComp: ret=-1 value 0; ISP_Tuning_SetAeComp: ret=0 rt: same value 0 written, read back 0; 20 written, read back 0, frames flow 1; restored, no measurable p). Set rc 0, Get -1: the open T30 driver has no get case for 0x8000023.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 value 128; Set ret=0 128 and 108 written and read back, frames flow; no measurable picture effect in this scene). Get 0x8000023 is served.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T20": "apitest rc3-cases 2026-10-26 .107",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAeComp: ret=-1 value 0; ISP_Tuning_SetAeComp: ret=0 rt: same value 0 written, read back 0; 20 written, read back 0, frames flow 1; restored, no measurable picture effect in this scene"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAeConvergeStep": {
@@ -4999,7 +4999,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5032,14 +5032,14 @@
      "r†"
     ]
    },
-   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAeHist: ret=-1 hist 0 0 0 0 0, nodes 0x0). Get -1: not served by the open T30 driver.",
+   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 hist 30533 22209 5541 1623 5629, nodes 15x15). The metering histogram registers (0x800..0x830) are read.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAeHist: ret=-1 hist 0 0 0 0 0, nodes 0x0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAeMin": {
@@ -5160,7 +5160,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -5209,7 +5209,7 @@
      "r†"
     ]
    },
-   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; T41: driver claude/t41-connect (agg-25); host tests 58/58. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAeWeight: ret=-1 weight[7][7] 0). Get -1: not served by the open T30 driver.",
+   "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; T41: driver claude/t41-connect (agg-25); host tests 58/58. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 weight[7][7] 15). The 15x15 zone weights (0x1e00) are read and written byte-packed; the lifted version walked a 4-byte stride over a 225-byte buffer.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -5218,7 +5218,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg65k 2026-11-01 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAeWeight: ret=-1 weight[7][7] 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAfHist": {
@@ -5228,7 +5228,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5255,14 +5255,14 @@
      "r†"
     ]
    },
-   "note": "T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0; T23: AF statistics on by default since open-tx-isp agg-28 (source_af=1 as stock); apitest PASS on a T23 camera, no measurable CPU cost. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAfHist: ret=-1 nodes 0x0). Get -1: not served by the open T30 driver.",
+   "note": "T23: AF statistics chain from the stock module, off by default (source_af=0); no device test; T31: reconstructed AF chain; metrics/zone/weight/hist verified on cam-A 2026-10-05, Get->Set roundtrip 0; T23: AF statistics on by default since open-tx-isp agg-28 (source_af=1 as stock); apitest PASS on a T23 camera, no measurable CPU cost. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 nodes 15x15). AF statistics registers (0x880..0x8cc) are read.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAfHist: ret=-1 nodes 0x0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAfWeight": {
@@ -5429,7 +5429,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "no-op",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "no-op",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5462,14 +5462,14 @@
      "r†"
     ]
    },
-   "note": "T23+T31: stock driver also no-op (OEM-same). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAwbHist: ret=-1 stat r 0 b 0 sum 0, nodes 0x0). Get -1: not served by the open T30 driver.",
+   "note": "T23+T31: stock driver also no-op (OEM-same). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 stat r 256 b 255 sum 1988855, nodes 15x15). AWB statistics registers (0x840..0x870) are read.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAwbHist: ret=-1 stat r 0 b 0 sum 0, nodes 0x0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAwbWeight": {
@@ -5479,7 +5479,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "no-op",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "no-op",
     "T32": "nob",
     "T33": "nob",
@@ -5528,7 +5528,7 @@
      "r†"
     ]
    },
-   "note": "T23+T31: stock driver also no-op (OEM-same). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetAwbWeight: ret=-1 weight[7][7] 0). Get -1: not served by the open T30 driver.",
+   "note": "T23+T31: stock driver also no-op (OEM-same). T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 weight[7][7] 15). The 15x15 zone weights (0x1f00) are read and written.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
@@ -5537,7 +5537,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest agg65k 2026-11-01 .184",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetAwbWeight: ret=-1 weight[7][7] 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_Get/SetAwbZoneWeight": {
@@ -5621,7 +5621,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5660,9 +5660,9 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (ISP_Tuning_GetWB: ret=-1 mode 0 rgain 0 bgain 0). Get returns -1: the WB get is not served by the open T30 driver.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 mode 0 rgain 50 bgain 50). The AWB mode and the red/blue gains are read from the firmware; Set follows the stock handler (mode, manual gains).",
    "ref": {
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ISP_Tuning_GetWB: ret=-1 mode 0 rgain 0 bgain 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_GetAEEvList": {
@@ -6181,7 +6181,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -6214,14 +6214,14 @@
      "t"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). QEMU T30 (sc4236 model, no camera): FAIL (mode 0 it 0 (min 0 max 0) one line 0 us). Get -1: not served by the open T30 driver (Set side: see SetExpr).",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (ret=0 mode 0 it 0 (min 3 max 3196) one line 0 us; case expr PASS). Get 0x8000025 is served (firmware manual-integration flag and integration time, limits from the sensor attribute); Set converts microseconds to lines with the sensor's line time.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest rc3gaps2 2026-10-27 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 mode 0 it 0 (min 0 max 0) one line 0 us"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_GetFaceAeLuma": {
@@ -6281,7 +6281,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "qemu",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -6308,14 +6308,14 @@
      "r†"
     ]
    },
-   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (rgain 0 bgain 0). Get -1: not served by the open T30 driver.",
+   "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (ret=0 rgain 256 bgain 255). The AWB gain statistics registers (0x858/0x85c) are read.",
    "ref": {
     "T10": "apitest agg47 2026-10-26 .31",
     "T20": "apitest agg47 2026-10-26 .107",
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): ret=-1 rgain 0 bgain 0"
+    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
    }
   },
   "ISP_Tuning_SetAeFreeze": {
@@ -6865,18 +6865,18 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "err",
+    "T30": "no-op",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
     "T40": "n.a.",
     "T41": "n.a."
    },
-   "note": "T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #24): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): FAIL (Encoder_GetChangeRef: ret=-1 ChangeRef = 0; Encoder_SetChangeRef: ret=0 ChangeRef set 1, read back 0). Documented T30 limitation: the value is not read back by the Helix encoder path (apitest expects the T20 stored value). T10/T20 2026-11-02: the flag is coded: a picture of the H1M classes that the rate controller asks to code again (SMART second try with the flag on; any re-encode of those pictures) is coded again with the third reconstruction buffer as reference, the smaller try is kept and a kept second try gets the vendor header commands (i264e_get_prev_fram_dec 0x42940, i264e_ratecontrol_is_reenc_end 0x4d474, i264e_dec_ref_pic_remark 0x42a24, i264e_slice_write 0x46cb0); tests/hskip (76 scenarios x 240 pictures against the vendor code), see docs/T20_HSKIP.md. T10 reads the flag only when the controller is set up, T20 with every picture. T21 2026-11-02: no effect in the vendor either: the second-try flag (picture+0x1284) is cleared by i264e_ratecontrol_is_reenc and never set (its only writer, i264e_ratecontrol_is_reenc_end, is called with the flag already set), i264e_decide_slice_qp is an empty function and the ChangeRef parameter is read by no controller code; tools/t21_changeref_oracle.py runs the vendor judge for 6952 calls with ChangeRef on and off: flag never set, no decision depends on it (docs/T21_HSKIP.md). Camera: ChangeRef on/off 0 differing pictures against the vendor libimp.",
+   "note": "T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test T10/T20: stored and read back with the vendor return codes (SetChangeRef -1 on an idle channel, GetChangeRef -1 on an idle channel; apitest PASS on T10, T20); T21 (2026-10-10, host test): SetChangeRef -1 on an idle channel; GetChangeRef answers 0 on an idle channel and, as the vendor (T21 1.0.33 and T30 1.0.5, same code), logs \"unsupport to change ref channel\" and returns -1 on every created channel without writing the value (it used to return the stored value); the vendor passes it to the i264e reference code (param 12), which only the HSkip reference modes read; the Helix path codes no HSkip structure (class c). Disassembly: T21 1.0.33 0x48bd4/0x48d90, T20 3.12.0 0x4b05c/0x4b220; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test; T30 1.0.5 (same vendor code as T21): SetChangeRef stores the flag of a created channel (-1 for an idle one); GetChangeRef is 0 for an idle channel and -1 for a created one (the vendor logs \"unsupport to change ref channel\"); host test. T30 2026-11-03 (#177): the apitest FAIL (GetChangeRef -1, 'read back 0') is the vendor behaviour: T30 1.0.5 GetChangeRef returns -1 on a created channel and logs 'unsupport to change ref channel', SetChangeRef stores a flag that no controller code reads; OpenIMP does the same (host test), so the cell is a matched vendor no-op, not a gap. T10/T20 2026-11-02: the flag is coded: a picture of the H1M classes that the rate controller asks to code again (SMART second try with the flag on; any re-encode of those pictures) is coded again with the third reconstruction buffer as reference, the smaller try is kept and a kept second try gets the vendor header commands (i264e_get_prev_fram_dec 0x42940, i264e_ratecontrol_is_reenc_end 0x4d474, i264e_dec_ref_pic_remark 0x42a24, i264e_slice_write 0x46cb0); tests/hskip (76 scenarios x 240 pictures against the vendor code), see docs/T20_HSKIP.md. T10 reads the flag only when the controller is set up, T20 with every picture. T21 2026-11-02: no effect in the vendor either: the second-try flag (picture+0x1284) is cleared by i264e_ratecontrol_is_reenc and never set (its only writer, i264e_ratecontrol_is_reenc_end, is called with the flag already set), i264e_decide_slice_qp is an empty function and the ChangeRef parameter is read by no controller code; tools/t21_changeref_oracle.py runs the vendor judge for 6952 calls with ChangeRef on and off: flag never set, no decision depends on it (docs/T21_HSKIP.md). Camera: ChangeRef on/off 0 differing pictures against the vendor libimp.",
    "ref": {
     "T21": "hskip 2026-11-02 .24 vs the vendor libimp 1.0.33 on the same camera: SetChangeRef on/off identical streams in structure (0 differing pictures), as the vendor has no second try on T21 (oracle: flag never set over 6952 judge calls); apitest agg63 2026-10-31 .24",
     "T23": "apitest agg47 2026-10-26 .30",
-    "T30": "FAIL apitest t30audit 2026-10-31 QEMU (no camera): Encoder_GetChangeRef: ret=-1 ChangeRef = 0; Encoder_SetChangeRef: ret=0 ChangeRef set 1, read back 0",
+    "T30": "host test; vendor 1.0.5 behaviour matched (apitest expectation is the T20 stored value)",
     "T10": "changeref 2026-11-02 .31: per-picture structure vs the vendor library on the same camera (SMART H1M_FALSE / H1M_TRUE, flag on and off, CBR): 7 / 8 list modifications against 7 / 8 (H1M_FALSE), 9+12 against 9+12 (H1M_TRUE); strict ffmpeg decode clean (the vendor streams decode with 4 to 16 errors), 0 oopses",
     "T20": "changeref 2026-11-02 .107: per-picture structure vs the vendor library on the same camera (SMART H1M_FALSE / H1M_TRUE, flag on and off, CBR): flag off and CBR identical, flag on: the kept second try carries no list modification (9 to 10 of 21 base pictures against 21 of 21 of the vendor: the second try must be smaller, the picture sizes differ); strict ffmpeg and VA-API decode clean, real picture, 0 oopses"
    }

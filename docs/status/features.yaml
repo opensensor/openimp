@@ -166,8 +166,8 @@ features:
       sym: ✅
       text: 'lifted vendor AE is the default (all-14/15); night test on cam-B: switches to night, AE regulates (IT 1200/1436 lines, analog gain 133/160), gain reported; backlight/highlight/AE comp act'
     T30:
-      sym: '?'
-      text: AE calls exported (shared T-series ISP code), no test result for T30
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177, no T30 camera): the open driver serves `GetExpr`, `GetEVAttr`, `GetAeStrategy`, `AE_GetROI`, the AE histogram and the AE weights, and `SetAeStrategy` has the vendor polarity (it was inverted): apitest isp area 25 PASS / 0 FAIL in the QEMU T30 machine; no picture or timing claim. Earlier: AE calls exported (shared T-series ISP code), no test result for T30'
     T31:
       sym: ✅
       text: '2026-10-27: AE step device proof (#95, T31X sc4336p, agg47 image with the fix, real room-light step, EV sampled at about 4 Hz): light off (EV x45) within 5 % of the final value after 2.1 s, light on after 3.5 s (the simulation said 4-6 s, 20-42 s before the fix); no vendor T31 camera for an A/B. Earlier: 2026-10-21: the AE minimum EV step is now as in the OEM (a ratio between 1 and 1+s is raised to 1+s; the old clamp made the AE converge at 0.4 % per frame, `.25` shed-door finding), merged in next (`5336ad24`, host test `t31_ae_step_host_test`); the device re-check of the shed door brightness jump (90th percentile 255 for 30 s) is still open. Earlier (history): reference SoC; 2 h 53 soak without errors'
@@ -207,8 +207,8 @@ features:
       sym: ✅
       text: 'device-tested with the lifted vendor AE: backlight 10 luma 68→112, highlight 10 →48, AE comp works (decided: lifted vendor AE becomes the default after a pending night-switch test in the dark) [claude/t23-matrix-gaps]'
     T30:
-      sym: '?'
-      text: '`SetAeComp` exported, no test result for T30'
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177): `Get/SetAeComp` round trip (128 -> 108 -> 128, frames flow) and `Get/SetHiLightDepress` read back 3, 6, 10; no picture effect measurable in the QEMU scene; `Get/SetBacklightComp` was not part of this round. Earlier: `SetAeComp` exported, no test result for T30'
     T31:
       sym: ✅
       text: 'device-tested: ae_comp (Y +13/−21), backlight (Y +19), highlight (Y −13) Re-tested 2026-10-10: OEM formula, luma 55 / 100 / 160 for 0 / 128 / 255; the AE is slow (about 6 s dead time, 25 to 30 s to settle), tests need at least 30 s settle'
@@ -250,7 +250,7 @@ features:
       text: MaxAgain/MaxDgain, IT max, SetSensorFPS, additional ISP digital-gain stage; t23tune passed
     T30:
       sym: 🔧
-      text: '2026-10-27: Movestate (`Enable/DisableMovestate`) runs the vendor 1.0.5 logic and the driver serves the SYSTEM_TAB block: QEMU T30 exposure ceiling 1916 -> 1149 -> 1916, frames flow, no oops; QEMU only, no T30 camera. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? max-gain calls exported, no test result for T30'
+      text: '2026-11-03, QEMU only (#177): `Get/SetMaxAgain`/`MaxDgain` read back, `Get/SetIntegrationTime` reads back (the exposure effect needs a camera: the sensor model''s frames do not depend on it), `SetSensorFPS` is served (the lifted fps callback was read as one byte and the fps id table was wrong, both fixed; first fps change used to jump to address 0). Earlier: 2026-10-27: Movestate (`Enable/DisableMovestate`) runs the vendor 1.0.5 logic and the driver serves the SYSTEM_TAB block: QEMU T30 exposure ceiling 1916 -> 1149 -> 1916, frames flow, no oops; QEMU only, no T30 camera. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? max-gain calls exported, no test result for T30'
     T31:
       sym: ✅
       text: '2026-10-27: Movestate runs the vendor library logic (API cell rt, T31); `SetISPBypass(ENABLE)` is a no-op like the vendor and prudynt''s startup order keeps the frames flowing (#119). Earlier: EXPR setter, AE ROI, histogram edges'
@@ -287,7 +287,7 @@ features:
       text: 'device-tested: vendor AE 50/60/off IT 720/900/971; HLIL 720/600/711'
     T30:
       sym: 🔧
-      text: '2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported, no test result'
+      text: '2026-11-03, QEMU only (#177): `GetAntiFlickerAttr` answers and reads back the mode set (V4L2 0x980918 get; before: -1). Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported, no test result'
     T31:
       sym: ✅
       text: 'device-tested with 22 ms IT cap: IT 1000/900/750 lines off/50/60 Hz, gain compensates; daylight test pending'
@@ -321,8 +321,8 @@ features:
       sym: ✅
       text: '[-all-13] daylight green cast fixed on claude/t23-day-color (bc70f10b), tested on cam-B in sunlight: neutral colours, WB gains kept (0x710/0x7c0); not flashed yet'
     T30:
-      sym: '?'
-      text: AWB calls exported (6 of 8 vendor names), no test result
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177): `GetWB`, `GetWB_Statis`, `Awb_Get/SetRgbCoefft`, the AWB histogram and the AWB weights are served (apitest isp area PASS); WB mode and gains are read from the firmware. Earlier: AWB calls exported (6 of 8 vendor names), no test result'
     T31:
       sym: ✅
       text: '2026-10-24: the AWB statistics sweeps run through the MXU2 vector unit by default in next (`t31_awb_impl=2`, chosen after a load-time self-test against the C code; `t31_awb_impl=0/1` switches it off): bit-exact against the C implementation, device-tested on a T31X (.21) and a T31L (.29), about 2.4 times faster sweeps (96 sweeps: 1229 us in C, 504 us with MXU2). Earlier (history): device-tested: manual R/B gains + presets 3/4/7 read back; chroma follows (Cb/Cr), auto restores'
@@ -404,8 +404,8 @@ features:
       sym: ✅+
       text: oops (wait queue) fixed, night mono, bank error → block bypass, user bypass persists
     T30:
-      sym: '?'
-      text: not documented
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177): `SetISPRunningMode(NIGHT)` is accepted and read back (the day/night switch flag is set for the core as in the stock code); IR cut and the sensor side are other rows. Earlier: not documented'
     T31:
       sym: ✅
       text: 13 switches in the 4.5 h soak
@@ -477,7 +477,7 @@ features:
       - 105
     T30:
       sym: 🔧
-      text: '2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported where the vendor has them (no hue call in the T30 vendor list), no test result'
+      text: '2026-11-03, QEMU only (#177): brightness and saturation read back what was set (they read 0), contrast round trip PASS; the customer mid-node scaling and the contrast curve of the stock code are applied. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported where the vendor has them (no hue call in the T30 vendor list), no test result'
     T31:
       sym: ✅
       text: defaults 0x80
@@ -515,8 +515,8 @@ features:
       sym: ✅
       text: flip, Bayer re-sync, LSC flip locked
     T30:
-      sym: '?'
-      text: '`Get/SetISPHflip`/`Vflip` and (2026-10-10, host test) `Get/SetISPHVflip` exported, no device result'
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177): `Get/SetISPHflip`/`Vflip` are served (V4L2 0x980914/15, before: ENOSYS), toggle 0 -> 1 -> 0 reads back and frames flow; the vendor''s temper-denoise detour around the flip is not replicated. Earlier: `Get/SetISPHflip`/`Vflip` and (2026-10-10, host test) `Get/SetISPHVflip` exported, no device result'
     T31:
       sym: ✅
       text: sc4336p vflip no longer reports an error [-all-13]; MSCA flip takes effect only at the next channel start, as with the vendor
@@ -632,8 +632,8 @@ features:
       issues:
       - 106
     T30:
-      sym: '?'
-      text: Sinter/Temper strength exported; `SetTemperDnsCtl` exported since 2026-10-10 (cache-only like the T30 `SetTemperDnsAttr`)
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177): `Set/GetSinterStrength` and `Set/GetTemperStrength` scale the driver tables 109 and 132 through control 0x8000161 as the vendor 1.0.5 (the driver serves the table get and set; before: control ids the driver refused); round trip rc 0 in two cycles, no picture effect shown in QEMU. Earlier: Sinter/Temper strength exported; `SetTemperDnsCtl` exported since 2026-10-10 (cache-only like the T30 `SetTemperDnsAttr`)'
     T31:
       sym: ✅
       text: '2026-10-24: `isp_memopt=1` showed vertical noise stripes at night (left image quarter, column bands 2.5-3.5 against 1.3-1.8; temporal column stripe 0.161 against the vendor 0.103) because the MDNS stride was 0; the OEM memopt tuning patch applied at bin load (`e603e17c`, `claude/t31-memopt-mdns`, in next) brings it to the vendor level on .25 (noise 1.18 against 1.20, stripe 0.099 against 0.103, 10 min soak clean); night luma stays 8 % below the vendor (no ISP digital gain), edge energy +19 %. Earlier (history): vendor-identical: SDNS H-S regs 0→0, 255→15 (OEM cap 16); temper 0: temporal std 4.60 vs 1.64; sinter effect small by OEM design'
@@ -714,8 +714,8 @@ features:
       sym: ✅
       text: 'device-tested: B/W, vivid, negative work; invalid values give EINVAL (claude/t23-t31-scene-colorfx, not yet in an aggregate)'
     T30:
-      sym: '?'
-      text: '`Get/SetColorfxMode`, `Get/SetSceneMode` exported, no test result'
+      sym: 🔧
+      text: '2026-11-03, QEMU only (#177): `Get/SetSceneMode` and `Get/SetColorfxMode` are sent like the vendor (V4L2 0x9a091a / 0x98091f, as on T31); the scene value is stored (the stock handler is a no-op, no picture effect), the colour effect sets the firmware colour mode and reads back; the effect is not proven in a picture (the sensor model shows none). Earlier: `Get/SetColorfxMode`, `Get/SetSceneMode` exported, no test result'
     T31:
       sym: ✅
       text: 'device-tested: as T23 (claude/t23-t31-scene-colorfx, not yet in an aggregate)'
@@ -1660,7 +1660,7 @@ features:
       - 122
     T30:
       sym: 🔧
-      text: '2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? getters exported (shared code), no test result'
+      text: '2026-11-03, QEMU only (#177): the apitest isp area runs 25 PASS / 0 FAIL (before 8 / 17): the getters of anti-flicker, WB, exposure, EV, AE strategy/ROI, histograms, weights, RGB coefficients, max gain, gamma, brightness/saturation are served; 6 module reload cycles with the area and the strength test, 0 oopses, no slab reports. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? getters exported (shared code), no test result'
     T31:
       sym: ✅
       text: '2026-10-27: `GetSensorRegister` clears the value field before the ioctl and the driver forwards the register events, so the sc2336 chip id reads 0xcb3a instead of 0x0404 (#113); `GetWdr_OutputMode` on a linear sensor returns the default mode 0 instead of -1 (#118), `SetISPCustomMode(DISABLE)` without a custom bin is a no-op returning 0 (#117); device-tested on the T31 camera (apitest `wdr`/`wdrout`/`custom` PASS) after a runtime ko swap. Earlier: SensorAttr, WaitFrame per frame, isp-w02 counter'

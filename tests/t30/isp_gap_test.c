@@ -53,6 +53,8 @@ static int32_t last_id, last_val;
 static int32_t ctrl_val[0x1000];          /* by id & 0xfff */
 static int wdr_ret;                       /* errno for the WDR control */
 static int32_t last_tuning_sub, last_tuning_val;
+static int tbl_calls, tbl_set_table;
+static uint16_t tbl_last[3][2];
 
 int __real_ioctl(int fd, unsigned long request, ...);
 int __wrap_ioctl(int fd, unsigned long request, ...)
@@ -90,6 +92,42 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
     if (request == TUNING) {
         int32_t *w = arg;               /* {dir, subcmd, value} */
 
+        if (w[1] == 0x8000161) {
+            /* calibration table ioctl: {table, rows, cols, elem, flag, buf};
+             * two 16-bit columns, 3 rows, kept per table id */
+            struct { uint32_t table, rows, cols, elem, flag; void *buf; } *r;
+            void *pp;
+            static uint16_t store[2][3][2];
+            static int init[2];
+            int k;
+            int i;
+
+            memcpy(&pp, (char *)arg + 8, sizeof(pp));   /* ptr after {dir, subcmd} */
+            r = pp;
+            k = r->table == 109 ? 0 : r->table == 132 ? 1 : -1;
+            if (k < 0) {
+                errno = EPERM;
+                return -1;
+            }
+            if (!init[k]) {
+                for (i = 0; i < 3; i++) {
+                    store[k][i][0] = 10 + i;
+                    store[k][i][1] = 100 + 20 * i;
+                }
+                init[k] = 1;
+            }
+            tbl_calls++;
+            if (w[0] == 1) {            /* get */
+                r->rows = 3; r->cols = 2; r->elem = 2;
+                if (r->flag && r->buf)
+                    memcpy(r->buf, store[k], sizeof(store[k]));
+            } else if (r->buf) {         /* set */
+                memcpy(store[k], r->buf, sizeof(store[k]));
+                tbl_set_table = (int)r->table;
+                memcpy(tbl_last, r->buf, sizeof(tbl_last));
+            }
+            return 0;
+        }
         t_calls++;
         last_tuning_sub = w[1];
         last_tuning_val = w[2];
@@ -210,6 +248,47 @@ int main(void)
         CHECK(IMP_ISP_Tuning_GetTemperDnsAttr(&tg) == 0 &&
               tg.type == IMPISP_TEMPER_MANUAL && tg.temper_strength == 77);
         CHECK(IMP_ISP_Tuning_SetTemperDnsCtl(NULL) == -1);
+    }
+    {
+        /* Sinter/Temper strength (T30 1.0.5 0xdb0dc / 0xdaff0): the stock libimp
+         * scales driver table 109 / 132 (element 1 of every row) by the value in
+         * percent, capped at 200; OpenIMP takes the 128-neutral scale, so 128
+         * leaves the table as read and 256 doubles it.  The table is rescaled
+         * from the first read, so repeated calls do not compound. */
+        uint32_t sv = 0, tv = 0;
+
+        tbl_calls = 0; tbl_set_table = 0;
+        CHECK(IMP_ISP_Tuning_SetSinterStrength(128) == 0 && tbl_set_table == 109);
+        CHECK(tbl_last[0][1] == 100 && tbl_last[1][1] == 120 && tbl_last[2][1] == 140);
+        CHECK(IMP_ISP_Tuning_SetSinterStrength(256) == 0);
+        CHECK(tbl_last[0][1] == 200 && tbl_last[1][1] == 240 && tbl_last[2][1] == 280);
+        CHECK(tbl_last[0][0] == 10 && tbl_last[2][0] == 12);      /* column 0 untouched */
+        CHECK(IMP_ISP_Tuning_SetSinterStrength(256) == 0 && tbl_last[0][1] == 200);
+        CHECK(IMP_ISP_Tuning_SetSinterStrength(1000) == 0 && tbl_last[0][1] == 200); /* cap 200 % */
+        CHECK(IMP_ISP_Tuning_GetSinterStrength(&sv) == 0 && sv == 1000);
+        CHECK(IMP_ISP_Tuning_GetSinterStrength(NULL) == -1);
+        CHECK(IMP_ISP_Tuning_SetTemperStrength(64) == 0 && tbl_set_table == 132);
+        CHECK(tbl_last[0][1] == 50 && tbl_last[1][1] == 60 && tbl_last[2][1] == 70);
+        CHECK(IMP_ISP_Tuning_GetTemperStrength(&tv) == 0 && tv == 64);
+        CHECK(IMP_ISP_Tuning_GetTemperStrength(NULL) == -1);
+        isp.tuning_state = 1;
+        CHECK(IMP_ISP_Tuning_SetSinterStrength(128) == -1);
+        isp.tuning_state = 2;
+
+        /* scene mode and colour effect: V4L2 controls 0x9a091a / 0x98091f, value by value */
+        {
+            IMPISPSceneMode sm = (IMPISPSceneMode)0;
+            IMPISPColorfxMode cm = (IMPISPColorfxMode)0;
+
+            CHECK(IMP_ISP_Tuning_SetSceneMode((IMPISPSceneMode)5) == 0 &&
+                  last_id == 0x9a091a && last_val == 5);
+            CHECK(IMP_ISP_Tuning_GetSceneMode(&sm) == 0 && (int)sm == 5);
+            CHECK(IMP_ISP_Tuning_SetColorfxMode((IMPISPColorfxMode)9) == 0 &&
+                  last_id == 0x98091f && last_val == 9);
+            CHECK(IMP_ISP_Tuning_GetColorfxMode(&cm) == 0 && (int)cm == 9);
+            CHECK(IMP_ISP_Tuning_GetSceneMode(NULL) == -1);
+            CHECK(IMP_ISP_Tuning_GetColorfxMode(NULL) == -1);
+        }
     }
     {
         /* AE ROI (T30 1.0.5 0xd978c / 0xd9688): tuning control 0x8000024

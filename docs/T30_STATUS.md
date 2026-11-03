@@ -127,7 +127,7 @@ Fixed in OpenIMP (host tests in `tests/t30`): `IMP_ISP_Tuning_AE_Get/SetROI`
 (waits up to 2 s), `Get/SetH265TransCfg`, `SetChnResizeMode`. New host tests:
 `fs_lifecycle_test_t30`, `ivs_framework_test_t30`.
 
-Open driver gaps seen in QEMU (open-tx-isp, `tx-isp-t30`; OpenIMP sends the
+(Closed 2026-11-03 for the ISP tuning controls, see "Tuning controls served" below.) Open driver gaps seen in QEMU (open-tx-isp, `tx-isp-t30`; OpenIMP sends the
 vendor transport): getters of `AntiFlickerAttr`, `WB`, `Expr`, `EVAttr`,
 `IntegrationTime`, `AeComp`, `AE_ROI`, the histogram/weight/statistics blocks,
 `Awb_RgbCoefft`, `Gamma`; the controls behind `SetSensorFPS`, `HiLightDepress`,
@@ -141,15 +141,38 @@ initialisation both times; both are driver bugs found by this run, not
 analysed here.
 
 Differences between OpenIMP and the 1.0.5 vendor library that remain:
-`Set/GetSinterStrength`, `SetTemperStrength` and `SetDPStrength` (the vendor
-scales driver tables 109/132/83 with `isp_table_tuning_ratio`, OpenIMP sends
-other controls), `SetISPBypass` (stub), `WaitFrame` (stub: wiring the vendor
+`SetDPStrength` (the vendor scales driver table 83 with `isp_table_tuning_ratio`,
+OpenIMP sends the DPC ratio control; sinter and temper strength use the tables since
+2026-11-03), `SetISPBypass` (stub), `WaitFrame` (stub: wiring the vendor
 block returns -1 against the current driver), `Get/SetRawDRC` (kept in
 userspace, the vendor sends 0x8000168 and 0x80000a0), the temper-denoise detour
 around Hflip/Vflip, `GetAFMetrices` (the vendor returns a value of its own AF
-thread), `Scene`/`Colorfx` (refused by design). The vendor sends the
+thread). The vendor sends the
 FrameSource format with 0xc05c56c3/0x405c56c4 (0x5c bytes); OpenIMP uses the
 0x4c-byte form of the open driver and the stock device trace.
+
+## Tuning controls served (2026-11-03, #177)
+
+QEMU T30 only, no camera. The open driver (`tx-isp-t30`) now serves the controls the
+lifted switch had lost (`driver/t30/tx_isp_t30_tuning_ctl.h`, one arm per control id, the
+behaviour of the stock tuning code): apitest `isp` area 25 PASS / 0 FAIL (before 8 / 17),
+the cases `fwfreeze`, `hilight`, `expr`, `gamma`, `aeroi`, `aecomp`, `aestrategy`,
+`contrast`, `ispflip`, `rgbcoef`, `scene` and `colorfx` PASS, `tests/t30_qemu/tuning_strength.c`
+(strengths through the driver tables, scene/colour effect, brightness/saturation read-back)
+`done bad=0`, six module reload cycles with the area, the strength test and a sensor register
+read: 0 oopses, no slab reports (`slub_debug=FZPU`).
+
+OpenIMP side: `Set/GetSinterStrength` and `Set/GetTemperStrength` scale the driver tables
+109 and 132 through control 0x8000161 like the vendor 1.0.5, and `Get/SetSceneMode` /
+`Get/SetColorfxMode` send the V4L2 controls 0x9a091a / 0x98091f like the vendor (before:
+refused). The stock T30 scene handler is a no-op; the open driver stores the value so that the
+getter reads it back (as the open T31 driver), there is no picture effect.
+
+Not shown by QEMU: any picture effect (colour effect, exposure time, the strengths): the
+sensor model's frames do not respond. Still open: `Encoder_Get/SetChnROI` and
+`Encoder_Get/SetSuperFrameCfg` (the encoder limits above), `Awb_SetCwfShift` (the calibration
+update for the light source table faults in the lifted firmware code), and
+`Encoder_Get/SetChangeRef` is a vendor no-op (GetChangeRef -1 on a created channel).
 
 ## Build
 
