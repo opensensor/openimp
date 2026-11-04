@@ -46,3 +46,4 @@ osd_attach_test_t30
 isp_gap_test_t30
 dmic_t30_test
 isp_t31_awbzone_test
+nv12_compact_test

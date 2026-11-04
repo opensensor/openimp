@@ -72,6 +72,13 @@ static pthread_mutex_t dma_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct { uint32_t addr, size; } dma_live[FAKE_DMA_MAX];
 static int dma_fail;            /* fail the next allocations */
 static int dma_bad_free;
+static int dma_pattern;         /* fill new blocks with pattern_at() */
+
+/* a byte that depends on the address, so every plane position is told apart */
+static uint8_t pattern_at(uintptr_t a)
+{
+    return (uint8_t)((a * 31u) ^ (a >> 7) ^ (a >> 15));
+}
 
 static int dma_alloc(IMPDMABufferInfo *info, int size)
 {
@@ -94,6 +101,12 @@ static int dma_alloc(IMPDMABufferInfo *info, int size)
     dma_live[i].addr = (uint32_t)(uintptr_t)p;
     dma_live[i].size = (uint32_t)size;
     pthread_mutex_unlock(&dma_lock);
+    if (dma_pattern) {
+        size_t o;
+
+        for (o = 0; o < (size_t)size; o++)
+            ((uint8_t *)p)[o] = pattern_at((uintptr_t)p + o);
+    }
     memset(info, 0, sizeof(*info));
     info->virt_addr = info->phys_addr = (uint32_t)(uintptr_t)p;
     info->size = (uint32_t)size;
@@ -796,6 +809,94 @@ static void test_getframe_wait(void)
     check_clean("getframe wait");
 }
 
+/* #202: IMP_FrameSource_GetFrame delivers compact NV12 (chroma at w*h, size
+ * w*h*3/2, as the vendor libimp) for a height that is not a multiple of 16
+ * on T30; the capture frame stays untouched, a height divisible by 16 and a
+ * no-copy channel get the capture frame. Other SoCs keep the capture layout. */
+static void check_compact_frame(int w, int h, int expect_compact)
+{
+    IMPFSChnAttr a = attr_for(w, h, 2);
+    size_t luma = (size_t)w * h, gap = (size_t)w * ((h + 15) & ~15);
+    size_t cmp_size = luma * 3 / 2, raw_size = gap * 3 / 2, i;
+    uint8_t *cmp = malloc(raw_size);
+    IMPFrameInfo *fi = NULL;
+    uint32_t idx, got_size;
+    uintptr_t got_virt;
+    int tries;
+
+    dma_pattern = 1;
+    CHECK(IMP_FrameSource_CreateChn(0, &a) == 0, "create");
+    CHECK(IMP_FrameSource_EnableChn(0) == 0, "enable");
+    dma_pattern = 0;
+    CHECK(IMP_FrameSource_GetFrame(0, (void **)&fi) == 0 && fi != NULL,
+          "%dx%d: GetFrame", w, h);
+    if (!fi || !cmp)
+        goto out;
+    idx = (uint32_t)fi->index;
+    got_size = fi->size;
+    got_virt = (uintptr_t)fi->virAddr;
+    memcpy(cmp, (void *)got_virt, got_size < raw_size ? got_size : raw_size);
+    CHECK(IMP_FrameSource_ReleaseFrame(0, fi) == 0, "release compact");
+
+    /* the same pool frame again, without the copy */
+    CHECK(IMP_FrameSource_SetFrameDepthCopyType(0, 1) == 0, "no-copy type");
+    fi = NULL;
+    for (tries = 0; tries < 8; tries++) {
+        CHECK(IMP_FrameSource_GetFrame(0, (void **)&fi) == 0 && fi != NULL,
+              "raw GetFrame");
+        if (!fi || (uint32_t)fi->index == idx)
+            break;
+        IMP_FrameSource_ReleaseFrame(0, fi);
+        fi = NULL;
+    }
+    CHECK(fi != NULL, "%dx%d: frame %u not seen again", w, h, idx);
+    if (!fi)
+        goto out;
+    CHECK(fi->size >= raw_size, "%dx%d: capture size %u < %zu", w, h, fi->size, raw_size);
+    for (i = 0; i < raw_size; i++) {            /* capture frame untouched */
+        if (((uint8_t *)(uintptr_t)fi->virAddr)[i] !=
+            pattern_at((uintptr_t)fi->virAddr + i)) {
+            CHECK(0, "%dx%d: capture frame changed at %zu", w, h, i);
+            break;
+        }
+    }
+    if (expect_compact) {
+        const uint8_t *raw = (const uint8_t *)(uintptr_t)fi->virAddr;
+
+        CHECK(got_size == cmp_size, "%dx%d: compact size %u != %zu", w, h, got_size, cmp_size);
+        CHECK(got_virt != (uintptr_t)raw, "%dx%d: compact frame is the capture buffer", w, h);
+        CHECK(memcmp(cmp, raw, luma) == 0, "%dx%d: luma differs", w, h);
+        CHECK(memcmp(cmp + luma, raw + gap, luma / 2) == 0,
+              "%dx%d: chroma is not the capture chroma (UV not at w*h)", w, h);
+        CHECK(memcmp(cmp + luma, raw + luma, luma / 2) != 0,
+              "%dx%d: test cannot tell the planes apart", w, h);
+    } else {
+        CHECK(got_size == fi->size && got_virt == (uintptr_t)fi->virAddr,
+              "%dx%d: capture frame expected (size %u, virt %lx vs %lx)", w, h,
+              got_size, (unsigned long)got_virt, (unsigned long)fi->virAddr);
+    }
+    CHECK(IMP_FrameSource_ReleaseFrame(0, fi) == 0, "release raw");
+out:
+    free(cmp);
+    CHECK(IMP_FrameSource_SetFrameDepthCopyType(0, 0) == 0, "copy type back");
+    CHECK(IMP_FrameSource_DisableChn(0) == 0, "disable");
+    CHECK(IMP_FrameSource_DestroyChn(0) == 0, "destroy");
+}
+
+static void test_getframe_compact(void)
+{
+#if defined(PLATFORM_T30)
+    const int on = 1;
+#else
+    const int on = 0;
+#endif
+
+    check_compact_frame(640, 360, on);          /* the T30 ch1 case */
+    check_compact_frame(640, 368, 0);           /* multiple of 16: no copy */
+    check_compact_frame(320, 180, on);
+    check_clean("getframe compact");
+}
+
 /* An application thread pulls and releases frames while the channel is
  * enabled and disabled under it. */
 static int puller_stop;
@@ -1406,6 +1507,7 @@ int main(void)
     RUN(bad_channels);
     RUN(stale_release);
     RUN(getframe_wait);
+    RUN(getframe_compact);
     RUN(pull_during_disable);
     RUN(depth_during_disable);
     RUN(disable_during_delivery);

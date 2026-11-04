@@ -2533,6 +2533,34 @@ int VBMGetFrame(int chn, void **frame) {
     return ret;
 }
 
+static int vbm_release_frame(int chn, void *frame);
+
+/* VBMGetFrame plus a step on the frame while the pool lock is held, so the
+ * pool (and its buffers) cannot be destroyed under it: xform may replace
+ * *frame (IMP_FrameSource_GetFrame's compact copy, #202). When xform
+ * fails the pool frame is released again and -1 returned. */
+int VBMGetFrameXform(int chn, void **frame, int (*xform)(void **frame, void *ctx),
+                     void *ctx) {
+    int ret;
+
+    if (chn < 0 || chn >= MAX_VBM_POOLS) {
+        return -1;
+    }
+    pthread_mutex_lock(&vbm_pool_lock[chn]);
+    ret = vbm_get_frame(chn, frame);
+    if (ret == 0 && *frame != NULL && xform != NULL) {
+        void *pool_frame = *frame;
+
+        if (xform(frame, ctx) < 0) {
+            vbm_release_frame(chn, pool_frame);
+            *frame = NULL;
+            ret = -1;
+        }
+    }
+    pthread_mutex_unlock(&vbm_pool_lock[chn]);
+    return ret;
+}
+
 #if defined(PLATFORM_T31) || defined(PLATFORM_T23) || \
     defined(PLATFORM_T21) || defined(PLATFORM_T30)
 /* Test hook (OPENIMP_TEST_PATTERN / OpenIMP_TestPattern_Set, src/openimp_testpattern.c): replaces every

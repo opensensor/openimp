@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/select.h>
 #include <sys/stat.h>
@@ -51,6 +52,7 @@
 #include "core/imp_alloc.h"
 #include "kernel_interface.h"
 #include "vbm_dq_step.h"
+#include "framesource/nv12_compact.h"
 #include "imp_log_int.h"
 #include "video_drop.h"
 #include "vbm_delay.h"
@@ -1869,6 +1871,10 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 static void fs_rotate_release(int chn);
 #endif
 
+#if defined(PLATFORM_T30)
+static void fs_cpy_trim(int chnNum);    /* compact GetFrame buffers, below */
+#endif
+
 int IMP_FrameSource_DestroyChn(int chnNum)
 {
     const char *tag = "IMP_FrameSource_DestroyChn";
@@ -1906,6 +1912,9 @@ int IMP_FrameSource_DestroyChn(int chnNum)
 
     fs_chan_set_state(chnNum, 0);
     VBMReleaseParked(chnNum);
+#if defined(PLATFORM_T30)
+    fs_cpy_trim(chnNum);
+#endif
     *(int32_t *)((char *)gFrameSource + 0x14) -= 1;
     g_fs_ctx[chnNum].created = 0;
     FS_FLAG_STORE(g_fs_ctx[chnNum].running, 0);
@@ -2803,8 +2812,20 @@ int IMP_FrameSource_SetSource(int extchnNum, int sourcechnNum)
 #define FS_GETFRAME_TIMEOUT_MS 2000u
 #endif
 
-int IMP_FrameSource_GetFrame(int chnNum, void **frame)
+#if defined(PLATFORM_T30)
+static int fs_cpy_frame_cb(void **frame, void *ctx);
+#define FS_PULL(chn, frame, compact) \
+    ((compact) ? VBMGetFrameXform((chn), (frame), fs_cpy_frame_cb, (void *)(intptr_t)(chn)) \
+               : VBMGetFrame((chn), (frame)))
+#else
+#define FS_PULL(chn, frame, compact) VBMGetFrame((chn), (frame))
+#endif
+
+/* GetFrame: the pool's own frame record (capture layout), or with compact
+ * the compact copy of it (T30, see FS_GETFRAME_COMPACT below). */
+static int fs_getframe_impl(int chnNum, void **frame, int compact)
 {
+    (void)compact;
     if (frame == NULL || chnNum < 0 || chnNum >= FS_MAX_CHANNELS) {
         IMP_LOG_LIMITED(LOG_ERR, "Framesource",
                         "GetFrame: invalid argument (chnNum %d, frame %p)",
@@ -2816,7 +2837,7 @@ int IMP_FrameSource_GetFrame(int chnNum, void **frame)
         uint32_t start = fs_now_ms();
 
         for (;;) {
-            if (VBMGetFrame(chnNum, frame) == 0 && *frame != NULL)
+            if (FS_PULL(chnNum, frame, compact) == 0 && *frame != NULL)
                 return 0;
             if (fs_chan_get_state(chnNum) != 2 ||
                 !FS_FLAG_LOAD(g_fs_ctx[chnNum].running) ||
@@ -2831,7 +2852,214 @@ int IMP_FrameSource_GetFrame(int chnNum, void **frame)
         return -1;
     }
 #else
-    return VBMGetFrame(chnNum, frame);
+    return FS_PULL(chnNum, frame, compact);
+#endif
+}
+
+static int fs_getframe_raw(int chnNum, void **frame)
+{
+    return fs_getframe_impl(chnNum, frame, 0);
+}
+
+#if defined(PLATFORM_T30)
+/* #202 (T30 chroma): the frames of IMP_FrameSource_GetFrame are compact
+ * NV12 as in the vendor libimp, which copies every frame of a depth channel
+ * into its own buffer (luma, chroma right behind, size w*h*3/2, see
+ * nv12_compact.h). Without the copy the chroma sat at width*ALIGN16(height)
+ * while applications read it at width*height: 8 garbage chroma rows and a
+ * 16-line chroma shift for 640x360. Only a height that is not a multiple of
+ * 16 needs it; SetFrameDepthCopyType(chn, 1) (no copy) keeps the capture
+ * frame as the vendor does. T20/T21/T23/T31 keep the capture layout for now
+ * (device evidence and tools read it so); enable by adding the platform. */
+#define FS_GETFRAME_COMPACT 1
+#endif
+
+#define FS_FOURCC_NV12       0x3231564eu
+#define FS_FOURCC_NV21       0x3132564eu
+
+#if defined(FS_GETFRAME_COMPACT)
+#define FS_CPY_SLOTS    8
+#define FS_CPY_REC_SIZE 0x428u      /* the pool's frame record (VBM_FRAME_SIZE) */
+
+struct fs_cpy_slot {
+    uint8_t rec[FS_CPY_REC_SIZE] __attribute__((aligned(8)));
+    void   *orig;                   /* the pool frame held for the consumer */
+    uint8_t *buf;
+    size_t  cap;
+    int     used;
+};
+
+static struct fs_cpy_slot g_fs_cpy[FS_MAX_CHANNELS][FS_CPY_SLOTS];
+static pthread_mutex_t g_fs_cpy_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static uint32_t fs_rec_u32(const void *rec, unsigned int off)
+{
+    uint32_t v;
+
+    memcpy(&v, (const uint8_t *)rec + off, sizeof(v));
+    return v;
+}
+
+static void fs_rec_set_u32(void *rec, unsigned int off, uint32_t v)
+{
+    memcpy((uint8_t *)rec + off, &v, sizeof(v));
+}
+
+/* The frame record keeps 32-bit addresses (MIPS). A 64-bit host test build
+ * gets its copy buffers in a fixed window below 4 GiB, above the window of
+ * tests/fake_rmem.h (MAP_32BIT would sit next to the heap and break its
+ * growth, see there). */
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000
+#endif
+
+static void *fs_cpy_alloc(size_t size)
+{
+#if UINTPTR_MAX > 0xffffffffu
+    uintptr_t a;
+
+    size = (size + 0xfffu) & ~(size_t)0xfffu;
+    for (a = 0x78000000u; a < 0xf0000000u; a += 0x100000u) {
+        void *p = mmap((void *)a, size, PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+
+        if (p != MAP_FAILED && (uintptr_t)p == a)
+            return p;
+        if (p != MAP_FAILED)
+            munmap(p, size);
+    }
+    return NULL;
+#else
+    return malloc(size);
+#endif
+}
+
+static void fs_cpy_free(void *p, size_t size)
+{
+#if UINTPTR_MAX > 0xffffffffu
+    if (p != NULL)
+        munmap(p, (size + 0xfffu) & ~(size_t)0xfffu);
+#else
+    (void)size;
+    free(p);
+#endif
+}
+
+/* Frees the buffers of the slots no consumer holds (channel destroyed). */
+static void fs_cpy_trim(int chnNum)
+{
+    int i;
+
+    pthread_mutex_lock(&g_fs_cpy_lock);
+    for (i = 0; i < FS_CPY_SLOTS; i++) {
+        struct fs_cpy_slot *s = &g_fs_cpy[chnNum][i];
+
+        if (!s->used) {
+            fs_cpy_free(s->buf, s->cap);
+            s->buf = NULL;
+            s->cap = 0;
+        }
+    }
+    pthread_mutex_unlock(&g_fs_cpy_lock);
+}
+
+/* The compact frame for the capture frame *frame (replaced in place by the
+ * slot's record), or *frame unchanged when it needs no copy. Returns -1
+ * (the caller releases the capture frame) when no slot or memory is left.
+ * Runs under the pool lock (VBMGetFrameXform). */
+static int fs_cpy_frame(int chnNum, void **frame)
+{
+    const uint8_t *rec = (const uint8_t *)*frame;
+    uint32_t w = fs_rec_u32(rec, 0x08), h = fs_rec_u32(rec, 0x0c);
+    uint32_t fmt = fs_rec_u32(rec, 0x10);
+    uint32_t virt = fs_rec_u32(rec, 0x1c);
+    size_t need = nv12_compact_size(w, h);
+    struct fs_cpy_slot *s = NULL;
+    int i;
+
+    if ((fmt != FS_FOURCC_NV12 && fmt != FS_FOURCC_NV21 &&
+         fmt != (uint32_t)PIX_FMT_NV12 && fmt != (uint32_t)PIX_FMT_NV21) ||
+        !nv12_compact_needed(w, h) || virt == 0 ||
+        fs_rec_u32(rec, 0x14) < nv12_compact_src_size(w, h))
+        return 0;
+    if (__atomic_load_n(&g_fs_ctx[chnNum].copy_type, __ATOMIC_RELAXED))
+        return 0;
+
+    pthread_mutex_lock(&g_fs_cpy_lock);
+    for (i = 0; i < FS_CPY_SLOTS; i++) {
+        if (!g_fs_cpy[chnNum][i].used) {
+            s = &g_fs_cpy[chnNum][i];
+            s->used = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_fs_cpy_lock);
+    if (s != NULL && s->cap < need) {
+        uint8_t *nb = fs_cpy_alloc(need);
+
+        if (nb == NULL) {
+            pthread_mutex_lock(&g_fs_cpy_lock);
+            s->used = 0;
+            pthread_mutex_unlock(&g_fs_cpy_lock);
+            s = NULL;
+        } else {
+            fs_cpy_free(s->buf, s->cap);
+            s->buf = nb;
+            s->cap = need;
+        }
+    }
+    if (s == NULL) {
+        IMP_LOG_LIMITED(LOG_ERR, "Framesource",
+                        "GetFrame(%d): no copy buffer for the compact NV12 frame",
+                        chnNum);
+        return -1;
+    }
+    memcpy(s->rec, rec, FS_CPY_REC_SIZE);
+    nv12_compact_copy(s->buf, (const uint8_t *)(uintptr_t)virt, w, h);
+    fs_rec_set_u32(s->rec, 0x14, (uint32_t)need);               /* size */
+    fs_rec_set_u32(s->rec, 0x18, 0);                            /* phyAddr: the vendor copy has none */
+    fs_rec_set_u32(s->rec, 0x1c, (uint32_t)(uintptr_t)s->buf);  /* virAddr */
+    s->orig = *frame;
+    *frame = s->rec;
+    return 0;
+}
+
+static int fs_cpy_frame_cb(void **frame, void *ctx)
+{
+    return fs_cpy_frame((int)(intptr_t)ctx, frame);
+}
+
+/* ReleaseFrame of a compact frame: gives the capture frame back. Returns 1
+ * (result in *ret) when `frame` was a compact record. */
+static int fs_cpy_release(int chnNum, void *frame, int *ret)
+{
+    int i;
+
+    for (i = 0; i < FS_CPY_SLOTS; i++) {
+        struct fs_cpy_slot *s = &g_fs_cpy[chnNum][i];
+        void *orig = NULL;
+
+        pthread_mutex_lock(&g_fs_cpy_lock);
+        if (s->used && (void *)s->rec == frame) {
+            orig = s->orig;
+            s->orig = NULL;
+            s->used = 0;
+            pthread_mutex_unlock(&g_fs_cpy_lock);
+            *ret = VBMReleaseFrame(chnNum, orig);
+            return 1;
+        }
+        pthread_mutex_unlock(&g_fs_cpy_lock);
+    }
+    return 0;
+}
+#endif
+
+int IMP_FrameSource_GetFrame(int chnNum, void **frame)
+{
+#if defined(FS_GETFRAME_COMPACT)
+    return fs_getframe_impl(chnNum, frame, 1);
+#else
+    return fs_getframe_impl(chnNum, frame, 0);
 #endif
 }
 
@@ -2880,6 +3108,14 @@ int IMP_FrameSource_ReleaseFrame(int chnNum, void *frame)
                         chnNum, frame);
         return -1;
     }
+#if defined(FS_GETFRAME_COMPACT)
+    {
+        int ret;
+
+        if (fs_cpy_release(chnNum, frame, &ret))
+            return ret;
+    }
+#endif
     return VBMReleaseFrame(chnNum, frame);
 }
 
@@ -2913,7 +3149,7 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width,
 #if defined(FS_GETFRAME_TIMEOUT_MS)
     /* the same 2 s wait as GetFrame (25 ms missed the first frame after
      * an idle pause, see IMP_FrameSource_GetFrame) */
-    if (IMP_FrameSource_GetFrame(chnNum, &frame) != 0) frame = NULL;
+    if (fs_getframe_raw(chnNum, &frame) != 0) frame = NULL;
 #else
     for (int i = 0; i < 5; i++) {
         if (VBMGetFrame(chnNum, &frame) == 0 && frame != NULL) break;
@@ -3069,8 +3305,6 @@ int IMP_FrameSource_SetChnCallback(int chnNum, int (*cb)(int, void *))
 #if defined(PLATFORM_T31)
 #define FS_FRAME_ROTATE_FLAG 0x28   /* IMPFrameInfo.rotate_osdflag */
 #endif
-#define FS_FOURCC_NV12       0x3231564eu
-#define FS_FOURCC_NV21       0x3132564eu
 
 /* SetChnRotate publishes {mode, pre-rotation width, height} as one
  * 32-bit word so the dequeue thread never sees a mode with the other

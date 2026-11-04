@@ -90,6 +90,8 @@ int VBMFlushFrame(int chn);
  * earlier may still have read the channel's previous frame-channel fd. */
 void VBMWaitReleases(int chn);
 int VBMGetFrame(int chn, void **frame);
+int VBMGetFrameXform(int chn, void **frame, int (*xform)(void **frame, void *ctx),
+                     void *ctx);
 int VBMReleaseFrame(int chn, void *frame);
 int VBMLockFrame(void *frame);
 int VBMUnLockFrame(void *frame);

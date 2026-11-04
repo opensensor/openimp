@@ -22,6 +22,10 @@ annexb_test: annexb_test.c $(ROOT)/src/t30/t30_annexb.h
 level_test: level_test.c $(ROOT)/src/t30/t30_h264_level.h
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ level_test.c
 
+# Compact NV12 copy of IMP_FrameSource_GetFrame (#202), with the copy time of 640x360.
+nv12_compact_test: nv12_compact_test.c $(ROOT)/src/framesource/nv12_compact.h
+	$(CC) $(CFLAGS) -I$(ROOT)/src -o $@ nv12_compact_test.c
+
 # Runs the real wrapper against fake /dev/soc_vpu and rmem.  Its ABI keeps
 # addresses in 32-bit fields: low mappings, no PIE, no mmap-backed malloc.
 HELIX_SOURCES := \
@@ -207,7 +211,7 @@ HELIX_SANITIZE := -O1 -g -fsanitize=undefined -fno-sanitize=alignment \
 TSAN_RUN = TSAN_OPTIONS="halt_on_error=1 suppressions=$(CURDIR)/fs_lifecycle_tsan.supp"
 
 sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
-	set -e; for soc in "T21" "T20 -DPLATFORM_T21" "T23"; do \
+	set -e; for soc in "T21" "T20 -DPLATFORM_T21" "T23" "T30"; do \
 		name=$$(echo $$soc | cut -d' ' -f1); \
 		$(SAN_CC) $(FS_FLAGS) $(FS_SANITIZE_ASAN) -DPLATFORM_$$soc \
 			-o fs_lifecycle_asan_$$name $(FS_SOURCES) -pthread; \
@@ -299,7 +303,7 @@ p2_t30_enc_test: p2_t30_enc_test.c $(ROOT)/src/t40/openimp_p2_encoder.c
 	$(CC) $(CFLAGS) -DPLATFORM_T30 $(P2_T1X_FLAGS) $(ROOT)/src/core/imp_log_emit.c -o $@ p2_t30_enc_test.c \
 		$(ROOT)/src/openimp_profile.c $(ROOT)/src/t40/openimp_p2_encoder.c $(ROOT)/src/t40/t31_stream_layout.c -lpthread
 
-check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test helix_encoder_test \
+check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test nv12_compact_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 	t21_sinter_map_test t21_front_crop_test helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
 	ivs_framework_test_t21 ivs_framework_test_t20 ivs_framework_test_t30 ivs_move_bench_t20 \
@@ -323,6 +327,7 @@ check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test 
 	./descriptor_test
 	./annexb_test
 	./level_test
+	./nv12_compact_test
 	./helix_encoder_test
 	./helix_encoder_test_t21
 	./t21_rmem_layout_test
