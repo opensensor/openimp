@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: device evidence for AE compensation (T30X picture run b24, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-ae-gain` `1dad1d51` (analog gain reaches the sensor, anti-flicker gate) and OpenIMP next at run time, no flash): `ISP_Tuning_Get/SetAeComp` PASS with a picture effect (luma 74 at low, 176 at high; vendor 71 / 176 in the same boot), `qemu` -> `dev`. Sensor analog gain and exposure now match the vendor stack (gain register 0x1f/0x1e, 1916 lines; ISP digital gain 0x1ea vs vendor 0x217).
+- Not counted from this run: the mirror and gamma cases at the start of the run (the open AE was still converging after the streamer ran on the module, so the base picture did not match the later pictures).
+
 ## 2026-11-04, apitest: teardown stall watch (#198; tooling and read-only debug accessor, no behaviour change)
 
 - New `tools/apitest/at_tdwatch.c`: a thread armed around the teardown (the standard one after the cases, the `picture` one and the `padframe_t23` encoder teardown). If the teardown is not finished after 8 s (`APITEST_TEARDOWN_WATCH_MS`; `APITEST_NO_TEARDOWN_WATCH=1` switches it off) it writes ONE block to stderr and to `teardown-stall-<pid>.txt` next to the `--json` results (else `/tmp`): monotonic time, the teardown call the main thread is in (`at_td_step` before each call), the FrameSource state word, `g_fs_lock` holder and owner thread id, and for every thread comm / state / wchan / syscall / kernel stack (where readable). It only reports and keeps waiting (the 60 s alarm stays the hard timeout); it does not read the kernel log. A teardown that finishes in time writes nothing.
