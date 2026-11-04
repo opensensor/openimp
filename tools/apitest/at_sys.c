@@ -91,8 +91,9 @@ void t_system_exit(int unused)
     int r;
 
     (void)unused;
-    r = IMP_ISP_DisableTuning(); RET0(IMP_ISP_DisableTuning, r, "");
-    r = IMP_System_Exit(); RET0(IMP_System_Exit, r, "");
+    at_td_step("IMP_ISP_DisableTuning"); r = IMP_ISP_DisableTuning(); RET0(IMP_ISP_DisableTuning, r, "");
+    at_td_step("IMP_System_Exit"); r = IMP_System_Exit(); RET0(IMP_System_Exit, r, "");
+    at_td_step("IMP_ISP_DisableSensor/DelSensor/Close");
 #ifdef PLATFORM_T41
     r = IMP_ISP_DisableSensor(IMPVI_MAIN); RET0(IMP_ISP_DisableSensor, r, "");
     r = IMP_ISP_DelSensor(IMPVI_MAIN, &g_sensor); RET0(IMP_ISP_DelSensor, r, "");
@@ -168,10 +169,10 @@ void t_fs_post(void)
 {
     int r;
 
-    if (!getenv("HSKIP_MAIN")) { r = IMP_FrameSource_DisableChn(1); RET0(IMP_FrameSource_DisableChn, r, "ch1"); }
-    r = IMP_FrameSource_DisableChn(0); RET0(IMP_FrameSource_DisableChn, r, "ch0");
-    if (!getenv("HSKIP_MAIN")) { r = IMP_FrameSource_DestroyChn(1); RET0(IMP_FrameSource_DestroyChn, r, "ch1"); }
-    r = IMP_FrameSource_DestroyChn(0); RET0(IMP_FrameSource_DestroyChn, r, "ch0");
+    if (!getenv("HSKIP_MAIN")) { at_td_step("IMP_FrameSource_DisableChn(1)"); r = IMP_FrameSource_DisableChn(1); RET0(IMP_FrameSource_DisableChn, r, "ch1"); }
+    at_td_step("IMP_FrameSource_DisableChn(0)"); r = IMP_FrameSource_DisableChn(0); RET0(IMP_FrameSource_DisableChn, r, "ch0");
+    if (!getenv("HSKIP_MAIN")) { at_td_step("IMP_FrameSource_DestroyChn(1)"); r = IMP_FrameSource_DestroyChn(1); RET0(IMP_FrameSource_DestroyChn, r, "ch1"); }
+    at_td_step("IMP_FrameSource_DestroyChn(0)"); r = IMP_FrameSource_DestroyChn(0); RET0(IMP_FrameSource_DestroyChn, r, "ch0");
 }
 
 /* one frame of FS channel ch: size and timestamp (frame released again) */

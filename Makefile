@@ -68,6 +68,7 @@ check:
 	$(MAKE) -C tests/fallback check
 	$(MAKE) -C tests/rc3_gate check
 	$(MAKE) -C tests/device check
+	$(MAKE) -C tests/tdwatch check
 
 # Device test app (tools/apitest): make apitest PLATFORM=T31 TOOLCHAIN_PREFIX=<host/bin/mipsel-linux> APITEST_HEADERS=<ingenic-headers root>
 # [DESTDIR=<dir>] builds build/<soc>/openimp-apitest against the libimp built before (T10: PLATFORM=T20 APITEST_SOC=T10) and, with

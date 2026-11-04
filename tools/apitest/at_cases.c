@@ -4925,7 +4925,13 @@ static void cs_padframe_t23(void)
             r3 = IMP_Encoder_SetPadFrameAttr(1, 0, NULL);
             t23_stream_stats(2000, &f3, &s3);
             if (g_pad_dump) { fclose(g_pad_dump); g_pad_dump = NULL; }
-            IMP_Encoder_StopRecvPic(1); IMP_System_UnBind(&fs1, &en1); IMP_Encoder_UnRegisterChn(1); IMP_Encoder_DestroyChn(1); IMP_Encoder_DestroyGroup(1);
+            at_td_arm("padframe_t23 teardown");
+            at_td_step("IMP_Encoder_StopRecvPic(1)"); IMP_Encoder_StopRecvPic(1);
+            at_td_step("IMP_System_UnBind"); IMP_System_UnBind(&fs1, &en1);
+            at_td_step("IMP_Encoder_UnRegisterChn(1)"); IMP_Encoder_UnRegisterChn(1);
+            at_td_step("IMP_Encoder_DestroyChn(1)"); IMP_Encoder_DestroyChn(1);
+            at_td_step("IMP_Encoder_DestroyGroup(1)"); IMP_Encoder_DestroyGroup(1);
+            at_td_disarm();
             rep(FN(IMP_Encoder_SetPadFrameAttr), r1 | r2 | r3, (r1 == 0 && r2 == 0 && r3 == 0 && f3 > 5 && s3 > s1 * 2) ? V_PASS : V_FAIL,
                 "free mode on / time-stamp mode on / off: ret %d %d %d; off again: %d frames, %.0f bytes avg", r1, r2, r3, f3, s3);
             rep(FN(IMP_Encoder_PadFrame), 0, (f1 > 5 && s1 < s0 / 3 && rel1 >= f1 && f2 <= 1 && rel2 > 5 && g_pad_inflight == 0 && flow()) ? V_PASS : V_FAIL,

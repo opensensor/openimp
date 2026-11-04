@@ -8,6 +8,7 @@
         OpenIMP_Encoder_StreamIsRmem;
         OpenIMP_FS_DebugState;
         OpenIMP_FS_DebugHolder;
+        OpenIMP_FS_DebugLockOwner;
         OpenIMP_Encoder_GetTelemetry;
         OpenIMP_Encoder_StreamIsReused;
         OpenIMP_Tuning_*;

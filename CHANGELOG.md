@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, apitest: teardown stall watch (#198; tooling and read-only debug accessor, no behaviour change)
+
+- New `tools/apitest/at_tdwatch.c`: a thread armed around the teardown (the standard one after the cases, the `picture` one and the `padframe_t23` encoder teardown). If the teardown is not finished after 8 s (`APITEST_TEARDOWN_WATCH_MS`; `APITEST_NO_TEARDOWN_WATCH=1` switches it off) it writes ONE block to stderr and to `teardown-stall-<pid>.txt` next to the `--json` results (else `/tmp`): monotonic time, the teardown call the main thread is in (`at_td_step` before each call), the FrameSource state word, `g_fs_lock` holder and owner thread id, and for every thread comm / state / wchan / syscall / kernel stack (where readable). It only reports and keeps waiting (the 60 s alarm stays the hard timeout); it does not read the kernel log. A teardown that finishes in time writes nothing.
+- OpenIMP: new read-only `OpenIMP_FS_DebugLockOwner()` (kernel tid of the `g_fs_lock` holder, 0 = free; exported in `libimp.map`); `FS_LOCK`/`FS_TRYLOCK` store it, locking unchanged.
+- Host test `tests/tdwatch` (in `make check`): a faked stall (sleep in a stub, fake lock holder thread) writes exactly one block with step, state word, holder and owner marked; a normal teardown writes nothing and arm+disarm takes about 0.1 ms (limit 5 ms); disabled watch writes nothing; a second stall adds no second block. `tests/t30/fs_lifecycle_test.c` checks the owner is 0 after every lifecycle.
+
 ## 2026-11-04, T30 apitest: `t30pass_*` lines map to matrix cells; rawdrc_strength expectation (no cell moved)
 
 - `tools/apitest/results2json.py` maps the nine `t30pass_<item>` labels (device batch b23: they were reported as unmapped) to the T30 cells (IntegrationTime, WaitFrame, AeComp, AntiFog, RawDRC, ISPRunningMode, Csc_Attr). They are `rt:` read-back lines, so they merge as RT, never as a picture PASS.

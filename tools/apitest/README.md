@@ -23,7 +23,7 @@ line per function:
 * `FAIL OVERWRITE`: the function wrote outside the vendor struct of this SoC.
   Every out buffer sits in an arena with 64 guard bytes on both sides.
 * `[T]` lines: area headers and a summary (`PASS/FAIL/N/A/SKIP` per area,
-  distinct functions exercised). A watchdog ends the run with `[E] watchdog:`
+  distinct functions exercised). A teardown that takes more than 8 s (`APITEST_TEARDOWN_WATCH_MS`, off with `APITEST_NO_TEARDOWN_WATCH=1`) writes one block (step, FrameSource state, `g_fs_lock` holder, per-thread state) to stderr and `teardown-stall-<pid>.txt` next to the `--json` file, and keeps waiting (#198). A watchdog ends the run with `[E] watchdog:`
   (naming the last function) after 60 s without a result line.
 
 Stop the streamer first (`/etc/init.d/S95timps stop`); the test owns the ISP,

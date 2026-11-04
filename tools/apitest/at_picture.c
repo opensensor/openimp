@@ -43,6 +43,7 @@ int picture_main(int argc, char **argv) { (void)argc; (void)argv; fprintf(stderr
 #include "../save_guard.h"
 #include "imp/imp_isp.h"
 #include "imp/imp_framesource.h"
+#include "at_tdwatch.h"
 
 #define SUB_W 640
 #define SUB_H 360
@@ -1918,12 +1919,14 @@ int picture_main(int argc, char **argv)
     if (getenv("IMGFX_SAT") && HAVE(IMP_ISP_Tuning_SetSaturation)) SETU8(IMP_ISP_Tuning_SetSaturation, 128);
     say("[T] done: %u pictures, %u cases N/A, %u functions exercised (picture size %dx%d)\n", ran, na, nset, g_got_w, g_got_h);
 
-    IMP_FrameSource_DisableChn(1);
-    IMP_FrameSource_DisableChn(0);
-    IMP_FrameSource_DestroyChn(1);
-    IMP_FrameSource_DestroyChn(0);
-    IMP_ISP_DisableTuning();
-    IMP_System_Exit();
+    at_td_arm("picture teardown");
+    at_td_step("IMP_FrameSource_DisableChn(1)"); IMP_FrameSource_DisableChn(1);
+    at_td_step("IMP_FrameSource_DisableChn(0)"); IMP_FrameSource_DisableChn(0);
+    at_td_step("IMP_FrameSource_DestroyChn(1)"); IMP_FrameSource_DestroyChn(1);
+    at_td_step("IMP_FrameSource_DestroyChn(0)"); IMP_FrameSource_DestroyChn(0);
+    at_td_step("IMP_ISP_DisableTuning"); IMP_ISP_DisableTuning();
+    at_td_step("IMP_System_Exit"); IMP_System_Exit();
+    at_td_disarm();
 #ifdef PLATFORM_T41
     IMP_ISP_DisableSensor(IMPVI_MAIN);
     IMP_ISP_DelSensor(IMPVI_MAIN, &g_sensor);

@@ -18,6 +18,7 @@
 #include <time.h>
 #include <dlfcn.h>
 #include <signal.h>
+#include "at_tdwatch.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 

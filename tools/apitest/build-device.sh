@@ -29,7 +29,7 @@ esac
 inc=$APITEST_HEADERS/$hv
 [ -f "$inc/imp/imp_isp.h" ] || { echo "vendor headers not found: $inc" >&2; exit 2; }
 [ -f "$libdir/libimp.so" ] || { echo "no $libdir/libimp.so (build the library first)" >&2; exit 2; }
-src="apitest.c at_sys.c at_enc.c at_osd_ivs.c at_audio.c at_isp.c at_isp_rt.c at_cases.c at_su.c at_picture.c at_t40dev.c"
+src="apitest.c at_sys.c at_enc.c at_osd_ivs.c at_audio.c at_isp.c at_isp_rt.c at_cases.c at_su.c at_picture.c at_t40dev.c at_tdwatch.c"
 files=""; for f in $src; do files="$files $here/$f"; done
 mkdir -p "$(dirname "$out")"
 ${TOOLCHAIN_PREFIX}-gcc -Os -Wall -Wno-unused-function -Wno-address -Wno-format-zero-length -Wno-dangling-else -Wno-misleading-indentation \

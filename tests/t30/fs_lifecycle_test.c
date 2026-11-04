@@ -560,6 +560,7 @@ static int fake_streaming_count(void)
 
 extern unsigned int OpenIMP_FS_DebugState(void);
 extern const char *OpenIMP_FS_DebugHolder(void);
+extern unsigned int OpenIMP_FS_DebugLockOwner(void);
 
 static void check_clean(const char *what)
 {
@@ -568,6 +569,7 @@ static void check_clean(const char *what)
           "%s: DisableChn stage state 0x%x", what, OpenIMP_FS_DebugState());
     CHECK(OpenIMP_FS_DebugHolder() == NULL, "%s: g_fs_lock held by %s", what,
           OpenIMP_FS_DebugHolder() ? OpenIMP_FS_DebugHolder() : "-");
+    CHECK(OpenIMP_FS_DebugLockOwner() == 0, "%s: g_fs_lock owner tid %u left set", what, OpenIMP_FS_DebugLockOwner());
     CHECK(fake_open_count == 0, "%s: %d frame-channel fds left open", what,
           fake_open_count);
     CHECK(dma_count() == 0, "%s: %d DMA buffers left allocated", what,

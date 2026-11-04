@@ -33,6 +33,7 @@
 #include <sys/prctl.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
@@ -765,9 +766,12 @@ static FsChnCtx g_fs_ctx[FS_MAX_CHANNELS];
 static pthread_mutex_t g_fs_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Who holds g_fs_lock (function name, for a stall report by OpenIMP_FS_DebugHolder). */
 static const char *volatile g_fs_lock_who;
-#define FS_LOCK() do { pthread_mutex_lock(&g_fs_lock); g_fs_lock_who = __func__; } while (0)
-#define FS_UNLOCK() do { g_fs_lock_who = NULL; pthread_mutex_unlock(&g_fs_lock); } while (0)
-#define FS_TRYLOCK() (pthread_mutex_trylock(&g_fs_lock) == 0 && (g_fs_lock_who = __func__, 1))
+/* Kernel thread id of the holder (read-only debug data for OpenIMP_FS_DebugLockOwner, issue #198; no effect on the locking). */
+static volatile unsigned int g_fs_lock_tid;
+#define FS_NOTE_OWNER() (g_fs_lock_tid = (unsigned int)syscall(SYS_gettid))
+#define FS_LOCK() do { pthread_mutex_lock(&g_fs_lock); g_fs_lock_who = __func__; FS_NOTE_OWNER(); } while (0)
+#define FS_UNLOCK() do { g_fs_lock_who = NULL; g_fs_lock_tid = 0; pthread_mutex_unlock(&g_fs_lock); } while (0)
+#define FS_TRYLOCK() (pthread_mutex_trylock(&g_fs_lock) == 0 && (g_fs_lock_who = __func__, FS_NOTE_OWNER(), 1))
 /* Flags shared between the API threads and the pooling worker, accessed
  * with FS_FLAG_LOAD/FS_FLAG_STORE (relaxed atomics: plain word loads and
  * stores on MIPS; ordering comes from g_fs_lock and pthread_join). */
@@ -2602,6 +2606,11 @@ static void framesource_dtor_stream_off(void)
 const char *OpenIMP_FS_DebugHolder(void)
 {
     return g_fs_lock_who;
+}
+
+unsigned int OpenIMP_FS_DebugLockOwner(void)
+{
+    return g_fs_lock_tid;
 }
 
 unsigned int OpenIMP_FS_DebugState(void)

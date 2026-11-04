@@ -307,6 +307,7 @@ int main(int argc, char **argv)
         return 2;
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
+    at_td_init(jpath);
     g_sw = atoi(argv[3]); g_sh = atoi(argv[4]);
     g_mode_night = (getenv("APITEST_MODE") && !strcmp(getenv("APITEST_MODE"), "night"));
     signal(SIGALRM, on_alarm);
@@ -421,9 +422,12 @@ int main(int argc, char **argv)
     if (want(areas, "isp")) { t_isp(); t_isp_rt(); }
     if (want(areas, "su")) t_su();
     if (want(areas, "cases")) t_cases();
+    at_td_arm("apitest teardown");
+    at_td_step("rep_area(teardown)");
     rep_area("teardown");
     t_fs_post();
     t_system_exit(0);
+    at_td_disarm();
 #if defined(APITEST_T40) || defined(PLATFORM_T41)
     algo_post_t40();
 #endif

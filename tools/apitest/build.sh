@@ -10,7 +10,7 @@ GEN=${GEN:-agg46}
 D=$(cd "$(dirname "$0")" && pwd)
 OUT=${OUT:-$D/build}
 mkdir -p "$OUT"
-SRC="$D/apitest.c $D/at_sys.c $D/at_enc.c $D/at_osd_ivs.c $D/at_audio.c $D/at_isp.c $D/at_isp_rt.c $D/at_cases.c $D/at_su.c $D/at_picture.c $D/at_t40dev.c"
+SRC="$D/apitest.c $D/at_sys.c $D/at_enc.c $D/at_osd_ivs.c $D/at_audio.c $D/at_isp.c $D/at_isp_rt.c $D/at_cases.c $D/at_su.c $D/at_picture.c $D/at_t40dev.c $D/at_tdwatch.c"
 build() { # soc headerdir camdir defs
   local soc=$1 inc=$HDR/$2 cam=$(ls -d $TO/$3-$GEN-* $TO/$3 2>/dev/null | head -1) defs=$4
   local lc=$(echo $soc | tr A-Z a-z)
