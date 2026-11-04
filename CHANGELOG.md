@@ -8,6 +8,14 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04 (afternoon), docs round 12: findings #205 and #206, fleet image and QEMU notes, CBR default confirmed
+
+- Open findings from the API evidence passes: #206 (`SU_Base_Shutdown`: the vendor libsysutils of T10 to T41 sends signal 17 = SIGUSR2 on MIPS, busybox powers off; the OpenIMP default keeps its reboot behaviour until the issue changes it, `OPENIMP_SU_SHUTDOWN=poweroff` is vendor-equal; the call is never made on a camera) and #205 (T21 `IMP_FrameSource_SetFrameDepth` sends the ioctl 0x800456c5, which the T21 frame-channel driver does not know: one kernel stack dump per call, the call still returns 0).
+- Driver side of the merges since round 11 (T40 CDNS day mode #203, T30 RawDRC / gamma / antifog / system table, T31 defog tables from the tuning bin, T32 BCSH): see the open-tx-isp CHANGELOG. The T31 defog change takes effect only with a firmware image built after it; fleet image agg67 (15 cameras, flashed 2026-11-04) pins open-tx-isp `521d50f2` and OpenIMP `8777271d`.
+- QEMU: new tree (ingenic-txx base plus the T40/T41 statistics-off fix), T32 and T33 devices; T40 5 reload cycles and T30 / T31 10 cycles each give the same result as the old binary, 0 oopses.
+- The I-aware P budget for CBR stays on by default (decision 2026-11-04).
+- Generated matrix: T10 304/329, T20 304/329, T21 308/333, T23 399/457, T30 164/350, T31 365/406, T40 349/389, T41 373/427 works; RC3 gate 1921 of 2017 streamer cells (96 missing, all T30).
+
 ## 2026-11-04, T30: device evidence for contrast, gamma, highlight, sharpness, sinter (T30X picture run b19, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp next `e469866f` and OpenIMP next `bf6ca2bb` at run time, no flash; the stock streamer ran once on the open module before the picture run so the image settings start at the stock values): PASS with a picture effect, `qemu` -> `dev`: `ISP_Tuning_Get/SetContrast` (detail 1.48 at low vs 5.67 base), `ISP_Tuning_Get/SetGamma` (steep curve, luma 130.5 vs 118.1, curve read back), `ISP_Tuning_Get/SetHiLightDepress` (luma 118.3 at 0, 105.0 at 255), `ISP_Tuning_Get/SetSharpness` (detail 11.63 at high), `ISP_Tuning_SetSinterStrength` (detail 38.15 at 0 vs 5.64 at 255). Brightness confirmed again (luma 118 base, 0 low, 250 high). T30 API 155/350 -> 164/350 works.
