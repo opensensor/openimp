@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, docs round 13 and T31 defog tables (open-tx-isp c8e3d4d3)
+
+- T31: the 29 defog tables now come from the active tuning-bin bank like the vendor (`tiziano_defog_load_bank`); device-proven on the T31X light-box camera. It reaches a camera only with an image built after the change (the fleet image agg67 still has the old tables). Matrix: T31 Defog cell text extended, symbol unchanged.
+- Counts after this round, from the generated `docs/FEATURE_MATRIX.md`: T23 419/457, T30 170/350, T31 365/406, T41 392/427 API cells work. T30 evidence batch b21 is not merged yet and not counted.
+- Open finding #207 (T23, ISP picture OSD at the mirrored position with ISP hflip+vflip): see the entry below; not classified as a bug yet.
+
 ## 2026-11-04, T30: CSC presets as a beyond-vendor item (driver side, opt-in; QEMU, device test pending)
 
 - open-tx-isp `claude/t30-csc` makes `IMP_ISP_Tuning_SetCsc_Attr` / `GetCsc_Attr` work on T30 as on T10/T20 (presets 0-3 or a user matrix with offsets and Y/UV clip). The OpenIMP T30 path already sends the control; the vendor driver rejects it. Off until set (getter -1 like the vendor). Listed under "Unverified" in `docs/OPENIMP_BEYOND_VENDOR.md` until the T30X picture test.

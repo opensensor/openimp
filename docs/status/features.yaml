@@ -593,7 +593,7 @@ features:
       text: '`SetAntiFogAttr` exported since 2026-10-10 (control 0x8000163, host test), no device result'
     T31:
       sym: ✅
-      text: 'device-tested: defog 255 (Y −10, laplacian +193)'
+      text: 'device-tested: defog 255 (Y −10, laplacian +193). 2026-11-04 (open-tx-isp c8e3d4d3): the 29 defog tables now come from the active tuning-bin bank like the vendor (`tiziano_defog_load_bank`), device-proven on the T31X light-box camera; fleet image agg67 still has the old tables'
     T32:
       sym: '?'
       text: 'not examined: no T32 hardware yet; the open driver only runs in QEMU and OpenIMP has no T32 build'
