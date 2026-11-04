@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: apitest picture cases for T30 (tooling, no cell moved)
+
+- `apitest picture` had no T30 case list, so a filtered run (b15, `hue`) exercised no function. T30 now uses the cases the vendor T30 1.0.5 header has: AE compensation, WDR, raw DRC, antifog, defect-pixel strength, colour effects, scene modes, the combined H/V flip, and the OpenIMP crop and CSC extensions (as on T10/T20/T21). The vendor T30 header has no `BcshHue`, DRC strength, module control or CCM, so there is no `hue` case on T30.
+- In the T30 QEMU guest (debug kernel) the picture area runs 67 cases, 65 functions. The first run oopsed in `gamma-steep` (open-tx-isp: lifted `apical_api_calibration` calls lost their status argument, branch `claude/t30-gamma-status`); the same case hung the T30X in batch b12.
+
 ## 2026-11-04, T30: device evidence for the encoder ROI / SuperFrame and IVS cells (T30X lab camera, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp module and OpenIMP library at run time, no flash): `Encoder_Get/SetChnROI` and `Encoder_Get/SetSuperFrameCfg` PASS with the vendor values (ROI read back en 1 (64,64)-(304,240) qp -4; SuperFrame initial mode 2 I 942080 P 672914, set mode 1 I 400000 P 200000 read back) -> `err` -> `dev`. On a cold start `enc,ivs` in one process passes IVS (move results 8 of 8, `IVS_SetParam` sense read back 2): `IVS_Get/SetParam`, `IVS_ReleaseData` `qemu` -> `dev`.

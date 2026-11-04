@@ -114,7 +114,17 @@ int picture_main(int argc, char **argv) { (void)argc; (void)argv; fprintf(stderr
 # define H_HVFLIPE 1
 # define H_BLC 1
 #elif defined(PLATFORM_T30)
-# define SOC "T30"      /* no picture cases: the apitest areas and cases build for T30, imgfx has no T30 list yet */
+# define SOC "T30"      /* vendor T30 1.0.5 header: no BcshHue/DRC/ModuleControl/CCM; crop + CSC are OpenIMP extensions */
+# define H_AECOMP 1
+# define H_WDRATTR 1
+# define H_RAWDRC 1
+# define H_ANTIFOG 1
+# define H_DPSTR 1
+# define H_COLORFX 1
+# define H_SCENE 1
+# define H_HVFLIP2 1
+# define H_EXT_FCROP 1
+# define H_EXT_CSC 1
 #elif defined(PLATFORM_T41)
 # define SOC "T41"
 #else
