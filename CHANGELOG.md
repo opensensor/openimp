@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: device evidence for brightness (T30X picture run b18, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp next `1c3c397b` and OpenIMP at run time, no flash): `ISP_Tuning_Get/SetBrightness` PASS with a picture effect (`qemu` -> `dev`; luma 26 at the base, 0 at the low and 231 at the high setting). T30 API 153/350 -> 155/350 works.
+- Not counted: from `contrast-low` on, every later picture of the open-stack run was black (luma 0, also the closing base picture), so the remaining picture cases give no evidence; this is a driver fault under investigation. The FrontCrop picture change was not counted either: the luma had already moved from 26 to 50 at the first case after the base (exposure still settling).
+- The same batch confirmed on the device that gamma (steep 2702 / linear 1023) and antifog (set 0) match the vendor stack after open-tx-isp `1c3c397b`.
+
 ## 2026-11-04, T30: apitest picture cases for T30 (tooling, no cell moved)
 
 - `apitest picture` had no T30 case list, so a filtered run (b15, `hue`) exercised no function. T30 now uses the cases the vendor T30 1.0.5 header has: AE compensation, WDR, raw DRC, antifog, defect-pixel strength, colour effects, scene modes, the combined H/V flip, and the OpenIMP crop and CSC extensions (as on T10/T20/T21). The vendor T30 header has no `BcshHue`, DRC strength, module control or CCM, so there is no `hue` case on T30.

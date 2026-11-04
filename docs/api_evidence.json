@@ -3187,7 +3187,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -3244,7 +3244,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b18 2026-11-04 .231"
    }
   },
   "ISP_Tuning_GetEVAttr": {
@@ -3752,7 +3752,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -3822,7 +3822,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "QEMU T30 2026-10-31 (no camera), see note",
+    "T30": "apitest t30b18 2026-11-04 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
