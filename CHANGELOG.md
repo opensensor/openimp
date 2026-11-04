@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: CSC presets as a beyond-vendor item (driver side, opt-in; QEMU, device test pending)
+
+- open-tx-isp `claude/t30-csc` makes `IMP_ISP_Tuning_SetCsc_Attr` / `GetCsc_Attr` work on T30 as on T10/T20 (presets 0-3 or a user matrix with offsets and Y/UV clip). The OpenIMP T30 path already sends the control; the vendor driver rejects it. Off until set (getter -1 like the vendor). Listed under "Unverified" in `docs/OPENIMP_BEYOND_VENDOR.md` until the T30X picture test.
+
 ## 2026-11-04, apitest picture: register dump per case, vendor frame diagnosis (test tooling, no library change)
 
 - `IMGFX_HOOK=cmd` runs a command after each picture case has settled (`IMGFX_CASE` = case name); the new `tools/regpeek.c` reads ISP registers through `/dev/mem` and prints them per case. On T30 this gives register references on the vendor stack, whose library returns no frames to the picture run (saturation / colour effect / mirror / white balance / iridix cells).
