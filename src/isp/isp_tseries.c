@@ -5421,6 +5421,7 @@ int IMP_ISP_EnableTuning(void)
 #if defined(PLATFORM_T30)
     tseries_t30_process_cached = 0;     /* the vendor tuning block starts zeroed */
     tseries_t30_freeze_cached = 0;
+    memset(&tseries_t30_drc, 0, sizeof(tseries_t30_drc));
 #endif
 
     /* Build "/dev/isp-m0" path at +0x78.
