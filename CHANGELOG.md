@@ -11,7 +11,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 ## 2026-11-04, T30: device evidence for brightness (T30X picture run b18, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp next `1c3c397b` and OpenIMP at run time, no flash): `ISP_Tuning_Get/SetBrightness` PASS with a picture effect (`qemu` -> `dev`; luma 26 at the base, 0 at the low and 231 at the high setting). T30 API 153/350 -> 155/350 works.
-- Not counted: from `contrast-low` on, every later picture of the open-stack run was black (luma 0, also the closing base picture), so the remaining picture cases give no evidence; this is a driver fault under investigation. The FrontCrop picture change was not counted either: the luma had already moved from 26 to 50 at the first case after the base (exposure still settling).
+- Not counted: from `contrast-low` on, every later picture of the open-stack run was black (luma 0, also the closing base picture), so the remaining picture cases give no evidence. Cause: a test artefact, not a driver fault. The module was loaded fresh without the streamer, so the kernel brightness/saturation cache was 0 (the vendor kernel also starts zeroed; on the stock stack the streamer had set 128 before the run), and the case restored brightness 0 after `brightness-high`. Next picture runs start the streamer on the open module first. The FrontCrop picture change was not counted either: the luma had already moved from 26 to 50 at the first case after the base (exposure still settling).
 - The same batch confirmed on the device that gamma (steep 2702 / linear 1023) and antifog (set 0) match the vendor stack after open-tx-isp `1c3c397b`.
 
 ## 2026-11-04, T30: apitest picture cases for T30 (tooling, no cell moved)
