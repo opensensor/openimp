@@ -1688,7 +1688,7 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
         /* The fd belongs to Enable/DisableChn: check the state and use the
          * fd under g_fs_lock, or the ioctl can land on a closed (or already
          * reused) descriptor. */
-#if !defined(PLATFORM_T20)
+#if !defined(PLATFORM_T20) && !defined(PLATFORM_T21)
         FS_LOCK();
         if (fs_chan_get_state(chnNum) == 2 && g_fs_ctx[chnNum].fd >= 0) {
             fs_set_depth(g_fs_ctx[chnNum].fd, depth);
@@ -1697,7 +1697,10 @@ int IMP_FrameSource_SetFrameDepth(int chnNum, int depth)
 #endif
         /* T20: 0x800456c5 is VIDIOC_DEFAULT_CMD_SET_BANKS (the DMA bank
          * count of the next STREAMON), not a frame depth; libimp 3.12.0's
-         * SetFrameDepth issues no ioctl. */
+         * SetFrameDepth issues no ioctl. T21: libimp 1.0.33
+         * IMP_FrameSource_SetFrameDepth (0x5d734..0x5dc90) contains no
+         * 0x800456c5 (the only use is EnableChn 0x5f814), and tx-isp-t21
+         * rejects it ("Unsupported frame-channel ioctl"), so none here. */
         return 0;
     }
 }
