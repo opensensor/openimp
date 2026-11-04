@@ -95,6 +95,7 @@ static clockid_t tseries_tuning_clock = CLOCK_REALTIME;
 static int32_t tseries_tuning_last_total_gain = -1;
 #if !defined(PLATFORM_T21)
 /* cache-only RawDRC and denoise attributes (T21/T20: driver, see below) */
+#if !defined(PLATFORM_T30)
 static IMPISPDrcAttr tseries_raw_drc = {
     .mode = IMPISP_DRC_MANUAL,
     .drc_strength = 128,
@@ -103,6 +104,7 @@ static IMPISPDrcAttr tseries_raw_drc = {
     .black_level = 0,
     .white_level = 0xfff,
 };
+#endif
 static IMPISPSinterDenoiseAttr tseries_sinter_dns = {
     .enable = IMPISP_TUNING_OPS_MODE_ENABLE,
     .type = IMPISP_TUNING_OPS_TYPE_AUTO,
@@ -3137,6 +3139,56 @@ int IMP_ISP_Tuning_GetTemperDnsAttr(IMPISPTemperDenoiseAttr *attribute)
     return result;
 }
 #else
+#if defined(PLATFORM_T30)
+/*
+ * T30 1.0.5 (0xc5cdc / 0xc5e0c), the same protocol as T21 1.0.33: the mode
+ * goes out through VIDIOC_S_CTRL 0x8000168 when it changed, in manual mode
+ * (0) the attribute through tuning CID 0x80000a0 when the strength changed;
+ * Get reads 0x80000a0 (the driver fills it from the Iridix registers) and
+ * keeps mode and strength as the last sent values.
+ */
+#define TSERIES_T30_CID_DRC_MODE 0x8000168
+#define TSERIES_T30_CID_RAW_DRC  0x80000a0
+static struct {
+    uint32_t mode;
+    uint8_t strength;
+} tseries_t30_drc;
+
+int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute)
+{
+    int result = 0;
+    uint32_t mode;
+
+    if (attribute == NULL)
+        return -1;
+    mode = (uint32_t)attribute->mode;
+    if (mode != tseries_t30_drc.mode) {
+        result = tseries_v4l2_set(TSERIES_T30_CID_DRC_MODE, (int32_t)mode);
+        if (result == 0)
+            tseries_t30_drc.mode = mode;
+    }
+    if (mode != IMPISP_DRC_MANUAL || attribute->drc_strength == tseries_t30_drc.strength)
+        return result;
+    result = tseries_tuning_set_ptr(TSERIES_T30_CID_RAW_DRC, attribute);
+    if (result == 0)
+        tseries_t30_drc.strength = attribute->drc_strength;
+    return result;
+}
+
+int IMP_ISP_Tuning_GetRawDRC(IMPISPDrcAttr *attribute)
+{
+    int result;
+
+    if (attribute == NULL)
+        return -1;
+    result = tseries_tuning_get_ptr(TSERIES_T30_CID_RAW_DRC, attribute);
+    if (result == 0) {
+        tseries_t30_drc.mode = (uint32_t)attribute->mode;
+        tseries_t30_drc.strength = attribute->drc_strength;
+    }
+    return result;
+}
+#else
 int IMP_ISP_Tuning_SetRawDRC(IMPISPDrcAttr *attribute)
 {
     if (!attribute || attribute->mode > IMPISP_DRC_DISABLE)
@@ -3152,6 +3204,7 @@ int IMP_ISP_Tuning_GetRawDRC(IMPISPDrcAttr *attribute)
     *attribute = tseries_raw_drc;
     return 0;
 }
+#endif
 
 int IMP_ISP_Tuning_SetSinterDnsAttr(IMPISPSinterDenoiseAttr *attribute)
 {

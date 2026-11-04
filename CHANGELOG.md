@@ -14,6 +14,10 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - Not counted: from `contrast-low` on, every later picture of the open-stack run was black (luma 0, also the closing base picture), so the remaining picture cases give no evidence. Cause: a test artefact, not a driver fault. The module was loaded fresh without the streamer, so the kernel brightness/saturation cache was 0 (the vendor kernel also starts zeroed; on the stock stack the streamer had set 128 before the run), and the case restored brightness 0 after `brightness-high`. Next picture runs start the streamer on the open module first. The FrontCrop picture change was not counted either: the luma had already moved from 26 to 50 at the first case after the base (exposure still settling).
 - The same batch confirmed on the device that gamma (steep 2702 / linear 1023) and antifog (set 0) match the vendor stack after open-tx-isp `1c3c397b`.
 
+## 2026-11-04, T30: RawDRC reaches the driver as on the vendor 1.0.5 (QEMU, device test pending)
+
+- `IMP_ISP_Tuning_SetRawDRC` / `GetRawDRC` on T30 were cache-only. They now follow the vendor T30 1.0.5 (0xc5cdc / 0xc5e0c, the T21 protocol): the mode through `VIDIOC_S_CTRL` 0x8000168 when it changed, in manual mode the attribute through tuning 0x80000a0 when the strength changed; Get reads 0x80000a0. Needs open-tx-isp `claude/t30-rawdrc` (driver side of both controls); on the vendor kernel the calls behave as with the vendor library.
+
 ## 2026-11-04, T30: apitest picture cases for T30 (tooling, no cell moved)
 
 - `apitest picture` had no T30 case list, so a filtered run (b15, `hue`) exercised no function. T30 now uses the cases the vendor T30 1.0.5 header has: AE compensation, WDR, raw DRC, antifog, defect-pixel strength, colour effects, scene modes, the combined H/V flip, and the OpenIMP crop and CSC extensions (as on T10/T20/T21). The vendor T30 header has no `BcshHue`, DRC strength, module control or CCM, so there is no `hue` case on T30.
