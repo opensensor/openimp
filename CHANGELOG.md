@@ -18,6 +18,10 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - T31: the 29 defog tables now come from the active tuning-bin bank like the vendor (`tiziano_defog_load_bank`); device-proven on the T31X light-box camera. It reaches a camera only with an image built after the change (the fleet image agg67 still has the old tables). Matrix: T31 Defog cell text extended, symbol unchanged.
 - Counts after this round, from the generated `docs/FEATURE_MATRIX.md`: T23 419/457, T30 170/350, T31 365/406, T41 392/427 API cells work. T30 evidence batch b21 is not merged yet and not counted.
 - Open finding #207 (T23, ISP picture OSD at the mirrored position with ISP hflip+vflip): see the entry below; not classified as a bug yet.
+## 2026-11-04, T30: device evidence for antifog (T30X picture run b21, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp next `9fd2e2a7` with the T30 AE branches `claude/t30-ae-exphistory` and `claude/t30-ae-waitframe` at run time, no flash): `ISP_Tuning_SetAntiFogAttr` PASS with a picture effect (luma 108 and detail 8.3 against 64 / 3.1 at the base; the vendor stack in the same boot also changes the picture), `host` -> `dev`. T30 API 170/350 -> 171/350 works.
+- Same run, no cell moved: RawDRC now acts through Iridix on the open stack (strength read back 45 / 54 / 222 for off / manual / unlimit, vendor 67 / 67 / 142), CSC presets change the picture (beyond vendor, `claude/t30-csc`), manual white balance recovers when AWB returns to auto. The open picture was darker than in b20 (luma 64 against 118) and AE compensation had no effect; both are being checked with the AE branches.
 
 ## 2026-11-04, T30: CSC presets as a beyond-vendor item (driver side, opt-in; QEMU, device test pending)
 
