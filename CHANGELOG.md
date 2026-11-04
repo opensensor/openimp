@@ -53,6 +53,10 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - apitest: the `fs` area left ch1 at frame depth 0 after its disable/enable cycle, which made every `flow()` check of the following cases fail on T40/T41 (GetFrame answers 0 without a frame at depth 0, as the vendor); the depth now stays at 2 there. New case `t41pass`.
 - T41 API 373/427 -> 392/427 works, implemented but not device-tested 51 -> 32, 3 gaps unchanged.
 
+## 2026-11-04, T30: WaitFrame reaches the driver, antifog apitest applies the preset (QEMU T30; device check pending)
+
+- `IMP_ISP_Tuning_WaitFrame` on T30 sends the vendor 1.0.5 block `{1, 0x8000162, &info}` like T20/T21 (was a stub returning 0; needs open-tx-isp `claude/t30-ae-waitframe`). QEMU: three calls return 0 with the count 92, 93, 94.
+- apitest picture: on T30 `antifog-*` calls `SetAntiFogAttr` twice, because the firmware (vendor and open) applies the preset only while the antifog mode is already on.
 ## 2026-11-04 (afternoon), docs round 12: findings #205 and #206, fleet image and QEMU notes, CBR default confirmed
 
 - Open findings from the API evidence passes: #206 (`SU_Base_Shutdown`: the vendor libsysutils of T10 to T41 sends signal 17 = SIGUSR2 on MIPS, busybox powers off; the OpenIMP default keeps its reboot behaviour until the issue changes it, `OPENIMP_SU_SHUTDOWN=poweroff` is vendor-equal; the call is never made on a camera) and #205 (T21 `IMP_FrameSource_SetFrameDepth` sends the ioctl 0x800456c5, which the T21 frame-channel driver does not know: one kernel stack dump per call, the call still returns 0).

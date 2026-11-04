@@ -821,6 +821,11 @@ static int c_antifog(int ph, int arg, char *info, size_t n)
     if (!HAVE(IMP_ISP_Tuning_SetAntiFogAttr)) return CASE_NA;
     if (ph) { IMP_ISP_Tuning_SetAntiFogAttr(ANTIFOG_DISABLE); return 0; }
     r = IMP_ISP_Tuning_SetAntiFogAttr(arg);
+#ifdef PLATFORM_T30
+    /* the firmware (antifog_set_preset, vendor and open alike) applies the preset only while the antifog mode is
+     * already on: the first call after a disable switches the mode on, the second one takes the preset */
+    if (!r && arg) r = IMP_ISP_Tuning_SetAntiFogAttr(arg);
+#endif
     snprintf(info, n, "antifog %d (no readback; restore = disable)", arg);
     return r;
 }

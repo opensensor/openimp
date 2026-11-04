@@ -3600,9 +3600,9 @@ int IMP_ISP_Tuning_WaitFrame(IMPISPWaitFrameAttr *attr)
         }
         return result;
     }
-#elif defined(PLATFORM_T20) || defined(PLATFORM_T21)
+#elif defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
     {
-        /* vendor T20 3.12.0 / T21 1.0.33: {1, 0x8000162, &info} on the
+        /* vendor T20 3.12.0 / T21 1.0.33 / T30 1.0.5 (0xdb570): {1, 0x8000162, &info} on the
          * tuning ioctl with the driver's 0x18-byte isp_frame_done_info
          * (timeout in ms in word 0, the 64-bit frame-done count in words
          * 2-3).  The vendor copies the count back also when the wait
@@ -3620,10 +3620,6 @@ int IMP_ISP_Tuning_WaitFrame(IMPISPWaitFrameAttr *attr)
         return result;
     }
 #else
-    /* T30 1.0.5 (0xdb570) sends the same {1, 0x8000162, &info} block as T20/T21.
-     * Not done on purpose: the open T30 driver does not serve that control
-     * (QEMU: -1), so the call would turn a harmless 0 into a -1 for every
-     * caller; it returns 0 at once, as before (T30 cell: stub). */
     return 0;
 #endif
 }
