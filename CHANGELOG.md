@@ -13,6 +13,10 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - New apitest cases for the T30 gate cells that a camera run can prove: `t30pass` (IntegrationTime manual 30/60 read back, WaitFrame frame end + timeout path, AeComp round trip, SetAntiFogAttr presets, RawDRC off/manual/unlimit read-back + manual strength, day/night force + read-back x4) and the explicit-only `t30pass_csc` (Get/SetCsc_Attr modes 0..4 + user matrix). Each line is a label with its own PASS/FAIL/N/A rule; reasons for N/A are on the line (library stub of WaitFrame, no timeout provoked, QEMU register model, driver without CSC). Run: `APITEST_CASES=t30pass apitest_t30 sc4236 0x30 2304 1536 cases`.
 - QEMU T30 (open-tx-isp `claude/t30-merge-b22` d2b41e35): `t30pass` 30 PASS / 0 FAIL / 1 N/A, `t30pass_csc` 24 / 0 / 0, 0 oopses. The matrix is unchanged: the lines are `rt` proof until a camera run reads them.
 
+## 2026-11-04, `SU_Base_Shutdown` vendor-equal (#206)
+
+- `SU_Base_Shutdown` now does what the vendor libsysutils does by default: `sync()`, then `kill(1, SIGUSR2)` (signal 17 on MIPS, busybox init powers off). Vendor disassembly: T40 ISVP 1.3.1 at 0x16a8 and T41 ISVP 1.2.5 at 0x1768 (`li a1,17`, return 0). `OPENIMP_SU_SHUTDOWN=reboot` keeps the former SIGTERM (reboot) behaviour; `poweroff` and `vendor` are aliases of the default (the old `vendor` = SIGCHLD reading was wrong, SIGCHLD is 18 on MIPS). Behaviour change: a call that used to reboot the camera now powers it off, as with the vendor library. Host test with a fake `kill`/`sync` (also built for mipsel and run in QEMU user mode with the fake, SIGUSR2 == 17 checked at build time); never called on a camera, the matrix cell stays `host`.
+
 ## 2026-11-04, docs round 13 and T31 defog tables (open-tx-isp c8e3d4d3)
 
 - T31: the 29 defog tables now come from the active tuning-bin bank like the vendor (`tiziano_defog_load_bank`); device-proven on the T31X light-box camera. It reaches a camera only with an image built after the change (the fleet image agg67 still has the old tables). Matrix: T31 Defog cell text extended, symbol unchanged.

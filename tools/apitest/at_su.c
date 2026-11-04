@@ -2,7 +2,7 @@
 #define _GNU_SOURCE
 #endif
 /* apitest: sysutils (SU_*) functions.  They live in libsysutils.so, resolved with dlsym
- * (type-checked against the vendor headers). Never called: SU_Base_Shutdown/Reboot/Suspend. */
+ * (type-checked against the vendor headers). Never called: SU_Base_Shutdown/Reboot/Suspend (Shutdown signals init to power off; host test: tests/core/su_base_shutdown_test.c). */
 #include <fcntl.h>
 #include <errno.h>
 #include <errno.h>

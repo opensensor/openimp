@@ -46,12 +46,15 @@ static void run(const char *env, int want_sig, int fail, int want_ret)
 
 int main(void)
 {
-    run(NULL, SIGTERM, 0, 0);
-    run("reboot", SIGTERM, 0, 0);
+    run(NULL, SIGUSR2, 0, 0);       /* default = vendor: kill(1, 17) */
     run("poweroff", SIGUSR2, 0, 0);
-    run("vendor", SIGCHLD, 0, 0);
-    run("junk", SIGTERM, 0, 0);
-    run(NULL, SIGTERM, 1, -1);
+    run("vendor", SIGUSR2, 0, 0);
+    run("junk", SIGUSR2, 0, 0);
+    run("reboot", SIGTERM, 0, 0);
+    run(NULL, SIGUSR2, 1, -1);
+#if defined(__mips__)
+    CHECK(kill_sig == 17 && SIGCHLD == 18); /* MIPS numbering, as the vendor disassembly */
+#endif
     printf(failures ? "su_base_shutdown_test: %d FAIL\n" : "su_base_shutdown_test: PASS\n", failures);
     return failures != 0;
 }

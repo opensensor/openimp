@@ -372,7 +372,7 @@ functions:
   SU_Base_Shutdown:
     group: su
     decl: "int SU_Base_Shutdown(void);"
-    summary: Syncs the file systems and tells the init process to reboot (or power off).
+    summary: Syncs the file systems and tells the init process to power off.
     returns: 0 when the signal reached init, -1 (with `errno`) when it could not be sent.
-    notes: "The call returns before the shutdown has finished. The environment variable `OPENIMP_SU_SHUTDOWN` selects what init is asked to do: unset or `reboot` sends SIGTERM (reboot on busybox init), `poweroff` sends SIGUSR2 (power off), `vendor` sends SIGCHLD like the vendor library."
-    diff: "The vendor library only sends SIGCHLD, which busybox init ignores, so on such a system the camera keeps running. OpenIMP's default sends the signal busybox acts on."
+    notes: "The call returns before the shutdown has finished. Like the vendor library it sends SIGUSR2 (signal 17 on MIPS) to init after the sync, which powers off on busybox init. The environment variable `OPENIMP_SU_SHUTDOWN=reboot` sends SIGTERM instead (reboot); unset, `poweroff` and `vendor` mean the vendor behaviour."
+    diff: "Same as the vendor library (sync, kill(1, 17)); OpenIMP returns -1 with errno when the signal could not be sent, the vendor always returns 0."
