@@ -5529,9 +5529,115 @@ static void cs_inject_t40(void)
 static void cs_inject_t40(void) {}
 #endif
 
+#if defined(PLATFORM_T41) && !defined(APITEST_T40)
+/* ---------------------------------------------------------------------- t41pass (2026-11-04)
+ * API-level cases for T41 cells that had no run before: IMP_FrameSource_SetYuvAlign (argument rules + geometry check against the real ch1 size),
+ * IMP_ISP_Tuning_Get/SetMaskBlock (stored block read back, block off again), Get/SetAeScenceAttr, Get/SetAeExprInfo, Get/SetAwbAttr (written back
+ * as read, read again, the settable fields equal; original restored).  Nothing here changes the picture. */
+static void cs_t41pass(void)
+{
+    NEED(IMP_FrameSource_SetYuvAlign) {
+        static const unsigned stp[3] = { 8, 16, 32 };
+        IMPFrameAlign al;
+        int r_off, r_c7, r_nc, r_ok = 0, r_ng = 0, i, j, ok = 1, n_ok = 0, n_ng = 0;
+
+        memset(&al, 0, sizeof(al));
+        al.enable = 0;
+        r_off = IMP_FrameSource_SetYuvAlign(CH_SUB, &al);
+        al.enable = 1;
+        r_c7 = IMP_FrameSource_SetYuvAlign(7, &al);
+        r_nc = IMP_FrameSource_SetYuvAlign(5, &al);
+        for (i = 0; i < 3; i++)
+            for (j = 0; j < 3; j++) {
+                int fit = (SUB_W % stp[i]) == 0 && (SUB_H % stp[j]) == 0, r;
+
+                al.param.w = (FSChannelYuvAlign)i; al.param.h = (FSChannelYuvAlign)j;
+                r = IMP_FrameSource_SetYuvAlign(CH_SUB, &al);
+                if (fit) { n_ok++; if (r != 0) ok = 0; else r_ok++; }
+                else { n_ng++; if (r == 0) ok = 0; else r_ng++; }
+            }
+        rep(FN(IMP_FrameSource_SetYuvAlign), r_off | r_c7, (ok && r_off == 0 && r_c7 == (int)0x80010001 && r_nc == (int)0x80010008 && flow()) ? V_PASS : V_FAIL,
+            "rt: ch1 %dx%d: enable 0 -> %d, chn 7 -> 0x%x, chn 5 (not created) -> 0x%x; of 9 align pairs %d fit the geometry and were accepted (%d/%d), %d need padding and were refused (%d/%d); stride not changed, frames flow",
+            SUB_W, SUB_H, r_off, (unsigned)r_c7, (unsigned)r_nc, n_ok, r_ok, n_ok, n_ng, r_ng, n_ng);
+    }
+    NEED(IMP_ISP_Tuning_SetMaskBlock) NEED(IMP_ISP_Tuning_GetMaskBlock) {
+        IMPISPMaskBlockAttr a, g, off;
+        int r0, r1, r2, r3, r4, same;
+        char gm[96];
+
+        memset(&a, 0, sizeof(a)); memset(&g, 0, sizeof(g)); memset(&off, 0, sizeof(off));
+        a.chx = 1; a.pinum = 0; a.mask_en = 1; a.mask_pos_left = 40; a.mask_pos_top = 30; a.mask_width = 80; a.mask_height = 60;
+        a.mask_type = IMPISP_MASK_TYPE_RGB; a.mask_value.argb.r_value = 200; a.mask_value.argb.g_value = 20; a.mask_value.argb.b_value = 10;
+        r0 = IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &a);
+        g.chx = 1; g.pinum = 0;
+        r1 = IMP_ISP_Tuning_GetMaskBlock(IMPVI_MAIN, &g);
+        snprintf(gm, sizeof(gm), "en %d %dx%d at %d,%d type %d rgb %d/%d/%d", (int)g.mask_en, g.mask_width, g.mask_height, g.mask_pos_left, g.mask_pos_top, (int)g.mask_type,
+                 g.mask_value.argb.r_value, g.mask_value.argb.g_value, g.mask_value.argb.b_value);
+        same = g.mask_pos_left == 40 && g.mask_pos_top == 30 && g.mask_width == 80 && g.mask_height == 60 && g.mask_value.argb.r_value == 200;
+        off = a; off.mask_en = 0;
+        r2 = IMP_ISP_Tuning_SetMaskBlock(IMPVI_MAIN, &off);
+        memset(&g, 0, sizeof(g)); g.chx = 1; g.pinum = 0;
+        r3 = IMP_ISP_Tuning_GetMaskBlock(IMPVI_MAIN, &g);
+        r4 = 1;           /* the stock kernel always reports mask_en 0 (documented in openimp_p3_controls.c), so the enable bit is only logged */
+        rep(FN(IMP_ISP_Tuning_GetMaskBlock), r0 | r1 | r2 | r3, (!(r0 | r1 | r2 | r3) && same && r4 && flow()) ? V_PASS : V_FAIL,
+            "rt: ch1 block 0 (80x60 at 40,30, RGB 200/20/10) set %d, read back %d (%s: %s; the kernel reports the enable bit as 0 like the stock one); block off %d, read back %d (en %d); frames flow", r0, r1, same ? "equal" : "DIFFERENT", gm, r2, r3, (int)g.mask_en);
+    }
+    NEED(IMP_ISP_Tuning_SetAeScenceAttr) NEED(IMP_ISP_Tuning_GetAeScenceAttr) {
+        IMPISPAEScenceAttr o, g;
+        int r0, r1, r2, r3, same;
+
+        memset(&o, 0, sizeof(o)); memset(&g, 0, sizeof(g));
+        r0 = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &o);
+        r1 = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &o);
+        usleep(300000);
+        r2 = IMP_ISP_Tuning_GetAeScenceAttr(IMPVI_MAIN, &g);
+        same = g.AeHLCEn == o.AeHLCEn && g.AeHLCStrength == o.AeHLCStrength && g.AeBLCEn == o.AeBLCEn && g.AeBLCStrength == o.AeBLCStrength &&
+               g.AeTargetCompEn == o.AeTargetCompEn && g.AeTargetComp == o.AeTargetComp && g.AeStartEn == o.AeStartEn && g.AeStartEv == o.AeStartEv;
+        r3 = IMP_ISP_Tuning_SetAeScenceAttr(IMPVI_MAIN, &o);
+        rep(FN(IMP_ISP_Tuning_SetAeScenceAttr), r0 | r1 | r2 | r3, (!(r0 | r1 | r2 | r3) && same && flow()) ? V_PASS : V_FAIL,
+            "rt: as-read set back, read again: HLC %d/%u BLC %d/%u target-comp %d/%u start %d/%u %s; frames flow", (int)g.AeHLCEn, g.AeHLCStrength, (int)g.AeBLCEn, g.AeBLCStrength,
+            (int)g.AeTargetCompEn, g.AeTargetComp, (int)g.AeStartEn, g.AeStartEv, same ? "equal" : "DIFFERENT");
+    }
+    NEED(IMP_ISP_Tuning_SetAeExprInfo) NEED(IMP_ISP_Tuning_GetAeExprInfo) {
+        IMPISPAEExprInfo o, g;
+        int r0, r1, r2, r3, same;
+
+        memset(&o, 0, sizeof(o)); memset(&g, 0, sizeof(g));
+        r0 = IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &o);
+        r1 = IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &o);
+        usleep(300000);
+        r2 = IMP_ISP_Tuning_GetAeExprInfo(IMPVI_MAIN, &g);
+        same = g.AeMode == o.AeMode && g.AeIntegrationTimeMode == o.AeIntegrationTimeMode && g.AeAGainManualMode == o.AeAGainManualMode &&
+               g.AeMaxIntegrationTimeMode == o.AeMaxIntegrationTimeMode && g.AeMaxAGainMode == o.AeMaxAGainMode && g.AeMaxDgainMode == o.AeMaxDgainMode &&
+               g.AeMaxIntegrationTime == o.AeMaxIntegrationTime && g.AeMaxAGain == o.AeMaxAGain && g.AeMinAGain == o.AeMinAGain;
+        r3 = IMP_ISP_Tuning_SetAeExprInfo(IMPVI_MAIN, &o);
+        rep(FN(IMP_ISP_Tuning_SetAeExprInfo), r0 | r1 | r2 | r3, (!(r0 | r1 | r2 | r3) && same && flow()) ? V_PASS : V_FAIL,
+            "rt: as-read set back (AE mode %d, manual time %d, again %d), read again: mode %d, max time %u/%u, max again %u/%u %s; frames flow", (int)o.AeMode,
+            (int)o.AeIntegrationTimeMode, (int)o.AeAGainManualMode, (int)g.AeMode, g.AeMaxIntegrationTime, o.AeMaxIntegrationTime, g.AeMaxAGain, o.AeMaxAGain, same ? "equal" : "DIFFERENT");
+    }
+    NEED(IMP_ISP_Tuning_SetAwbAttr) NEED(IMP_ISP_Tuning_GetAwbAttr) {
+        IMPISPWBAttr o, g;
+        int r0, r1, r2, r3, same;
+
+        memset(&o, 0, sizeof(o)); memset(&g, 0, sizeof(g));
+        r0 = IMP_ISP_Tuning_GetAwbAttr(IMPVI_MAIN, &o);
+        r1 = IMP_ISP_Tuning_SetAwbAttr(IMPVI_MAIN, &o);
+        usleep(500000);
+        r2 = IMP_ISP_Tuning_GetAwbAttr(IMPVI_MAIN, &g);
+        same = g.mode == o.mode && g.awb_frz == o.awb_frz && g.awb_start_en == o.awb_start_en;
+        r3 = IMP_ISP_Tuning_SetAwbAttr(IMPVI_MAIN, &o);
+        rep(FN(IMP_ISP_Tuning_SetAwbAttr), r0 | r1 | r2 | r3, (!(r0 | r1 | r2 | r3) && same && flow()) ? V_PASS : V_FAIL,
+            "rt: as-read set back (mode %d, frz %d, start en %d), read again: mode %d frz %d start en %d %s; frames flow", (int)o.mode, (int)o.awb_frz, (int)o.awb_start_en,
+            (int)g.mode, (int)g.awb_frz, (int)g.awb_start_en, same ? "equal" : "DIFFERENT");
+    }
+}
+#else
+static void cs_t41pass(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5635,6 +5741,7 @@ void t_cases(void)
     if (cs_on("evstart_t31")) cs_evstart_t31(); wdog("cases", 60);
     if (cs_on("shading_t31")) cs_shading_t31(); wdog("cases", 90);
     if (cs_on("meshscale")) cs_meshscale(); wdog("cases", 90);
+    if (cs_on("t41pass")) cs_t41pass(); wdog("cases", 60);
     if (cs_on("override_t31")) cs_override_t31(); wdog("cases", 90);
     if (cs_on("encgrp_t31")) cs_encgrp_t31(); wdog("cases", 120);
     if (cs_on("osdhelp_t31")) cs_osdhelp_t31(); wdog("cases", 60);

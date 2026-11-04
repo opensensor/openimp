@@ -186,11 +186,11 @@ void t_osd(void)
         return;
     }
     rep(FN(IMP_OSD_CreateGroup), 0, V_PASS, "group %d (in the FS -> OSD -> ENC chain)", OGRP);
-    int attach = getenv("APITEST_ATTACH") && !strcmp(getenv("APITEST_ATTACH"), "1");    /* APITEST_ATTACH=1: FS -> ENC, then IMP_OSD_AttachToGroup (T10/T20/T21) */
-    NEED(IMP_OSD_AttachToGroup) { if (!attach) rep(FN(IMP_OSD_AttachToGroup), 0, V_SKIP, "deprecated, the chain is built with IMP_System_Bind (APITEST_ATTACH=1 runs the attach test on T10/T20/T21)"); }
+    int attach = getenv("APITEST_ATTACH") && !strcmp(getenv("APITEST_ATTACH"), "1");    /* APITEST_ATTACH=1: FS -> ENC, then IMP_OSD_AttachToGroup (T10/T20/T21/T41) */
+    NEED(IMP_OSD_AttachToGroup) { if (!attach) rep(FN(IMP_OSD_AttachToGroup), 0, V_SKIP, "deprecated, the chain is built with IMP_System_Bind (APITEST_ATTACH=1 runs the attach test on T10/T20/T21/T41)"); }
     osd_flow();
     enc_chain_down();
-    if (attach && IMP_OSD_AttachToGroup && enc_attach_osd() != 0) rep(FN(IMP_OSD_AttachToGroup), 0, V_SKIP, "attach test is built for T10/T20/T21 only");
+    if (attach && IMP_OSD_AttachToGroup && enc_attach_osd() != 0) rep(FN(IMP_OSD_AttachToGroup), 0, V_SKIP, "attach test is built for T10/T20/T21/T41 only");
     rep(FN(IMP_OSD_DestroyGroup), 0, V_PASS, "group %d (chain teardown)", OGRP);
 }
 

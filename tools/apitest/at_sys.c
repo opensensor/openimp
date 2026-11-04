@@ -436,6 +436,12 @@ void t_fs(void)
         usleep(500000);
         rr = fs_peek(1, &w, &h, &t);
         rep(LBL("FrameSource disable/enable cycle"), rr, rr == 0 && w == SUB_W ? V_PASS : V_FAIL, "frame after re-enable %dx%d ts %lld", w, h, (long long)t);
+#if defined(PLATFORM_T41)
+        /* T40/T41 OpenIMP follows the vendor depth rule (depth 0: GetFrame returns 0 without a frame): the cases that follow read ch1 through
+         * GetFrame, so the depth of the setup stays at 2 */
+        NEED(IMP_FrameSource_SetFrameDepth) { IMP_FrameSource_SetFrameDepth(1, 2); }
+#else
         NEED(IMP_FrameSource_SetFrameDepth) { IMP_FrameSource_SetFrameDepth(1, 0); }
+#endif
     }
 }

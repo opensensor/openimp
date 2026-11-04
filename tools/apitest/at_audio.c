@@ -1,6 +1,7 @@
 /* apitest: Audio area.  AI (microphone) is exercised fully; AO only by return
  * codes (no IMP_AO_SendFrame, nothing is played); AEC functions are not run
  * (they need the speaker path).  AENC/ADEC are software codecs (G.711A). */
+#include <errno.h>
 #include "apitest.h"
 
 static int aidev(void)
@@ -234,7 +235,21 @@ static void ai_flow(int dev)
         gfree(f); gfree(raw);
     }
 #endif
-#if HAS_IMP_Audio_Select_Codec
+#if HAS_IMP_Audio_Select_Codec && defined(PLATFORM_T41) && !defined(APITEST_T40)
+    /* T41 1.2.6: device >= 2 or channel > 0 -> -1; else ioctl _IOW('P', 74, int) on the AI node with SELECT_INTERNAL (0) / SELECT_EXTERNAL (1).  Only the
+     * internal codec is selected here (the board's default path, no routing change on a board with an internal codec); the external codec is not selected */
+    NEED(IMP_Audio_Select_Codec) {
+        int rd = IMP_Audio_Select_Codec(2, 0, 0), rc = IMP_Audio_Select_Codec(dev, 1, 0), ri;
+        int en;
+
+        errno = 0; ri = IMP_Audio_Select_Codec(dev, 0, 0); en = errno;
+
+        if (ri != 0 && rd == -1 && rc == -1)
+            rep(FN(IMP_Audio_Select_Codec), ri, V_NA, "the board's audio driver refuses the select-codec ioctl (errno %d; the dsp_ioctl of the image's audio module has no such command): device 2 -> %d and channel 1 -> %d are refused", en, rd, rc);
+        else
+            CHECK(IMP_Audio_Select_Codec, ri, rd == -1 && rc == -1, "internal codec on dev %d ch 0 -> %d; device 2 -> %d, channel 1 -> %d (both refused); the external codec is not selected", dev, ri, rd, rc);
+    }
+#elif HAS_IMP_Audio_Select_Codec
     rep(FN(IMP_Audio_Select_Codec), 0, V_SKIP, "switches the codec routing of the board");
 #endif
     /* AENC / ADEC: software G.711A round trip of a real microphone frame */

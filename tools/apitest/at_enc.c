@@ -1215,6 +1215,13 @@ static void live_misc(int chn, int codec)
         gfree(g);
     }
 #endif
+#if defined(PLATFORM_T41) && !defined(APITEST_T40) && !HAS_IMP_Encoder_PollingModuleStream
+/* the T41 1.2.6 header dropped the declaration, the 1.2.5 header and the library still have it (weak: N/A on a library without it) */
+int IMP_Encoder_PollingModuleStream(uint32_t *encChnBitmap, uint32_t timeoutMsec);
+# pragma weak IMP_Encoder_PollingModuleStream
+# undef HAS_IMP_Encoder_PollingModuleStream
+# define HAS_IMP_Encoder_PollingModuleStream 1
+#endif
 #if HAS_IMP_Encoder_PollingModuleStream
     NEED(IMP_Encoder_PollingModuleStream) {
         G(uint32_t, bm);
@@ -1504,7 +1511,77 @@ static void test_swenc(void)
     }
     gfree(snap); gfree(fi);
 #endif
-#if HAS_IMP_Encoder_VbmAlloc_Ex
+#if HAS_IMP_Encoder_VbmAlloc_Ex && defined(PLATFORM_T41)
+    /* T41 _Ex set: same flow as above through the second VPU instance's entry points (VbmAlloc_Ex -> InputJpege_Ex JPEG, YuvInit_Ex ->
+     * YuvEncode_Ex H.264 IDR -> YuvExit_Ex, VbmFree_Ex); the frame is a snapshot of ch1 */
+    {
+        size_t nvx = (size_t)EW * EH * 3 / 2;
+        unsigned char *sx = NULL, *dx = NULL;
+        unsigned char *snapx = gnew(nvx);
+        G(IMPFrameInfo, fix);
+        int rx;
+
+        if (IMP_FrameSource_SnapFrame) IMP_FrameSource_SnapFrame(CH_SUB, PIX_FMT_NV12, EW, EH, snapx, fix);
+        NEED(IMP_Encoder_VbmAlloc_Ex) {
+            sx = (unsigned char *)IMP_Encoder_VbmAlloc_Ex((uint32_t)nvx, 64);
+            dx = (unsigned char *)IMP_Encoder_VbmAlloc_Ex((uint32_t)nvx, 64);
+            rep(FN(IMP_Encoder_VbmAlloc_Ex), sx && dx ? 0 : -1, sx && dx ? V_PASS : V_FAIL, "2 x %zu bytes, align 64: %p %p", nvx, (void *)sx, (void *)dx);
+        }
+        if (sx && dx) {
+            memcpy(sx, snapx, nvx);
+            NEED(IMP_Encoder_InputJpege_Ex) {
+                /* vendor _Ex doc: the height is a multiple of 16 (the 640x360 snapshot is cut to 640x352: Y rows 0..351, UV rows 0..175; 360 is refused) */
+                const int jh = EH & ~15;
+                size_t ysz = (size_t)EW * EH, ysz2 = (size_t)EW * jh;
+                G(int, len);
+                SI si;
+                int rbad;
+
+                memset(&si, 0, sizeof(si)); si.first_idr_frame = -1;
+                memmove(sx + ysz2, sx + ysz, (size_t)EW * (jh / 2));
+                rbad = IMP_Encoder_InputJpege_Ex(sx, dx, EW, EH, 75, len);
+                rx = IMP_Encoder_InputJpege_Ex(sx, dx, EW, jh, 75, len); gchk(len);
+                if (rx == 0 && *len > 4 && (size_t)*len <= nvx) scan_frame(dx, (size_t)*len, CODEC_JPEG, &si);
+                CHECK(IMP_Encoder_InputJpege_Ex, rx, si.jpeg_ok == 1 && si.w == EW && si.h == jh && (EH % 16 == 0 || rbad != 0), "q 75: %d bytes, SOI %d EOI %d %dx%d; height %d (not a multiple of 16) -> %d", *len, si.soi, si.eoi, si.w, si.h, EH, rbad);
+                gfree(len);
+                memcpy(sx, snapx, nvx);
+            }
+            NEED(IMP_Encoder_YuvInit_Ex) {
+                int *h = (int *)gnew(sizeof(int));
+                IMPEncoderYuvIn *in = (IMPEncoderYuvIn *)gnew(sizeof(IMPEncoderYuvIn));
+                IMPEncoderYuvOut *out = (IMPEncoderYuvOut *)gnew(sizeof(IMPEncoderYuvOut));
+                SI si;
+
+                memset(&si, 0, sizeof(si)); si.first_idr_frame = -1;
+                in->type = IMP_ENC_TYPE_AVC; in->mode = IMP_ENC_RC_MODE_CBR; in->frameRate = EFPS; in->gopLength = EGOP;
+                in->targetBitrate = YUV_BITRATE; in->maxBitrate = YUV_BITRATE; in->initQp = -1; in->minQp = 20; in->maxQp = 45;
+                *h = -1;
+                rx = IMP_Encoder_YuvInit_Ex(h, EW, EH, in);
+                gchk(h); gchk(in);
+                RET0(IMP_Encoder_YuvInit_Ex, rx, "%dx%d H.264 CBR, handle %d", EW, EH, *h);
+                if (rx == 0) {
+                    NEED(IMP_Encoder_YuvEncode_Ex) {
+                        IMPFrameInfo f;
+                        int r2;
+
+                        memset(&f, 0, sizeof(f));
+                        f.width = EW; f.height = EH; f.size = (uint32_t)nvx; f.pixfmt = PIX_FMT_NV12;
+                        f.virAddr = (uint32_t)(uintptr_t)sx; f.phyAddr = (uint32_t)IMP_Encoder_VbmV2P((intptr_t)sx);
+                        out->outAddr = (void *)dx; out->outLen = (uint32_t)nvx;
+                        r2 = IMP_Encoder_YuvEncode_Ex(*h, f, out);
+                        gchk(out);
+                        if (r2 == 0 && out->outAddr && out->outLen > 4) scan_frame(out->outAddr, out->outLen, CODEC_H264, &si);
+                        CHECK(IMP_Encoder_YuvEncode_Ex, r2, si.idr > 0 && si.sps > 0, "%u bytes, SPS %d PPS %d IDR %d, %dx%d", out->outLen, si.sps, si.pps, si.idr, si.w, si.h);
+                    }
+                    NEED(IMP_Encoder_YuvExit_Ex) { int r2 = IMP_Encoder_YuvExit_Ex(*h); RET0(IMP_Encoder_YuvExit_Ex, r2, ""); }
+                }
+                gfree(h); gfree(in); gfree(out);
+            }
+            NEED(IMP_Encoder_VbmFree_Ex) { IMP_Encoder_VbmFree_Ex(sx); IMP_Encoder_VbmFree_Ex(dx); rep(FN(IMP_Encoder_VbmFree_Ex), 0, V_PASS, "2 buffers freed (void)"); }
+        }
+        gfree(snapx); gfree(fix);
+    }
+#elif HAS_IMP_Encoder_VbmAlloc_Ex
     rep(FN(IMP_Encoder_VbmAlloc_Ex), 0, V_SKIP, "_Ex variants (second VPU instance set) not exercised");
     rep(FN(IMP_Encoder_VbmFree_Ex), 0, V_SKIP, "see VbmAlloc_Ex");
     rep(FN(IMP_Encoder_InputJpege_Ex), 0, V_SKIP, "see VbmAlloc_Ex");
@@ -1512,7 +1589,7 @@ static void test_swenc(void)
     rep(FN(IMP_Encoder_YuvEncode_Ex), 0, V_SKIP, "see VbmAlloc_Ex");
     rep(FN(IMP_Encoder_YuvExit_Ex), 0, V_SKIP, "see VbmAlloc_Ex");
 #endif
-#if HAS_IMP_Encoder_SetAvpuBsShare
+#if HAS_IMP_Encoder_SetAvpuBsShare && !defined(PLATFORM_T41)
     rep(FN(IMP_Encoder_SetAvpuBsShare), 0, V_SKIP, "global bitstream-buffer setup before the first channel");
     rep(FN(IMP_Encoder_SetIvpuBsSize), 0, V_SKIP, "global bitstream-buffer setup before the first channel");
 #endif
@@ -1547,6 +1624,30 @@ void t_enc(void)
         }
         grp_down(1);
     }
+#if defined(PLATFORM_T41) && !defined(APITEST_T40) && HAS_IMP_Encoder_SetAvpuBsShare && HAS_IMP_Encoder_SetIvpuBsSize
+    /* T41 global bitstream-buffer setup: SetIvpuBsSize(0) -> 0x80040002, after System_Init -> 0x80040040 (vendor 1.2.6); SetAvpuBsShare(on, size) before
+     * CreateChn: the channel created while it is on takes the shared AVPU buffer and must still stream H.264; off after DestroyChn frees it (0) */
+    {
+        int r0 = IMP_Encoder_SetIvpuBsSize(0), r1 = IMP_Encoder_SetIvpuBsSize(262144), ron, roff = -1, up = 0;
+        SI sb;
+
+        memset(&sb, 0, sizeof(sb)); sb.first_idr_frame = -1;
+        ron = IMP_Encoder_SetAvpuBsShare(true, 524288);
+        if (ron == 0 && grp_up(0, 0) == 0) {
+            if (chn_up(0, CODEC_H264, 1, 1) == 0) {
+                up = 1;
+                pull(0, CODEC_H264, 20, 0, 0, &sb, 3000);
+                chn_down(0, 0);
+            }
+            grp_down(0);
+        }
+        roff = IMP_Encoder_SetAvpuBsShare(false, 0);
+        rep(FN(IMP_Encoder_SetIvpuBsSize), r0, (r0 == (int)0x80040002u && r1 == (int)0x80040040u) ? V_PASS : V_FAIL,
+            "size 0 -> 0x%x (0x80040002 expected), size 262144 after System_Init -> 0x%x (0x80040040 expected)", (unsigned)r0, (unsigned)r1);
+        rep(FN(IMP_Encoder_SetAvpuBsShare), ron | roff, (ron == 0 && roff == 0 && up && sb.frames == 20 && sb.idr > 0 && sb.sps > 0) ? V_PASS : V_FAIL,
+            "on (512 KB) -> %d, H.264 channel created while on: %d of 20 frames, SPS %d IDR %d; off -> %d", ron, sb.frames, sb.sps, sb.idr, roff);
+    }
+#endif
 #ifdef HAVE_H265
 # if defined(PLATFORM_T21) || defined(PLATFORM_T23)
     /* the Helix encoder of T21/T23 is H.264/JPEG only: the headers declare H.265 types, the silicon has no HEVC core */
@@ -2103,7 +2204,7 @@ void enc_chain_down(void)
     grp_down(0);
 }
 
-#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21)
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || (defined(PLATFORM_T41) && !defined(APITEST_T40))
 /* IMP_OSD_AttachToGroup (deprecated vendor call): FS -> ENC is bound, the call inserts the OSD group between them
  * (src->to becomes src->from->to); the encoder then runs through the OSD group.  Returns 0 when the call was exercised. */
 int enc_attach_osd(void)
