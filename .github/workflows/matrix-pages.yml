@@ -28,7 +28,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false   # cancelling a run mid-deploy leaves a Pages deployment "in progress" that fails every later deploy
 
 jobs:
   build:
