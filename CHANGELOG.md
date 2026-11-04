@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: apitest cases `t30pass` and `t30pass_csc` (QEMU T30 only; no cell moved)
+
+- New apitest cases for the T30 gate cells that a camera run can prove: `t30pass` (IntegrationTime manual 30/60 read back, WaitFrame frame end + timeout path, AeComp round trip, SetAntiFogAttr presets, RawDRC off/manual/unlimit read-back + manual strength, day/night force + read-back x4) and the explicit-only `t30pass_csc` (Get/SetCsc_Attr modes 0..4 + user matrix). Each line is a label with its own PASS/FAIL/N/A rule; reasons for N/A are on the line (library stub of WaitFrame, no timeout provoked, QEMU register model, driver without CSC). Run: `APITEST_CASES=t30pass apitest_t30 sc4236 0x30 2304 1536 cases`.
+- QEMU T30 (open-tx-isp `claude/t30-merge-b22` d2b41e35): `t30pass` 30 PASS / 0 FAIL / 1 N/A, `t30pass_csc` 24 / 0 / 0, 0 oopses. The matrix is unchanged: the lines are `rt` proof until a camera run reads them.
+
 ## 2026-11-04, docs round 13 and T31 defog tables (open-tx-isp c8e3d4d3)
 
 - T31: the 29 defog tables now come from the active tuning-bin bank like the vendor (`tiziano_defog_load_bank`); device-proven on the T31X light-box camera. It reaches a camera only with an image built after the change (the fleet image agg67 still has the old tables). Matrix: T31 Defog cell text extended, symbol unchanged.

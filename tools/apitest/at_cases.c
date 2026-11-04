@@ -5807,9 +5807,274 @@ static void cs_t41pass(void)
 static void cs_t41pass(void) {}
 #endif
 
+#if defined(PLATFORM_T30)
+/* ---------------------------------------------------------------------- t30pass (2026-11-04)
+ * API gate cases for the T30 cells that have no hardware proof yet (one camera run is enough; QEMU proves the return codes and read-backs, not
+ * the picture).  Each line is a label "t30pass_<item>" (no vendor function name, so a line never overrules the picture verdict of the older
+ * cases inttime / waitframe / aecomp / rawdrc / csc in the evidence merge); the detail names the function(s) and the rule.
+ *   PASS  = every return code is 0 and every read-back equals what was set (or the stated rule holds), frames still flow; "rt:" in front =
+ *           the picture effect was not measured (these lines never claim one: the effect is the job of the older cases)
+ *   FAIL  = a return code, a read-back, the ordering of frame counts or the frame flow is wrong
+ *   N/A   = the build or the driver cannot take the call at all (reason on the line), or the situation to be proven cannot be provoked
+ * The original values are written back at the end.
+ *   t30pass      IntegrationTime, WaitFrame (frame end + timeout path), AeComp, SetAntiFogAttr, RawDRC off/manual/unlimit, day/night force
+ *   t30pass_csc  Get/SetCsc_Attr (OpenIMP extension, explicit only: APITEST_CASES=t30pass_csc) */
+static long t30_ms(void)
+{
+    struct timespec t;
+
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000L + t.tv_nsec / 1000000L;
+}
+
+static void t30pass_inttime(void)
+{
+    G(IMPISPITAttr, o); G(IMPISPITAttr, a); G(IMPISPITAttr, c);
+    static const unsigned vals[2] = { 30, 60 };
+    int r0, i, bad = 0, rs = 0, rg = 0, rr, rb;
+    char got[96] = "";
+
+    if (!IMP_ISP_Tuning_SetIntegrationTime || !IMP_ISP_Tuning_GetIntegrationTime) {
+        rep(LBL("t30pass_inttime"), 0, V_NA, "IMP_ISP_Tuning_Set/GetIntegrationTime not exported by this libimp");
+        return;
+    }
+    r0 = IMP_ISP_Tuning_GetIntegrationTime(o); gchk(o);
+    for (i = 0; i < 2 && r0 == 0; i++) {
+        memset(a, 0, sizeof(*a)); a->mode = IMPISP_TUNING_MODE_MANUAL; a->integration_time = vals[i]; a->max_integration_time = o->max_integration_time;
+        rs |= IMP_ISP_Tuning_SetIntegrationTime(a);
+        memset(c, 0, sizeof(*c)); rg |= IMP_ISP_Tuning_GetIntegrationTime(c); gchk(c);
+        if (c->mode != IMPISP_TUNING_MODE_MANUAL || c->integration_time != vals[i]) bad++;
+        snprintf(got + strlen(got), sizeof(got) - strlen(got), "%s%u->mode %d it %u", i ? ", " : "", vals[i], (int)c->mode, c->integration_time);
+    }
+    rr = IMP_ISP_Tuning_SetIntegrationTime(o);                 /* back to what it was */
+    memset(c, 0, sizeof(*c)); rb = IMP_ISP_Tuning_GetIntegrationTime(c); gchk(c);
+    rep(LBL("t30pass_inttime"), r0 | rs | rg | rr | rb, (r0 == 0 && rs == 0 && rg == 0 && rr == 0 && rb == 0 && !bad && c->mode == o->mode && flow()) ? V_PASS : V_FAIL,
+        "rt: Set/GetIntegrationTime: original mode %d it %u max %u; manual 30 and 60 lines set (ret %d), read back [%s] (ret %d, %d wrong); original set back (ret %d), mode now %d (want %d); frames flow; exposure effect: case inttime",
+        (int)o->mode, o->integration_time, o->max_integration_time, rs, got, rg, bad, rr, (int)c->mode, (int)o->mode);
+    gfree(o); gfree(a); gfree(c);
+}
+
+static void t30pass_waitframe(void)
+{
+    G(IMPISPWaitFrameAttr, a);
+    unsigned long long first = 0, last = 0, prev = 0;
+    long t, worst = 0;
+    int i, rc_bad = 0, back = 0, n_to = 0, to_bad = 0, cnt_back = 0, n_ok = 0;
+
+    if (!IMP_ISP_Tuning_WaitFrame) {
+        rep(LBL("t30pass_waitframe"), 0, V_NA, "IMP_ISP_Tuning_WaitFrame not exported by this libimp");
+        gfree(a);
+        return;
+    }
+    /* 1: frame end. The driver takes the timeout in jiffies (as the OEM): 1000 is far more than a frame */
+    for (i = 0; i < 10; i++) {
+        int r;
+
+        a->timeout = 1000; a->cnt = 0;
+        t = t30_ms(); r = IMP_ISP_Tuning_WaitFrame(a); t = t30_ms() - t; gchk(a);
+        if (t > worst) worst = t;
+        if (r != 0) rc_bad++; else n_ok++;
+        if (i == 0) first = a->cnt;
+        if (a->cnt < prev) back++;
+        prev = last = a->cnt;
+    }
+    if (rc_bad == 0 && last == 0 && worst < 3)
+        rep(LBL("t30pass_waitframe"), 0, V_NA, "WaitFrame returned 0 ten times in under 3 ms with the frame count at 0: this libimp has the T30 stub (the vendor control 0x8000162 is not sent, branch claude/t30-ae-waitframe b73014ec); nothing to prove");
+    else
+        rep(LBL("t30pass_waitframe"), rc_bad, (rc_bad == 0 && last > first && !back && worst < 2000 && flow()) ? V_PASS : V_FAIL,
+            "IMP_ISP_Tuning_WaitFrame: 10 waits (timeout 1000) ret 0 on %d, frame count %llu -> %llu (must rise, never fall: %d fell), slowest wait %ld ms (< 2000), frames flow", n_ok, first, last, back, worst);
+    /* 2: timeout path. timeout 1 = one jiffy, a frame end inside it is the exception (not deterministic): the rule is on the calls that did time out */
+    prev = last;
+    for (i = 0; i < 60; i++) {
+        int r;
+
+        a->timeout = 1; a->cnt = 0;
+        t = t30_ms(); r = IMP_ISP_Tuning_WaitFrame(a); t = t30_ms() - t; gchk(a);
+        if (r != 0) { n_to++; if (t > 500) to_bad++; }
+        if (a->cnt < prev) cnt_back++;
+        prev = a->cnt;
+    }
+    if (last == 0)
+        rep(LBL("t30pass_waitframe_timeout"), 0, V_NA, "stub library or no frame count: the timeout path cannot be told from a plain return");
+    else if (n_to == 0)
+        rep(LBL("t30pass_waitframe_timeout"), 0, V_NA, "60 waits with timeout 1 all saw a frame end: the timeout path could not be provoked (frame rate vs jiffy); not a failure");
+    else
+        rep(LBL("t30pass_waitframe_timeout"), to_bad + cnt_back, (!to_bad && !cnt_back && prev >= last && flow()) ? V_PASS : V_FAIL,
+            "IMP_ISP_Tuning_WaitFrame timeout path: of 60 waits with timeout 1 %d returned non-zero (timed out) and none took over 500 ms (%d did); the frame count is copied back also on a timeout (never below the earlier value: %d fell, now %llu >= %llu); frames flow",
+            n_to, to_bad, cnt_back, prev, last);
+    gfree(a);
+}
+
+static void t30pass_aecomp(void)
+{
+    static const int vals[2] = { 100, 140 };       /* header: recommended range 90..150 */
+    int o = 0, g = 0, i, r0, rs = 0, rg = 0, bad = 0, rr, rb, back = 0;
+    char got[64] = "";
+
+    if (!IMP_ISP_Tuning_SetAeComp || !IMP_ISP_Tuning_GetAeComp) {
+        rep(LBL("t30pass_aecomp"), 0, V_NA, "IMP_ISP_Tuning_Set/GetAeComp not exported by this libimp");
+        return;
+    }
+    r0 = IMP_ISP_Tuning_GetAeComp(&o);
+    for (i = 0; i < 2 && r0 == 0; i++) {
+        rs |= IMP_ISP_Tuning_SetAeComp(vals[i]);
+        g = -999; rg |= IMP_ISP_Tuning_GetAeComp(&g);
+        if (g != vals[i]) bad++;
+        snprintf(got + strlen(got), sizeof(got) - strlen(got), "%s%d->%d", i ? ", " : "", vals[i], g);
+    }
+    rr = IMP_ISP_Tuning_SetAeComp(o); g = -999; rb = IMP_ISP_Tuning_GetAeComp(&g); back = (g == o);
+    rep(LBL("t30pass_aecomp"), r0 | rs | rg | rr | rb, (r0 == 0 && rs == 0 && rg == 0 && rr == 0 && rb == 0 && !bad && back && flow()) ? V_PASS : V_FAIL,
+        "rt: Get/SetAeComp: original %d; 100 and 140 set (ret %d), read back [%s] (ret %d, %d wrong); original set back (ret %d), read %d; frames flow; brightness effect: case aecomp", o, rs, got, rg, bad, rr, g);
+}
+
+static void t30pass_antifog(void)
+{
+    static const int modes[4] = { ANTIFOG_STRONG, ANTIFOG_MEDIUM, ANTIFOG_WEAK, ANTIFOG_DISABLE };
+    int i, bad = 0, r;
+
+    if (!IMP_ISP_Tuning_SetAntiFogAttr) {
+        rep(LBL("t30pass_antifog"), 0, V_NA, "IMP_ISP_Tuning_SetAntiFogAttr not exported by this libimp");
+        return;
+    }
+    /* no getter in the T30 API.  The firmware takes a preset only while the mode is already on: the first call after DISABLE switches the mode on,
+     * the second one applies the preset, so each preset is sent twice (the apitest picture cases do the same) */
+    for (i = 0; i < 4; i++) {
+        r = IMP_ISP_Tuning_SetAntiFogAttr(modes[i]);
+        if (modes[i] != ANTIFOG_DISABLE) r |= IMP_ISP_Tuning_SetAntiFogAttr(modes[i]);
+        if (r != 0) bad++;
+        usleep(200000);
+    }
+    rep(LBL("t30pass_antifog"), bad, (bad == 0 && flow()) ? V_PASS : V_FAIL,
+        "rt: IMP_ISP_Tuning_SetAntiFogAttr (no getter): strong, medium, weak (each sent twice) and disable: %d of 4 returned non-zero (want 0); mode left DISABLE; frames flow; picture effect: picture cases antifog-*", bad);
+}
+
+static void t30pass_rawdrc(void)
+{
+    G(IMPISPDrcAttr, o); G(IMPISPDrcAttr, a); G(IMPISPDrcAttr, g);
+    static const struct { int mode; int str; const char *n; } t[] = {
+        { IMPISP_DRC_DISABLE, 0, "off" }, { IMPISP_DRC_MANUAL, 80, "manual 80" }, { IMPISP_DRC_MANUAL, 200, "manual 200" }, { IMPISP_DRC_UNLIMIT, 0, "unlimit" } };
+    int i, r0, bad = 0, sbad = 0, rs = 0, rg = 0, rr, rb;
+    char got[160] = "";
+
+    if (!IMP_ISP_Tuning_SetRawDRC || !IMP_ISP_Tuning_GetRawDRC) {
+        rep(LBL("t30pass_rawdrc"), 0, V_NA, "IMP_ISP_Tuning_Set/GetRawDRC not exported by this libimp");
+        gfree(o); gfree(a); gfree(g);
+        return;
+    }
+    r0 = IMP_ISP_Tuning_GetRawDRC(o); gchk(o);
+    for (i = 0; i < 4 && r0 == 0; i++) {
+        *a = *o; a->mode = (IMPISPDrcMode)t[i].mode; if (t[i].mode == IMPISP_DRC_MANUAL) a->drc_strength = (unsigned char)t[i].str;
+        rs |= IMP_ISP_Tuning_SetRawDRC(a); usleep(300000);
+        memset(g, 0, sizeof(*g)); rg |= IMP_ISP_Tuning_GetRawDRC(g); gchk(g);
+        if ((int)g->mode != t[i].mode) bad++;
+        if (t[i].mode == IMPISP_DRC_MANUAL && g->drc_strength != t[i].str) sbad++;
+        snprintf(got + strlen(got), sizeof(got) - strlen(got), "%s%s->mode %d str %u", i ? ", " : "", t[i].n, (int)g->mode, g->drc_strength);
+    }
+    rr = IMP_ISP_Tuning_SetRawDRC(o); usleep(300000);
+    memset(g, 0, sizeof(*g)); rb = IMP_ISP_Tuning_GetRawDRC(g); gchk(g);
+    rep(LBL("t30pass_rawdrc"), r0 | rs | rg | rr | rb, (r0 == 0 && rs == 0 && rg == 0 && rr == 0 && rb == 0 && !bad && g->mode == o->mode && flow()) ? V_PASS : V_FAIL,
+        "rt: Get/SetRawDRC modes: original mode %d str %u; off (5), manual (0) twice and unlimit (1) set (ret %d), read back (ret %d) [%s]: %d wrong modes; original set back (ret %d): mode %d; frames flow; picture effect: picture cases rawdrc-*",
+        (int)o->mode, o->drc_strength, rs, rg, got, bad, rr, (int)g->mode);
+    /* the manual strength is read from the Iridix register 0x3c4 (driver tctl get 0x80000a0), written by the firmware after the set */
+    if (r0 != 0 || rs != 0)
+        rep(LBL("t30pass_rawdrc_strength"), r0 | rs, V_FAIL, "Get/SetRawDRC failed (get %d, set %d)", r0, rs);
+    else if (sbad && getenv("APITEST_QEMU"))
+        rep(LBL("t30pass_rawdrc_strength"), 0, V_NA, "QEMU: the manual strength reads as the register default (%d wrong of 2); the read-back is the Iridix register 0x3c4 (tx_isp_t30_tuning_ctl.h tctl get 0x80000a0), which the QEMU ISP model does not carry from the set: the device decides", sbad);
+    else
+        rep(LBL("t30pass_rawdrc_strength"), sbad, sbad == 0 ? V_PASS : V_FAIL,
+            "rt: Get/SetRawDRC manual strength 80 and 200 read back as set: %d of 2 wrong [%s] (a wrong read-back with the picture changing is a driver gap, one without is the register not written)", sbad, got);
+    gfree(o); gfree(a); gfree(g);
+}
+
+static void t30pass_daynight(void)
+{
+    IMPISPRunningMode o = IMPISP_RUNNING_MODE_DAY, g;
+    int cyc, bad = 0, rs = 0, rg = 0, r0, rr, stay_bad = 0;
+    double cd = 0, cn = 0;
+    Fst f;
+
+    if (!IMP_ISP_Tuning_SetISPRunningMode || !IMP_ISP_Tuning_GetISPRunningMode) {
+        rep(LBL("t30pass_daynight"), 0, V_NA, "IMP_ISP_Tuning_Set/GetISPRunningMode not exported by this libimp");
+        return;
+    }
+    r0 = IMP_ISP_Tuning_GetISPRunningMode(&o);
+    /* force night, day, night, day: read back at once and again after 1.5 s (the frame-end day/night reload and the daemon must not flip it back) */
+    for (cyc = 0; cyc < 4 && r0 == 0; cyc++) {
+        IMPISPRunningMode want = (cyc & 1) ? IMPISP_RUNNING_MODE_DAY : IMPISP_RUNNING_MODE_NIGHT;
+
+        rs |= IMP_ISP_Tuning_SetISPRunningMode(want);
+        g = (IMPISPRunningMode)-1; rg |= IMP_ISP_Tuning_GetISPRunningMode(&g);
+        if (g != want) bad++;
+        f = fst(1500);
+        g = (IMPISPRunningMode)-1; rg |= IMP_ISP_Tuning_GetISPRunningMode(&g);
+        if (g != want) stay_bad++;
+        if (f.ok) { if (want == IMPISP_RUNNING_MODE_NIGHT) cn = f.c; else cd = f.c; }
+        if (!flow()) bad++;
+    }
+    rr = IMP_ISP_Tuning_SetISPRunningMode(o);
+    g = (IMPISPRunningMode)-1; rg |= IMP_ISP_Tuning_GetISPRunningMode(&g);
+    rep(LBL("t30pass_daynight"), r0 | rs | rg | rr, (r0 == 0 && rs == 0 && rg == 0 && rr == 0 && !bad && !stay_bad && g == o && flow()) ? V_PASS : V_FAIL,
+        "%sSet/GetISPRunningMode: original %d; 4 forced switches night/day/night/day: ret %d/%d, %d wrong read-backs at once, %d flipped back within 1.5 s, frames lost %s; original set back (ret %d), read %d; chroma day %.1f night %.1f (colour should drop at night: picture cases, not a rule here)",
+        RTMSG(0), (int)o, rs, rg, bad, stay_bad, bad ? "(counted in the wrong ones)" : "none", rr, (int)g, cd, cn);
+}
+
+/* weak: the stock libimp has no Get/SetCsc_Attr on T30 (OpenIMP extension, tuning control 0x80000a6) */
+extern int IMP_ISP_Tuning_SetCsc_Attr(void *) __attribute__((weak));
+extern int IMP_ISP_Tuning_GetCsc_Attr(void *) __attribute__((weak));
+static void t30pass_csc(void)
+{
+    /* mode + 9 coef + 2 offsets + 2 Y clip + 2 UV clip (T31 layout); mode 0..3 = BT601/BT709 full/TV presets, 4 = user matrix */
+    /* signs as the driver normalises them (row Y +++, U --+, V +--); no preset equals it (preset 0 is 0x132 0x259 0x75 ...), multiples of 4: Q10 -> Q8 table is exact */
+    static const int32_t user[15] = { 0x100, 0x200, 0x80, -0x90, -0x150, 0x1f0, 0x1f0, -0x1a0, -0x50, 0x00, 0x80, 0x00, 0xff, 0x00, 0xff };
+    int32_t o[16], a[16], g[16];
+    int m, rs = 0, rg = 0, bad = 0, rr, r0, refused = 0, coef_bad = 0;
+
+    if (!IMP_ISP_Tuning_SetCsc_Attr || !IMP_ISP_Tuning_GetCsc_Attr) {
+        rep(LBL("t30pass_csc"), 0, V_NA, "this libimp has no IMP_ISP_Tuning_Get/SetCsc_Attr (OpenIMP extension; the vendor T30 libimp 1.0.5 has none)");
+        return;
+    }
+    memset(o, 0, sizeof(o));
+    r0 = IMP_ISP_Tuning_GetCsc_Attr(o);     /* -1 until a CSC was set once (driver: "vendor behaviour until a preset was set"): not a failure, the restore is then mode 0 = BT601 full */
+    for (m = 0; m < 5; m++) {
+        int r;
+
+        memset(a, 0, sizeof(a)); a[0] = m;
+        if (m == 4) memcpy(&a[1], user, sizeof(user));
+        r = IMP_ISP_Tuning_SetCsc_Attr(a);
+        if (r != 0) { refused++; continue; }
+        usleep(300000);
+        memset(g, 0, sizeof(g)); rg |= IMP_ISP_Tuning_GetCsc_Attr(g);
+        if (g[0] != m) bad++;
+        if (m == 4 && memcmp(&g[1], user, 15 * sizeof(int32_t)) != 0) coef_bad++;
+    }
+    if (refused == 5) {
+        rep(LBL("t30pass_csc"), -1, V_NA, "the driver refuses the CSC control for all five modes (stock tx-isp-t30 rejects 0x80000a6 with -1): needs the open T30 driver with the CSC presets");
+        return;
+    }
+    rr = IMP_ISP_Tuning_SetCsc_Attr(o);
+    rep(LBL("t30pass_csc"), rs | rg | rr | refused, (refused == 0 && rg == 0 && rr == 0 && !bad && !coef_bad && flow()) ? V_PASS : V_FAIL,
+        "rt: Get/SetCsc_Attr: first Get %d (-1 = no CSC set yet, accepted), original mode %d; modes 0..4 set (%d refused), mode read back wrong on %d, user matrix (mode 4, 9 coefficients + offsets + clips) read back wrong: %d; original (or mode 0 when none) set back (ret %d); frames flow; picture effect: picture cases csc-*",
+        r0, o[0], refused, bad, coef_bad, rr);
+}
+
+static void cs_t30pass(void)
+{
+    t30pass_inttime();
+    t30pass_waitframe();
+    t30pass_aecomp();
+    t30pass_antifog();
+    t30pass_rawdrc();
+    t30pass_daynight();
+}
+static void cs_t30pass_csc(void) { t30pass_csc(); }
+#else
+static void cs_t30pass(void) {}
+static void cs_t30pass_csc(void) {}
+#endif
+
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass", "maskblock_t23", "ispcover1_t23", "secprobe_t23", "drawblock_t23" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass", "t30pass", "t30pass_csc", "maskblock_t23", "ispcover1_t23", "secprobe_t23", "drawblock_t23" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5914,6 +6179,8 @@ void t_cases(void)
     if (cs_on("shading_t31")) cs_shading_t31(); wdog("cases", 90);
     if (cs_on("meshscale")) cs_meshscale(); wdog("cases", 90);
     if (cs_on("t41pass")) cs_t41pass(); wdog("cases", 60);
+    if (cs_on("t30pass")) cs_t30pass(); wdog("cases", 120);
+    if (getenv("APITEST_CASES") && cs_on("t30pass_csc")) cs_t30pass_csc(); wdog("cases", 60);   /* explicit only: OpenIMP extension */
     if (cs_on("override_t31")) cs_override_t31(); wdog("cases", 90);
     if (cs_on("encgrp_t31")) cs_encgrp_t31(); wdog("cases", 120);
     if (cs_on("osdhelp_t31")) cs_osdhelp_t31(); wdog("cases", 60);
