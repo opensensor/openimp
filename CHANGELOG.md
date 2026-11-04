@@ -14,6 +14,12 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - `IMGFX_DEPTH_LATE=1` sets the frame depth after `EnableChn` (diagnosis of the vendor frame path); `NO PICTURE` cases log the last `GetFrame` return.
 - QEMU T30: hook and register reads checked (Apical core `0x13380000`: `0x40` = `0x33242193`, white balance gains and colour matrix read back). Usage in `tools/apitest/README.md`.
 
+## 2026-11-04, T30: device evidence for the ISP mirror (T30X picture run b20, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-picture-fixes` `4fee8921` (horizontal mirror applied on frame end as the vendor) and OpenIMP next at run time, no flash): `ISP_Tuning_Get/SetISPHflip`, `Get/SetISPVflip` and `Get/SetISPHVflip` PASS with the picture mirrored as requested (`qemu` -> `dev`); the vendor stack gives the same result in the same boot. T30 API 164/350 -> 170/350 works.
+- The vendor stack now returns frames to the picture run when the frame depth is set after `EnableChn` (`IMGFX_DEPTH_LATE=1`), so the T30 picture cases have vendor reference pictures from b20 on.
+- Not counted from this run: the cases after the manual white balance case, because the open AWB did not recover from the manual red factor of 4 (driver fix pending device proof).
+
 ## 2026-11-04 (afternoon), docs round 12: findings #205 and #206, fleet image and QEMU notes, CBR default confirmed
 
 - Open findings from the API evidence passes: #206 (`SU_Base_Shutdown`: the vendor libsysutils of T10 to T41 sends signal 17 = SIGUSR2 on MIPS, busybox powers off; the OpenIMP default keeps its reboot behaviour until the issue changes it, `OPENIMP_SU_SHUTDOWN=poweroff` is vendor-equal; the call is never made on a camera) and #205 (T21 `IMP_FrameSource_SetFrameDepth` sends the ioctl 0x800456c5, which the T21 frame-channel driver does not know: one kernel stack dump per call, the call still returns 0).

@@ -2422,7 +2422,7 @@
     "T20": "dev",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "host",
+    "T30": "dev",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2432,7 +2432,8 @@
    "note": "T10/T20 3.12.0: apitest PASS on T10 and T20 (set both flips, read back, restore). The vendor sends one module-control word (0x80000e2 through the 0xc00c56c6 ioctl), which the open T20 driver does not serve; OpenIMP uses the ISPHflip/ISPVflip pair (V4L2 flip controls) instead; T30 1.0.5 (2026-10-10): the same pair of flip controls as T20 (the vendor sends the module-control word 0x80000e2, which the open drivers do not serve); host test with a fake tuning ioctl, no T30 device",
    "ref": {
     "T10": "apitest t10wrench 2026-11-03 .31",
-    "T20": "apitest agg47 2026-10-26 .107"
+    "T20": "apitest agg47 2026-10-26 .107",
+    "T30": "apitest t30b20 2026-11-04 .231"
    }
   },
   "ISP_Tuning_Get/SetISPHflip": {
@@ -2442,7 +2443,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2482,7 +2483,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b20 2026-11-04 .231"
    }
   },
   "ISP_Tuning_Get/SetISPRunningMode": {
@@ -2570,7 +2571,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2610,7 +2611,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b20 2026-11-04 .231"
    }
   },
   "ISP_Tuning_Get/SetIntegrationTime": {
