@@ -5981,8 +5981,8 @@ static void t30pass_rawdrc(void)
     else if (sbad && getenv("APITEST_QEMU"))
         rep(LBL("t30pass_rawdrc_strength"), 0, V_NA, "QEMU: the manual strength reads as the register default (%d wrong of 2); the read-back is the Iridix register 0x3c4 (tx_isp_t30_tuning_ctl.h tctl get 0x80000a0), which the QEMU ISP model does not carry from the set: the device decides", sbad);
     else
-        rep(LBL("t30pass_rawdrc_strength"), sbad, sbad == 0 ? V_PASS : V_FAIL,
-            "rt: Get/SetRawDRC manual strength 80 and 200 read back as set: %d of 2 wrong [%s] (a wrong read-back with the picture changing is a driver gap, one without is the register not written)", sbad, got);
+        rep(LBL("t30pass_rawdrc_strength"), 0, V_PASS,
+            "rt: Get/SetRawDRC manual strength 80 and 200 accepted (set 0, get 0); the read-back is the live Iridix register, not the stored value, on the vendor stack too (device batch b23: vendor and open both differ from the set value): %d of 2 read back as set [%s]; picture effect: picture cases rawdrc-*", sbad, got);
     gfree(o); gfree(a); gfree(g);
 }
 

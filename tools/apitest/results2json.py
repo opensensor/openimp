@@ -732,6 +732,15 @@ def load_keys():
     return list(ev["functions"])
 
 
+T30PASS_ALIAS = {
+    "t30pass_inttime": ["ISP_Tuning_Get/SetIntegrationTime"],
+    "t30pass_waitframe": ["ISP_Tuning_WaitFrame"], "t30pass_waitframe_timeout": ["ISP_Tuning_WaitFrame"],
+    "t30pass_aecomp": ["ISP_Tuning_Get/SetAeComp"], "t30pass_antifog": ["ISP_Tuning_SetAntiFogAttr"],
+    "t30pass_rawdrc": ["ISP_Tuning_GetRawDRC", "ISP_Tuning_SetRawDRC"],
+    "t30pass_rawdrc_strength": ["ISP_Tuning_GetRawDRC", "ISP_Tuning_SetRawDRC"],
+    "t30pass_daynight": ["ISP_Tuning_Get/SetISPRunningMode"], "t30pass_csc": ["ISP_Tuning_Get/SetCsc_Attr"],
+}
+
 PAIR_ALIAS = {"ISP_Tuning_Get/SetHVFLIP": ["ISP_Tuning_GetHVFlip", "ISP_Tuning_SetHVFLIP"]}      # the vendor header spells the pair differently
 
 
@@ -756,6 +765,14 @@ class Acc:
         self.unmapped = []
 
     def key_of(self, name):
+        if name in T30PASS_ALIAS:                       # t30pass_<item> are labels, not function names (at_cases.c)
+            out = []
+            for x in T30PASS_ALIAS[name]:
+                if x in self.keys and "Get/Set" in x:
+                    out += [(x, m) for m in members(x)]
+                elif x in self.m2k:
+                    out.append((self.m2k[x], x))
+            return out, None
         n = re.sub(r"^IMP_", "", name)
         n = re.sub(r"\([^)]*\)$", "", n)               # "Encoder_Get/SetX(CBR)" -> variant of the key
         if n in self.keys and "Get/Set" in n:           # a whole pair reported at once

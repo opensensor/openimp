@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30 apitest: `t30pass_*` lines map to matrix cells; rawdrc_strength expectation (no cell moved)
+
+- `tools/apitest/results2json.py` maps the nine `t30pass_<item>` labels (device batch b23: they were reported as unmapped) to the T30 cells (IntegrationTime, WaitFrame, AeComp, AntiFog, RawDRC, ISPRunningMode, Csc_Attr). They are `rt:` read-back lines, so they merge as RT, never as a picture PASS.
+- `t30pass_rawdrc_strength`: the manual-strength read-back is the live Iridix register, on the vendor stack too (b23: both stacks differ from the set value), so the case now checks that set and get succeed and reports the read-back in the note instead of failing it.
+
 ## 2026-11-04, T21: `IMP_FrameSource_SetFrameDepth` no longer sends ioctl 0x800456c5 (#205; no cell moved)
 
 - The vendor libimp 1.0.33 (T21) `IMP_FrameSource_SetFrameDepth` (0x5d734) only builds the depth lists in userspace; the constant 0x800456c5 occurs once in the whole library, in `IMP_FrameSource_EnableChn` (0x5f814, bank count after REQBUFS when a delay FIFO is set). tx-isp-t21 rejects the command ("Unsupported frame-channel ioctl command", kernel stack dump per call). `src/framesource/framesource_tseries.c` now skips the ioctl on T21 like on T20.
