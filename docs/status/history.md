@@ -10,6 +10,7 @@ See also: the section "API coverage per function" below (generated: vendor IMP/S
 Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx-isp-*.ko + Ingenic libimp.
 
 <!-- part: summary -->
+- **Update 2026-11-04, T30 lab camera batch b19 (API evidence, no symbol moved; T30 API 155/350 -> 164/350 works):** `ISP_Tuning_Get/SetContrast`, `Get/SetGamma`, `Get/SetHiLightDepress`, `Get/SetSharpness` and `SetSinterStrength` `qemu` -> `dev` with a picture effect (open-tx-isp next `e469866f`, the stock streamer ran once on the open module first so the image settings start at the stock values). RawDRC reaches the driver on the device (DISABLE darkens the picture), read-back like the vendor stack; cell unchanged.
 - **Update 2026-11-04, T30 lab camera batch b18 (API evidence, no symbol moved; T30 API 153/350 -> 155/350 works):** `ISP_Tuning_Get/SetBrightness` `qemu` -> `dev` (picture luma 26 base, 0 low, 231 high). The other picture cases of the open-stack run are not counted: from `contrast-low` on every picture was black (test artefact: fresh module without the streamer, brightness cache 0 restored after `brightness-high`; the vendor kernel also starts zeroed).
 
 - **Update 2026-11-04, T30 RawDRC to the driver (library + open-tx-isp, no cell moved yet):** `SetRawDRC`/`GetRawDRC` on T30 send the mode (0x8000168) and the attribute (0x80000a0) like the vendor 1.0.5 instead of keeping them in the library; QEMU set 0 and register read-back, device test pending.

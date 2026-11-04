@@ -1917,7 +1917,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -1984,7 +1984,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T41": "apitest agg47 2026-10-26 .34",
     "T21": "apitest rc3-cases 2026-10-26 .24",
-    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)",
+    "T30": "apitest t30b19 2026-11-04 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -2169,7 +2169,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2212,7 +2212,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T20": "apitest issue-121 2026-10-27 .107 (open-tx-isp b4d8eae0): Get returns the active curve (128/129 points, was all 0); same curve written back: luma unchanged; x^0.3 vs linear Y 131.6 vs 42.3",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b19 2026-11-04 .231"
    }
   },
   "ISP_Tuning_Get/SetGammaAttr": {
@@ -2318,7 +2318,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2364,7 +2364,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T31": "apitest agg47-cases 2026-10-26 .26",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b19 2026-11-04 .231"
    }
   },
   "ISP_Tuning_Get/SetISPCSCAttr": {
@@ -3244,7 +3244,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "apitest t30b18 2026-11-04 .231"
+    "T30": "apitest t30b19 2026-11-04 .231"
    }
   },
   "ISP_Tuning_GetEVAttr": {
@@ -3550,7 +3550,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -3607,7 +3607,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "QEMU T30 2026-10-31 (no camera), see note"
+    "T30": "apitest t30b19 2026-11-04 .231"
    }
   },
   "ISP_Tuning_GetTotalGain": {
@@ -3822,7 +3822,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "apitest t30b18 2026-11-04 .231",
+    "T30": "apitest t30b19 2026-11-04 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -4223,7 +4223,7 @@
     "T20": "dev",
     "T21": "no-op",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -4290,7 +4290,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "QEMU T30 2026-10-31 (no camera), see note",
+    "T30": "apitest t30b19 2026-11-04 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -4301,7 +4301,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4346,7 +4346,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177",
+    "T30": "apitest t30b19 2026-11-04 .231",
     "T20": "apitest t20pass 2026-11-04 .107"
    }
   },

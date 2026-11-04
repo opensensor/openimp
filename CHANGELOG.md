@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, T30: device evidence for contrast, gamma, highlight, sharpness, sinter (T30X picture run b19, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp next `e469866f` and OpenIMP next `bf6ca2bb` at run time, no flash; the stock streamer ran once on the open module before the picture run so the image settings start at the stock values): PASS with a picture effect, `qemu` -> `dev`: `ISP_Tuning_Get/SetContrast` (detail 1.48 at low vs 5.67 base), `ISP_Tuning_Get/SetGamma` (steep curve, luma 130.5 vs 118.1, curve read back), `ISP_Tuning_Get/SetHiLightDepress` (luma 118.3 at 0, 105.0 at 255), `ISP_Tuning_Get/SetSharpness` (detail 11.63 at high), `ISP_Tuning_SetSinterStrength` (detail 38.15 at 0 vs 5.64 at 255). Brightness confirmed again (luma 118 base, 0 low, 250 high). T30 API 155/350 -> 164/350 works.
+- RawDRC on the device: the driver now acts on it (DISABLE darkens the picture, luma 48 vs 118) and Get reads the driver registers like the vendor stack (strength 70 here, vendor 56 in b18); manual 255 is not read back as 255 on either stack, so the cell stays as it is.
+- Frame source smoke on the same boot: PASS 39 / FAIL 0, no kernel oops.
+
 ## 2026-11-04, T30: device evidence for brightness (T30X picture run b18, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp next `1c3c397b` and OpenIMP at run time, no flash): `ISP_Tuning_Get/SetBrightness` PASS with a picture effect (`qemu` -> `dev`; luma 26 at the base, 0 at the low and 231 at the high setting). T30 API 153/350 -> 155/350 works.
