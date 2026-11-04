@@ -1712,6 +1712,7 @@ static int snap(const char *path, int skip)
     }
     return r;
 }
+static int g_gf_ret;
 static int snap1(const char *path, int skip)
 {
     int got = 0, tries;
@@ -1721,7 +1722,7 @@ static int snap1(const char *path, int skip)
     for (tries = 0; tries < 30 && !got; tries++) {
         IMPFrameInfo *fr = NULL;
 
-        if (IMP_FrameSource_GetFrame(g_chn, &fr) < 0 || !fr) {
+        if ((g_gf_ret = IMP_FrameSource_GetFrame(g_chn, &fr)) < 0 || !fr) {
             usleep(100000);
             continue;
         }
@@ -1750,6 +1751,17 @@ static int snap1(const char *path, int skip)
         IMP_FrameSource_ReleaseFrame(g_chn, fr);
     }
     return got ? 0 : -1;
+}
+
+/* IMGFX_HOOK=cmd: run cmd after each case settled (IMGFX_CASE = case name), e.g. a register dump */
+static void hook(const char *name)
+{
+    const char *h = getenv("IMGFX_HOOK");
+
+    if (!h || !*h) return;
+    setenv("IMGFX_CASE", name, 1);
+    fflush(stdout);
+    if (system(h) < 0) say("[E] hook failed\n");
 }
 
 static void settle(int ms)
@@ -1840,9 +1852,15 @@ int picture_main(int argc, char **argv)
     fs1.picWidth = SUB_W; fs1.picHeight = SUB_H;
     fs1.scaler.enable = 1; fs1.scaler.outwidth = SUB_W; fs1.scaler.outheight = SUB_H;
     if (IMP_FrameSource_CreateChn(0, &fs0) < 0 || IMP_FrameSource_CreateChn(1, &fs1) < 0) { say("[E] FS_CreateChn failed\n"); return 1; }
-    IMP_FrameSource_SetFrameDepth(1, 1);
-    if (g_chn == 0) IMP_FrameSource_SetFrameDepth(0, 1);
+    if (!getenv("IMGFX_DEPTH_LATE")) {
+        IMP_FrameSource_SetFrameDepth(1, 1);
+        if (g_chn == 0) IMP_FrameSource_SetFrameDepth(0, 1);
+    }
     if (IMP_FrameSource_EnableChn(0) < 0 || IMP_FrameSource_EnableChn(1) < 0) { say("[E] FS_EnableChn failed\n"); return 1; }
+    if (getenv("IMGFX_DEPTH_LATE")) {   /* vendor diag: frame depth after EnableChn */
+        int d1 = IMP_FrameSource_SetFrameDepth(1, 1), d0 = g_chn == 0 ? IMP_FrameSource_SetFrameDepth(0, 1) : 0;
+        say("[I] SetFrameDepth after EnableChn: ch1 %d ch0 %d\n", d1, d0);
+    }
     sleep(3);   /* AE/AWB settle */
     if (getenv("IMGFX_SAT") && HAVE(IMP_ISP_Tuning_SetSaturation)) {   /* saturation for the whole run (colour cases) */
         int sr = SETU8(IMP_ISP_Tuning_SetSaturation, atoi(getenv("IMGFX_SAT")));
@@ -1863,8 +1881,10 @@ int picture_main(int argc, char **argv)
             g_cur = c->name; alarm(90);
             snprintf(path, sizeof(path), "%s/%02d-%s.nv12", outdir, idx, c->name);
             settle(0);
+            hook(c->name);
             r = snap(path, 0);
             say("[R] %s set=0 get=%s %s\n", c->name, r ? "NO PICTURE" : "picture", g_st);
+            if (r) say("[I] GetFrame(%d) last ret %d\n", g_chn, g_gf_ret);
             if (r) rc = 1;
             ran++;
             continue;
@@ -1880,6 +1900,7 @@ int picture_main(int argc, char **argv)
         nset++;
         snprintf(path, sizeof(path), "%s/%02d-%s.nv12", outdir, idx, c->name);
         settle(c->settle_ms);
+        hook(c->name);
         tmo = snap(path, 0);
         say("[R] %s set=%d get=%s%s | %s\n", c->name, r, info, tmo ? " [NO PICTURE]" : "", g_st);
         if (tmo) rc = 1;
