@@ -1466,6 +1466,14 @@ static void cs_scalerlv_old(void)
         r3 = IMP_ISP_Tuning_SetScalerLv(a); back = recover(base.y, &ms);
         {
             int eff = lo.ok && hi.ok && dabs(lo.h - hi.h) > 0.05;
+#ifdef PLATFORM_T23
+            printf("[T] scalerlv_old rets %d %d %d\n", r1, r2, r3);
+            if (r1 == -1 && r2 == -1 && r3 == -1 && ms >= 0 && flow()) {      /* control 0x80000e9: the stock tx-isp-t23.ko has no handler either (-EINVAL) */
+                rep(FN(IMP_ISP_Tuning_SetScalerLv), r1, V_NA, "answers -1 on all three levels as the stock T23 module does (no handler for control 0x80000e9); picture alive (Y %.1f)", back.y);
+                gfree(a);
+                return;
+            }
+#endif
             rep(FN(IMP_ISP_Tuning_SetScalerLv), r1 | r2 | r3, (r1 == 0 && r2 == 0 && r3 == 0 && lo.ok && hi.ok && lo.y > 5 && hi.y > 5 && ms >= 0 && flow()) ? V_PASS : V_FAIL,
                 "%sch1 level 0/128/64 accepted, detail H %.3f at 0 vs %.3f at 128, Y %.1f/%.1f, picture %s alive (Y %.1f)", RTMSG(eff), lo.h, hi.h, lo.y, hi.y, ms >= 0 ? "" : "NOT", back.y);
         }
@@ -3883,6 +3891,42 @@ static void cs_ispcover_t23(void)
     }
 }
 
+/* single-camera forms IMP_OSD_SetRgnAttr_ISP / IMP_OSD_GetRgnAttr_ISP (sensor 0, no sensor number): ISP cover block on ch1 as in
+ * cs_ispcover_t23, but through the calls without MultiCamera */
+static void cs_ispcover1_t23(void)
+{
+    NEED(IMP_OSD_SetRgnAttr_ISP) NEED(IMP_OSD_GetRgnAttr_ISP) {
+        G(IMPOSDRgnAttr, a); G(IMPOSDRgnAttr, g);
+        int x = SUB_W / 4, y = SUB_H / 4, w = SUB_W / 4, h = SUB_H / 4, show = -1, r1, r2, r3, rnul;
+        double base, on, off;
+
+        base = reg_luma(1, x + 4, y + 4, x + w - 4, y + h - 4);
+        a->type = OSD_REG_ISP_COVER;
+        a->osdispdraw.stCoverAttr.chx = 1; a->osdispdraw.stCoverAttr.pinum = 0; a->osdispdraw.stCoverAttr.mask_en = 1;
+        a->osdispdraw.stCoverAttr.mask_pos_left = x; a->osdispdraw.stCoverAttr.mask_pos_top = y;
+        a->osdispdraw.stCoverAttr.mask_width = w; a->osdispdraw.stCoverAttr.mask_height = h;
+        a->osdispdraw.stCoverAttr.mask_type = IMPISP_MASK_TYPE_YUV;
+        a->osdispdraw.stCoverAttr.mask_value.ayuv.y_value = base < 128 ? 235 : 16;
+        a->osdispdraw.stCoverAttr.mask_value.ayuv.u_value = 128; a->osdispdraw.stCoverAttr.mask_value.ayuv.v_value = 128;
+        r1 = IMP_OSD_SetRgnAttr_ISP(a, 1);
+        on = reg_luma(1, x + 4, y + 4, x + w - 4, y + h - 4);
+        g->osdispdraw.stCoverAttr.chx = 1; g->osdispdraw.stCoverAttr.pinum = 0;
+        r2 = IMP_OSD_GetRgnAttr_ISP(g, &show);
+        a->osdispdraw.stCoverAttr.mask_en = 0;
+        r3 = IMP_OSD_SetRgnAttr_ISP(a, 0);
+        off = reg_luma(1, x + 4, y + 4, x + w - 4, y + h - 4);
+        rnul = IMP_OSD_SetRgnAttr_ISP(NULL, 0);
+        rep(FN(IMP_OSD_SetRgnAttr_ISP), r1 | r3, (r1 == 0 && r3 == 0 && dabs(on - base) > 40 && dabs(off - base) < 20 && rnul != 0 && flow()) ? V_PASS : V_FAIL,
+            "single-camera call, ch1 cover %dx%d at (%d,%d) Y %u: luma %.1f -> %.1f, disabled %.1f; NULL -> %d%s", w, h, x, y,
+            a->osdispdraw.stCoverAttr.mask_value.ayuv.y_value, base, on, off, rnul, t23_drv_info());
+        rep(FN(IMP_OSD_GetRgnAttr_ISP), r2, (r2 == 0 && show == 1 && g->osdispdraw.stCoverAttr.mask_width == w && g->osdispdraw.stCoverAttr.mask_height == h
+            && g->osdispdraw.stCoverAttr.mask_pos_left == x && g->osdispdraw.stCoverAttr.mask_pos_top == y) ? V_PASS : V_FAIL,
+            "while shown: show %d %ux%u at (%u,%u)", show, g->osdispdraw.stCoverAttr.mask_width, g->osdispdraw.stCoverAttr.mask_height,
+            g->osdispdraw.stCoverAttr.mask_pos_left, g->osdispdraw.stCoverAttr.mask_pos_top);
+        gfree(a); gfree(g);
+    }
+}
+
 /* ISP-drawn window frame (OSD_REG_ISP_LINE_RECT / IMP_ISP_DRAW_WIND) through the multi-camera call: the top edge band changes,
  * the inside does not, disabled -> back.  Measured on ch0 (draw coordinates) and on ch1 at half scale. */
 static void cs_ispdraw_t23(void)
@@ -3918,6 +3962,16 @@ static void cs_ispdraw_t23(void)
     }
 }
 
+/* ISP flip bits of the open T23 driver (module parameter msca_flip_state: 4 = ISP mirror, 8 = ISP flip), 0 when the parameter is absent */
+static int t23_isp_flip_bits(void)
+{
+    FILE *f = fopen("/sys/module/tx_isp_t23/parameters/msca_flip_state", "r");
+    int v = 0;
+
+    if (f) { if (fscanf(f, "%d", &v) != 1) v = 0; fclose(f); }
+    return v & 12;
+}
+
 /* ISP picture region on sensor 0 / main channel: shown white, then UpdateRgnAttrData_ISP with black bytes of the same size */
 static void cs_isppicupd_t23(void)
 {
@@ -3927,11 +3981,14 @@ static void cs_isppicupd_t23(void)
         T23IspPic a;
         int hdl = -1, x = 256, y = 128, i, r1 = -1, r2 = -1, r3 = -1, rbad, rnul;
         double base = 0, on = 0, upd = 0;
+        int fl = t23_isp_flip_bits(), mx = x, my = y;
 
         if (!white || !black) { rep(FN(IMP_OSD_UpdateRgnAttrData_ISP), -1, V_SKIP, "no memory"); free(white); free(black); return; }
+        if (fl & 4) mx = g_sw - x - PW;           /* ISP mirror (msca_flip_state bits 2/3): the picture is placed before it, so it appears at the mirrored position */
+        if (fl & 8) my = g_sh - y - PH;
         for (i = 0; i < PW * PH; i++) { white[i] = 0xffffffffU; black[i] = 0xff000000U; }
         if (IMP_OSD_Init_ISP) IMP_OSD_Init_ISP();
-        base = reg_luma(0, x + 4, y + 4, x + PW - 4, y + PH - 4);
+        base = reg_luma(0, mx + 4, my + 4, mx + PW - 4, my + PH - 4);
         hdl = IMP_OSD_CreateRgn_ISP(0, NULL);
         memset(&a, 0, sizeof(a));
         a.type = 1; a.chx = 0; a.sensornum = 0;
@@ -3941,10 +3998,10 @@ static void cs_isppicupd_t23(void)
         a.pic.osd_width = PW; a.pic.osd_height = PH; a.pic.osd_image = (char *)white; a.pic.osd_stride = PW * 4;
         if (hdl >= 0) {
             r1 = IMP_OSD_SetRgnAttr_PicISP(0, hdl, &a) | IMP_OSD_ShowRgn_ISP(0, hdl, 1);
-            on = reg_luma(0, x + 4, y + 4, x + PW - 4, y + PH - 4);
+            on = reg_luma(0, mx + 4, my + 4, mx + PW - 4, my + PH - 4);
             a.pic.osd_image = (char *)black;
             r2 = IMP_OSD_UpdateRgnAttrData_ISP(0, hdl, &a);
-            upd = reg_luma(0, x + 4, y + 4, x + PW - 4, y + PH - 4);
+            upd = reg_luma(0, mx + 4, my + 4, mx + PW - 4, my + PH - 4);
             a.pic.osd_height = PH / 2;
             rbad = IMP_OSD_UpdateRgnAttrData_ISP(0, hdl, &a);          /* the size must stay the same */
             a.pic.osd_height = PH;
@@ -3953,15 +4010,130 @@ static void cs_isppicupd_t23(void)
             rbad = -2;
         }
         rnul = IMP_OSD_UpdateRgnAttrData_ISP(0, 7, NULL);
+        rep(FN(IMP_OSD_SetRgnAttr_PicISP), r1, (hdl >= 0 && r1 == 0 && on > base + 30) ? V_PASS : V_FAIL,
+            "handle %d white %dx%d requested at (%d,%d), ISP flip bits %d -> measured at (%d,%d): luma %.1f -> %.1f", hdl, PW, PH, x, y, fl, mx, my, base, on);
         rep(FN(IMP_OSD_UpdateRgnAttrData_ISP), r2, (hdl >= 0 && r1 == 0 && r2 == 0 && r3 == 0 && on > base + 30 && upd < on - 60 && rbad == -1 && rnul == -1 && flow()) ? V_PASS : V_FAIL,
-            "handle %d white %dx%d at (%d,%d): luma %.1f -> %.1f; updated to black: %.1f; other size -> %d, NULL -> %d%s", hdl, PW, PH, x, y, base, on, upd, rbad, rnul, t23_drv_info());
+            "handle %d white %dx%d at (%d,%d) (ISP flip bits %d -> measured at (%d,%d)): luma %.1f -> %.1f; updated to black: %.1f; other size -> %d, NULL -> %d%s", hdl, PW, PH, x, y, fl, mx, my, base, on, upd, rbad, rnul, t23_drv_info());
         free(white); free(black);
     }
 }
 #else
 static void cs_ispcover_t23(void) {}
+static void cs_ispcover1_t23(void) {}
 static void cs_ispdraw_t23(void) {}
 static void cs_isppicupd_t23(void) {}
+#endif
+
+/* ISP_Tuning_Set/GetMaskBlock on T23 (control 0x8000183, one block of one scaler channel, no sensor number): a solid white block is
+ * set on ch1 block 0 and on ch0 block 1, read back with Get, the luma inside is measured (stored only, or also in the picture?) and
+ * the blocks are switched off again.  The result text says which; the matrix cell notes quote it. */
+#if defined(PLATFORM_T23) && HAS_IMP_ISP_Tuning_SetMaskBlock && HAS_IMP_ISP_Tuning_GetMaskBlock
+static void cs_maskblock_t23(void)
+{
+    NEED(IMP_ISP_Tuning_SetMaskBlock) NEED(IMP_ISP_Tuning_GetMaskBlock) {
+        struct { int ch, pi; int x, y, w, h; double base, on, off; int rs, rg, rg_ok; unsigned ge, gx, gy, gw, gh; } t[2] = {
+            { 1, 0, 160, 90, 320, 180, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0 },
+            { 0, 1, 320, 180, 640, 360, 0, 0, 0, -1, -1, 0, 0, 0, 0, 0, 0 } };
+        int i, r_off = 0, rbad, stored = 0, shown = 0;
+
+        for (i = 0; i < 2; i++) t[i].base = reg_luma(t[i].ch, t[i].x + 8, t[i].y + 8, t[i].x + t[i].w - 8, t[i].y + t[i].h - 8);
+        for (i = 0; i < 2; i++) {
+            IMPISPMaskBlockAttr a, g;
+
+            memset(&a, 0, sizeof(a));
+            a.chx = (uint8_t)t[i].ch; a.pinum = (uint8_t)t[i].pi; a.mask_en = 1;
+            a.mask_pos_left = (uint16_t)t[i].x; a.mask_pos_top = (uint16_t)t[i].y;
+            a.mask_width = (uint16_t)t[i].w; a.mask_height = (uint16_t)t[i].h;
+            a.mask_type = IMPISP_MASK_TYPE_RGB;
+            a.mask_value.argb.r_value = 255; a.mask_value.argb.g_value = 255; a.mask_value.argb.b_value = 255;
+            t[i].rs = IMP_ISP_Tuning_SetMaskBlock(&a);
+            memset(&g, 0, sizeof(g)); g.chx = a.chx; g.pinum = a.pinum;
+            t[i].rg = IMP_ISP_Tuning_GetMaskBlock(&g);
+            t[i].rg_ok = (t[i].rg == 0 && g.mask_pos_left == a.mask_pos_left && g.mask_pos_top == a.mask_pos_top &&
+                          g.mask_width == a.mask_width && g.mask_height == a.mask_height && g.mask_type == a.mask_type);
+            t[i].ge = g.mask_en; t[i].gx = g.mask_pos_left; t[i].gy = g.mask_pos_top; t[i].gw = g.mask_width; t[i].gh = g.mask_height;
+            stored += t[i].rg_ok;
+            t[i].on = reg_luma(t[i].ch, t[i].x + 8, t[i].y + 8, t[i].x + t[i].w - 8, t[i].y + t[i].h - 8);
+            if (t[i].on - t[i].base > 40) shown++;
+        }
+        for (i = 0; i < 2; i++) {
+            IMPISPMaskBlockAttr a;
+
+            memset(&a, 0, sizeof(a)); a.chx = (uint8_t)t[i].ch; a.pinum = (uint8_t)t[i].pi; a.mask_en = 0;
+            r_off |= IMP_ISP_Tuning_SetMaskBlock(&a);
+            t[i].off = reg_luma(t[i].ch, t[i].x + 8, t[i].y + 8, t[i].x + t[i].w - 8, t[i].y + t[i].h - 8);
+        }
+        {
+            IMPISPMaskBlockAttr bad;
+
+            memset(&bad, 0, sizeof(bad)); bad.chx = 3; bad.pinum = 0; bad.mask_en = 0;
+            rbad = IMP_ISP_Tuning_SetMaskBlock(&bad);                  /* channel above 2: the driver's answer, recorded */
+        }
+        rep(FN(IMP_ISP_Tuning_SetMaskBlock), t[0].rs | t[1].rs | r_off,
+            (t[0].rs == 0 && t[1].rs == 0 && r_off == 0 && flow()) ? V_PASS : V_FAIL,
+            "ch1 block0 white %dx%d luma %.1f -> %.1f (off %.1f); ch0 block1 white %dx%d luma %.1f -> %.1f (off %.1f): %s; chx 3 -> %d%s",
+            t[0].w, t[0].h, t[0].base, t[0].on, t[0].off, t[1].w, t[1].h, t[1].base, t[1].on, t[1].off,
+            shown == 2 ? "the block is drawn into the picture on both channels" : shown ? "drawn on one channel only" : "stored only, no change in the picture",
+            rbad, t23_drv_info());
+        rep(FN(IMP_ISP_Tuning_GetMaskBlock), t[0].rg | t[1].rg, (t[0].rg_ok && t[1].rg_ok) ? V_PASS : V_FAIL,
+            "read back after Set: ch1 block0 %s (en %u %ux%u at %u,%u), ch0 block1 %s (en %u %ux%u at %u,%u); window and colour type compared, the enable flag reads 0 as in the stock driver; stored blocks %d of 2",
+            t[0].rg_ok ? "equal" : "DIFFERENT", t[0].ge, t[0].gw, t[0].gh, t[0].gx, t[0].gy, t[1].rg_ok ? "equal" : "DIFFERENT", t[1].ge, t[1].gw, t[1].gh, t[1].gx, t[1].gy, stored);
+    }
+}
+#else
+static void cs_maskblock_t23(void) {}
+#endif
+
+/* IMP_ISP_Tuning_Set/GetDrawBlock on T23 (control 0x8000180, direct calls without the OSD wrapper): a window frame is drawn on ch0 (top edge band
+ * measured, inside must stay), read back with Get, switched off again.  The stock Get slips on the colour byte, so only enable, geometry and type
+ * are compared. */
+#if defined(PLATFORM_T23) && HAS_IMP_ISP_Tuning_SetDrawBlock && HAS_IMP_ISP_Tuning_GetDrawBlock
+static void cs_drawblock_t23(void)
+{
+    NEED(IMP_ISP_Tuning_SetDrawBlock) NEED(IMP_ISP_Tuning_GetDrawBlock) {
+        G(IMPISPDrawBlockAttr, a); G(IMPISPDrawBlockAttr, g);
+        int x = 160, y = 90, w = 320, h = 180, lw = 8, r1, r2, r3, rbad, gok;
+        double e0, i0, e1, i1, e2;
+
+        e0 = reg_luma(0, x + 10, y + 1, x + w - 10, y + lw - 1); i0 = reg_luma(0, x + 40, y + 40, x + w - 40, y + h - 40);
+        a->pinum = 0; a->type = IMP_ISP_DRAW_WIND; a->color_type = IMPISP_MASK_TYPE_YUV;
+        a->cfg.wind.enable = 1; a->cfg.wind.left = x; a->cfg.wind.top = y; a->cfg.wind.width = w; a->cfg.wind.height = h;
+        a->cfg.wind.line_width = lw; a->cfg.wind.alpha = 4;
+        a->cfg.wind.color.ayuv.y_value = e0 < 128 ? 235 : 16; a->cfg.wind.color.ayuv.u_value = 128; a->cfg.wind.color.ayuv.v_value = 128;
+        r1 = IMP_ISP_Tuning_SetDrawBlock(a);
+        e1 = reg_luma(0, x + 10, y + 1, x + w - 10, y + lw - 1); i1 = reg_luma(0, x + 40, y + 40, x + w - 40, y + h - 40);
+        g->pinum = 0; g->type = IMP_ISP_DRAW_WIND;
+        r2 = IMP_ISP_Tuning_GetDrawBlock(g);
+        gok = (r2 == 0 && g->cfg.wind.left == x && g->cfg.wind.top == y && g->cfg.wind.width == w && g->cfg.wind.height == h && g->cfg.wind.line_width == lw);
+        a->cfg.wind.enable = 0;
+        r3 = IMP_ISP_Tuning_SetDrawBlock(a);
+        e2 = reg_luma(0, x + 10, y + 1, x + w - 10, y + lw - 1);
+        a->pinum = 20;                                          /* block numbers are 0..19 in the header, the driver refuses above 5 (beyond the stock) */
+        rbad = IMP_ISP_Tuning_SetDrawBlock(a);
+        rep(FN(IMP_ISP_Tuning_SetDrawBlock), r1 | r3, (r1 == 0 && r3 == 0 && dabs(e1 - e0) > 40 && dabs(i1 - i0) < 15 && dabs(e2 - e0) < 20 && flow()) ? V_PASS : V_FAIL,
+            "window %dx%d at (%d,%d) line %d: top edge %.1f -> %.1f, inside %.1f -> %.1f, disabled: edge %.1f; block 20 -> %d%s", w, h, x, y, lw, e0, e1, i0, i1, e2, rbad, t23_drv_info());
+        rep(FN(IMP_ISP_Tuning_GetDrawBlock), r2, gok ? V_PASS : V_FAIL, "read back while shown: window %dx%d at (%d,%d) line %d (ret %d)",
+            g->cfg.wind.width, g->cfg.wind.height, g->cfg.wind.left, g->cfg.wind.top, g->cfg.wind.line_width, r2);
+        gfree(a); gfree(g);
+    }
+}
+#else
+static void cs_drawblock_t23(void) {}
+#endif
+
+/* secprobe_t23: read-only probe of the second-sensor getters (IMP_ISP_Tuning_Get*_Sec) on a one-sensor camera: prints the return code of
+ * each ([T] lines, not counted as results).  Classifies the 10 *_Sec getters that the isp-rt area reports as FAIL. */
+#if defined(PLATFORM_T23)
+# define SECPROBE(F) do { if (IMP_ISP_Tuning_##F##_Sec) { unsigned char *b_ = gnew(512); int r_ = ((int (*)(void *))(void *)IMP_ISP_Tuning_##F##_Sec)(b_); gchk(b_); gfree(b_); printf("[T] secprobe %s_Sec ret=%d\n", #F, r_); } } while (0)
+static void cs_secprobe_t23(void)
+{
+    SECPROBE(GetBrightness); SECPROBE(GetContrast); SECPROBE(GetSharpness); SECPROBE(GetSaturation); SECPROBE(GetBcshHue);
+    SECPROBE(GetISPRunningMode); SECPROBE(GetAeLuma); SECPROBE(GetTotalGain); SECPROBE(GetMaxAgain); SECPROBE(GetMaxDgain);
+    SECPROBE(GetAWBCt); SECPROBE(GetAntiFlickerAttr); SECPROBE(GetAeComp); SECPROBE(GetAeAttr); SECPROBE(GetAeState);
+    SECPROBE(GetAeHist); SECPROBE(GetAeWeight); SECPROBE(GetAwbHist); SECPROBE(GetAfHist); SECPROBE(GetAeMin);
+}
+#else
+static void cs_secprobe_t23(void) {}
 #endif
 
 /* T23 / T21-family encoder helpers without a header (stock T23 1.3.0, T21 1.0.33, T20 + T10 3.12.0): checks and results of
@@ -5637,7 +5809,7 @@ static void cs_t41pass(void) {}
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass", "maskblock_t23", "ispcover1_t23", "secprobe_t23", "drawblock_t23" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -5748,6 +5920,10 @@ void t_cases(void)
     if (cs_on("ispcover_t23")) cs_ispcover_t23(); wdog("cases", 60);
     if (cs_on("ispdraw_t23")) cs_ispdraw_t23(); wdog("cases", 60);
     if (cs_on("isppicupd_t23")) cs_isppicupd_t23(); wdog("cases", 60);
+    if (cs_on("maskblock_t23")) cs_maskblock_t23(); wdog("cases", 60);
+    if (cs_on("drawblock_t23")) cs_drawblock_t23(); wdog("cases", 60);
+    if (cs_on("ispcover1_t23")) cs_ispcover1_t23(); wdog("cases", 60);
+    if (getenv("APITEST_CASES") && cs_on("secprobe_t23")) cs_secprobe_t23(); wdog("cases", 60);
     if (cs_on("enchelp_t23")) cs_enchelp_t23(); wdog("cases", 60);
     if (getenv("APITEST_CASES") && cs_on("t140c")) cs_t140c(); wdog("cases", 120);
     if (cs_on("padframe_t23")) {

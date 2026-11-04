@@ -25,6 +25,12 @@
 extern int IMP_Encoder_SetChnAttrRcMode(int encChn, const IMPEncoderAttrRcMode *pstRcModeCfg) __attribute__((weak));
 # define HAS_IMP_Encoder_SetChnAttrRcMode 1
 #endif
+#if defined(PLATFORM_T23) && !HAS_IMP_Encoder_PollingModuleStream
+/* the T23 1.3.0 header lacks it, the vendor libimp exports it (signature as on T21/T31) */
+extern int IMP_Encoder_PollingModuleStream(uint32_t *bitmap, uint32_t timeout_ms) __attribute__((weak));
+# undef HAS_IMP_Encoder_PollingModuleStream
+# define HAS_IMP_Encoder_PollingModuleStream 1
+#endif
 #define STREAMCAP (512 * 1024)
 #if defined(ENC_OLD) && defined(HAVE_H265)
 # define T_H265 PT_H265
@@ -2204,7 +2210,7 @@ void enc_chain_down(void)
     grp_down(0);
 }
 
-#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || (defined(PLATFORM_T41) && !defined(APITEST_T40))
+#if defined(PLATFORM_T10) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || (defined(PLATFORM_T41) && !defined(APITEST_T40))
 /* IMP_OSD_AttachToGroup (deprecated vendor call): FS -> ENC is bound, the call inserts the OSD group between them
  * (src->to becomes src->from->to); the encoder then runs through the OSD group.  Returns 0 when the call was exercised. */
 int enc_attach_osd(void)

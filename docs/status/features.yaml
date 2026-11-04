@@ -747,7 +747,7 @@ features:
       text: 'device-tested: both streams, green fill'
     T23:
       sym: ✅
-      text: 'device-tested: both streams, green fill'
+      text: '2026-11-04 (API pass, two T23 cameras, image agg67d): `IMP_ISP_Tuning_Set/GetMaskBlock` draws a white block into the picture on ch0 and ch1 (luma 123 -> 255 inside the window, off restores), the window and colour type read back equal (the enable flag reads 0 as in the stock handler), channel 3 is refused. Earlier: device-tested: both streams, green fill'
     T30:
       sym: '?'
       text: no privacy-mask call in the T30 vendor export list
@@ -1087,7 +1087,7 @@ features:
       text: IPU OSD hook as T20; rect/line/bitmap
     T23:
       sym: ✅
-      text: '2026-10-27: ISP-drawn OSD (`SetOsdRgnAttr/ShowOsdRgn`, raptor/prudynt path) now draws (#127; the driver committed the stored pictures to the MSCA, the OpenIMP side was already right): T23 camera with the open ko, apitest isposd Y 111.3 -> 234.0, the 7 phases of the device tool (picture, second picture, move, second region, hide, destroy) as requested, ch1 15.0 fps throughout, no oops. Draw and mask blocks are still only stored. Odd picture widths are refused (beyond vendor, the vendor ISP stops on them): QEMU T23 and host only, not run on the camera. Earlier: device-tested: all 4 items, text edit'
+      text: '2026-11-04 (API pass, two T23 cameras, image agg67d, OpenIMP next from /tmp): the ISP draw and mask blocks are drawn now, not only stored: `IMP_ISP_Tuning_SetDrawBlock` window frame (top edge luma 122.9 -> 235.0, inside unchanged, off restores), `SetMaskBlock` / `IMP_OSD_SetRgnAttr_ISP` cover (luma 123 -> 255 on ch0 and ch1, off restores), ISP picture regions through `IMP_OSD_*_ISP` (122 -> 234, `UpdateRgnAttrData_ISP` to black restores), all read back through the Get calls. Finding (#207): with the ISP flipping both axes the ISP picture appears at the mirrored position while draw and mask blocks follow the requested coordinates; the stock behaviour is not known. Earlier: 2026-10-27: ISP-drawn OSD (`SetOsdRgnAttr/ShowOsdRgn`, raptor/prudynt path) now draws (#127; the driver committed the stored pictures to the MSCA, the OpenIMP side was already right): T23 camera with the open ko, apitest isposd Y 111.3 -> 234.0, the 7 phases of the device tool (picture, second picture, move, second region, hide, destroy) as requested, ch1 15.0 fps throughout, no oops. (Draw and mask blocks were still only stored at that time, see the 2026-11-04 result above.) Odd picture widths are refused (beyond vendor, the vendor ISP stops on them): QEMU T23 and host only, not run on the camera. Earlier: device-tested: all 4 items, text edit'
       issues:
       - 127
     T30:
