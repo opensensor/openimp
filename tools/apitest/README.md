@@ -103,6 +103,14 @@ on T40 `t40_devtest` (phases `T40_MASK`, default `cdff`), then removes `/tmp/at`
 writes `result.json` (per evidence function key: PASS / FAIL / PART / SKIP / NA with the detail line). It refuses to run
 while `audit/ab-t41/USER_IN_CELLAR` exists. Not done, by design: speaker/AO/AEC, flash, reboot, module load/unload, light.
 
+Register references per picture case: `IMGFX_HOOK=cmd` runs `cmd` after each case has settled, with the case name in
+`IMGFX_CASE`. `tools/regpeek.c` (static build: `mipsel-linux-gcc -O2 -static -o regpeek tools/regpeek.c`) reads 32-bit
+registers through `/dev/mem` and prints one `[REG] <case> off=value ...` line, for example on T30
+`IMGFX_HOOK="/tmp/at/regpeek 0x13380000 0x18 0x40 0x300-0x30c 0x540-0x570"` (Apical core at `0x13380000`). This works on
+the vendor stack too, where the T30 vendor library returns no frames to the picture run. `IMGFX_DEPTH_LATE=1` sets the
+frame depth after `EnableChn` instead of before (diagnosis of the vendor frame path); a `NO PICTURE` case also logs the
+last `GetFrame` return.
+
 ## Rule: every new case runs in QEMU first (user decision 2026-10-26)
 
 A new case never goes to a camera before it ran in our QEMU for that SoC (`$S/qemu`, READMEs `README-T2x.md`, `README-T31.md`, `README-T40.md`,

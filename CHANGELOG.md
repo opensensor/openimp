@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-04, apitest picture: register dump per case, vendor frame diagnosis (test tooling, no library change)
+
+- `IMGFX_HOOK=cmd` runs a command after each picture case has settled (`IMGFX_CASE` = case name); the new `tools/regpeek.c` reads ISP registers through `/dev/mem` and prints them per case. On T30 this gives register references on the vendor stack, whose library returns no frames to the picture run (saturation / colour effect / mirror / white balance / iridix cells).
+- `IMGFX_DEPTH_LATE=1` sets the frame depth after `EnableChn` (diagnosis of the vendor frame path); `NO PICTURE` cases log the last `GetFrame` return.
+- QEMU T30: hook and register reads checked (Apical core `0x13380000`: `0x40` = `0x33242193`, white balance gains and colour matrix read back). Usage in `tools/apitest/README.md`.
+
 ## 2026-11-04 (afternoon), docs round 12: findings #205 and #206, fleet image and QEMU notes, CBR default confirmed
 
 - Open findings from the API evidence passes: #206 (`SU_Base_Shutdown`: the vendor libsysutils of T10 to T41 sends signal 17 = SIGUSR2 on MIPS, busybox powers off; the OpenIMP default keeps its reboot behaviour until the issue changes it, `OPENIMP_SU_SHUTDOWN=poweroff` is vendor-equal; the call is never made on a camera) and #205 (T21 `IMP_FrameSource_SetFrameDepth` sends the ioctl 0x800456c5, which the T21 frame-channel driver does not know: one kernel stack dump per call, the call still returns 0).
