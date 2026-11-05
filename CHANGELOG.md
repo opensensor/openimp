@@ -8,6 +8,9 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, apitest: T30 case for GetAFMetrices (QEMU: FAIL, library gap found; no cell moved)
+
+- `t30pass_afmetrics` (in `APITEST_CASES=t30pass2`): calls `IMP_ISP_Tuning_GetAFMetrices` twice through a local prototype (the vendor T30 libimp 1.0.5 exports it, its header does not declare it). The vendor function returns a value the library keeps (16-bit store from its ISP context) and 0, with no driver call; OpenIMP sends the T31 control `0x8000043`, which the T30 driver does not take, so QEMU shows FAIL (return `0x8000043`, metric not written). The case documents the gap for the library fix; mapped in `T30PASS_ALIAS`.
 ## 2026-11-05, apitest: T30 custom codec registration case (silent PCM copy; device test pending)
 
 - T30 audio area: `IMP_AENC_RegisterEncoder` / `UnRegisterEncoder` and `IMP_ADEC_RegisterDecoder` / `UnRegisterDecoder` are no longer skipped. A PCM copy codec is registered, one microphone frame runs through an encoder channel of the returned handle and one stream through a decoder channel; PASS needs the handle, the callback calls and unchanged bytes; nothing is played. Other SoCs keep the skip.

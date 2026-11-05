@@ -749,6 +749,7 @@ T30PASS_ALIAS = {
     "t30pass_colorfx": ["ISP_Tuning_Get/SetColorfxMode"],
     "t30pass_scene": ["ISP_Tuning_GetSceneMode", "ISP_Tuning_SetSceneMode"],
     "t30pass_videodrop": ["ISP_Tuning_SetVideoDrop"], "t30pass_fwfreeze": ["ISP_Tuning_SetFWFreeze"],
+    "t30pass_afmetrics": ["ISP_Tuning_GetAFMetrices"],
 }
 
 PAIR_ALIAS = {"ISP_Tuning_Get/SetHVFLIP": ["ISP_Tuning_GetHVFlip", "ISP_Tuning_SetHVFLIP"]}      # the vendor header spells the pair differently
