@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-iridix2` `d09dc553` and OpenIMP next `7b9f3448` at run time, no flash): `ISP_Tuning_GetAFMetrices` returns 0 and writes the 16-bit value `0xffff` like the vendor libimp 1.0.5 (b29: vendor ret 0, `0xffff`, fixed-focus unit), `?` -> `dev`; t30pass + t30pass2 49 / 0. T30 API 284/350 -> 285/350 works.
+- Iridix strength at base: the vendor stack under its own streamer shows `0x3c4` = 0x43, the open stack 0x43 as well; the lower vendor values (0x1c..0x22) came from apitest runs on the vendor stack. The open strength follows the exposure target as the OEM formula (trace: exposure 1.0M in the limits 0.5M..1.8M -> strength 0x44).
+- Earlier vendor-stack t30pass2 runs (b29) had 7 FAIL lines: the frame peek of the case gives no frames on the vendor stack (`flow()` 0); they are not open-stack results.
+
 ## 2026-11-05, T30: `IMP_ISP_Tuning_GetAFMetrices` like the vendor libimp (no driver call); AENC/ADEC row `dev` (hand-set from b29)
 
 - Vendor T30 libimp 1.0.5 (0xcbb84) does not call the driver: with the ISP context up it returns 0 and stores a library-held 16-bit value (`ctx(+0x15c8)->(+0xa4)+0x880`); device batch b29 on the fixed-focus T30X: the vendor stack returns 0 and writes 0xffff, unchanged 10 s later. OpenIMP sent the T31 control 0x8000043 (ret 0x8000043, nothing written). T30 now returns 0 and writes 0xffff while the tuning context is up, -1 otherwise. The `GetAFMetrices` cell stays open until the open stack is proven on the device (batch b30, case `t30pass_afmetrics`).

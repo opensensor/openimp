@@ -10,6 +10,7 @@ See also: the section "API coverage per function" below (generated: vendor IMP/S
 Open stack = open-tx-isp (kernel driver) + OpenIMP (libimp) + timps. Vendor = tx-isp-*.ko + Ingenic libimp.
 
 <!-- part: summary -->
+- **Update 2026-11-05, T30 lab camera batch b30 (API evidence, no symbol moved; T30 API 284/350 -> 285/350 works):** `ISP_Tuning_GetAFMetrices` like the vendor (ret 0, 16-bit 0xffff, no driver call) on the T30X; the Iridix base strength equals the vendor stack under its streamer (0x43).
 - **Update 2026-11-05, T30 lab camera batch b29 (API evidence, no symbol moved; T30 API 262/350 -> 267/350 works):** with the vendor libsysutils 1.0.5 loaded from /tmp on the open stack, `SU_Base_GetVersion`, `GetModelNumber`, `SUTime2Raw` and `SU_Key_Open/CloseEvent` work (5 cells `qemu` -> `dev`); the silent codec case makes all AENC/ADEC lines pass (row for hand review).
 - **Update 2026-11-05, T30 lab camera batch b28 (API evidence, no symbol moved; T30 API 207/350 -> 238/350 works):** the `t30pass2` gate cases pass on the T30X (48/0); 19 tuning cells `qemu` -> `dev` (round trips, sensor chip id, move state, FW freeze, video drop). No DMIC node on this unit, no RTC/ADC/libsysutils on the stock image.
 - **Update 2026-11-05, T30 gate cases `t30pass2` (tooling, no cell moved):** 17 new apitest lines for the remaining T30 tuning rows (round trips, sensor chip id, move state, FW freeze, video drop); QEMU 17/17, device run pending.

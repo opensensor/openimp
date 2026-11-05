@@ -453,7 +453,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_Bypass_Bind": {
@@ -546,7 +546,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_DelSensor": {
@@ -624,7 +624,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_DisableSensor": {
@@ -702,7 +702,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_DisableTuning": {
@@ -780,7 +780,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_EnableSensor": {
@@ -858,7 +858,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_EnableTuning": {
@@ -936,7 +936,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_Get/SetCsccrMode": {
@@ -1290,7 +1290,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_RAW_RwControl": {
@@ -4582,7 +4582,7 @@
     "T21": "apitest issue-110 2026-10-27 .24 (open-tx-isp 28b26d20): frame count 49->50, -ETIMEDOUT on timeout; QEMU 96->97",
     "T23": "apitest agg47-cases 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "apitest t30b28 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "ISP_Tuning_WaitFrameDone": {
@@ -5765,7 +5765,7 @@
     "T20": "n.a.",
     "T21": "dev",
     "T23": "dev",
-    "T30": "?",
+    "T30": "rt",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5790,7 +5790,8 @@
    "ref": {
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
-    "T31": "apitest next+ko/libimp swap 2026-10-27 .26"
+    "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
+    "T30": "apitest t30b30 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_GetAFMetricesInfo": {
@@ -9748,7 +9749,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "FrameSource_DequeueBuffer": {
@@ -9846,7 +9847,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "FrameSource_DisableChn": {
@@ -9924,7 +9925,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "FrameSource_EnableChn": {
@@ -10002,7 +10003,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "FrameSource_ExternInject_CreateChn": {
@@ -10268,7 +10269,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "FrameSource_Get/SetDirectModeAttr": {
@@ -10422,7 +10423,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "FrameSource_Get/SetPool": {
@@ -18128,7 +18129,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "System_GetBindbyDest": {
@@ -18478,7 +18479,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b29 2026-11-05 .231"
+    "T30": "apitest t30b30 2026-11-05 .231"
    }
   },
   "System_MemPoolFree": {
