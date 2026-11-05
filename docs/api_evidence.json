@@ -13629,7 +13629,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "dev",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -13672,7 +13672,7 @@
     "T41": "apitest rc3-cases 2026-10-27 .34 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
     "T10": "apitest rc3-cases 2026-10-27 .31 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
     "T40": "apitest rc3-cases 2026-10-27 .184 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC)",
-    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+    "T30": "apitest t30b29 2026-11-05 .231: audio area 92 PASS / 0 FAIL with the silent PCM-copy codec (OpenIMP claude/t30-audio-codec): AENC/ADEC CreateChn/DestroyChn/SendFrame/SendStream/GetStream/PollingStream/ReleaseStream/ClearChnBuf and Register/UnRegisterEncoder/Decoder (handle 6, bytes equal, 1 callback each), all 17 lines PASS; nothing played (silent test)"
    },
    "note": "T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): all AENC/ADEC calls except the custom codec registration pass in QEMU T30 (G.711A encode and decode round trip)."
   },

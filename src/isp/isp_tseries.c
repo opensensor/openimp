@@ -4532,7 +4532,27 @@ int IMP_ISP_Tuning_GetAfZone(void *zone)
 
 int IMP_ISP_Tuning_GetAFMetrices(void *metrices)
 {
+#if defined(PLATFORM_T30)
+    /*
+     * T30 vendor libimp 1.0.5 (disassembly, IMP_ISP_Tuning_GetAFMetrices 0xcbb84): no driver call.  With the ISP
+     * context up it stores a 16-bit value held by the library itself (ctx(+0x15c8)->(+0xa4)+0x880) and returns 0,
+     * otherwise -1.  Device batch b29 (T30X, fixed focus): the vendor stack returns 0 and writes 0xffff, the same
+     * 10 s later (the field does not move without AF statistics).  The generic path below sends the T31 control
+     * 0x8000043, which the T30 driver does not serve (ret 0x8000043, nothing written).
+     */
+    ISPDevice *isp;
+
+    if (metrices == NULL) {
+        return -1;
+    }
+    if (tseries_get_isp(&isp) != 0 || isp->tuning == NULL || isp->tuning_state != 2) {
+        return -1;
+    }
+    *(uint16_t *)metrices = 0xffff;
+    return 0;
+#else
     return tseries_tuning_get_ptr(TISP_CID_AF_METRICES, metrices);
+#endif
 }
 
 #if defined(PLATFORM_T31) || defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T30)

@@ -19,7 +19,7 @@ Rules (machine-readable: `docs/status/release.yaml`). **RC3** is green only if (
 Project board status of an open issue (https://github.com/users/Lu-Fi/projects/1): Todo, In progress, **Monitoring** (diagnostics are running, waiting for the next event of the kind), **Waiting** (blocked from outside, for example on test hardware or a measurement setup; the issue says what it waits for, such as a light box A/B), Review, Done. Monitoring and Waiting issues are still open: they keep counting for the gates above.
 
 - **RC3: 🔴 RED** (3 blocking issues; streamer cells missing)
-  - (a) streamer functions: 🔴 1998 of 2017 cells work, 19 missing
+  - (a) streamer functions: 🔴 2015 of 2017 cells work, 2 missing
   - (b) no open issue with severity critical or high: 🔴 2 critical, 1 high
   - (c) no open issue in milestone RC3: 🔴 3 open
 - **Release 1: 🔴 RED** (0 of 8 SoCs reached 14 stable days; image –, soak as of 2026-11-05 06:58)
@@ -47,7 +47,7 @@ Per SoC: vendor functions that at least one streamer calls (a Get/Set row counts
 | T20 | 228/228 | `████████████████████` | 0 |
 | T21 | 252/252 | `████████████████████` | 0 |
 | T23 | 290/290 | `████████████████████` | 0 |
-| T30 | 211/230 | `██████████████████░░` | 19 |
+| T30 | 228/230 | `████████████████████` | 2 |
 | T31 | 319/319 | `████████████████████` | 0 |
 | T40 | 217/217 | `████████████████████` | 0 |
 | T41 | 253/253 | `████████████████████` | 0 |
@@ -56,7 +56,7 @@ Per SoC: vendor functions that at least one streamer calls (a Get/Set row counts
 - **T20:** nothing missing
 - **T21:** nothing missing
 - **T23:** nothing missing
-- **T30** (19 missing, 3 rows): `ISP_Tuning_SetISPBypass` (stub; p† r†; [#14](https://github.com/Lu-Fi/openimp/issues/14)), `AENC_* / ADEC_*` (qemu; r†; [#20](https://github.com/Lu-Fi/openimp/issues/20)), `ISP_Tuning_GetAFMetrices` (?; r†; [#15](https://github.com/Lu-Fi/openimp/issues/15))
+- **T30** (2 missing, 2 rows): `ISP_Tuning_SetISPBypass` (stub; p† r†; [#14](https://github.com/Lu-Fi/openimp/issues/14)), `ISP_Tuning_GetAFMetrices` (?; r†; [#15](https://github.com/Lu-Fi/openimp/issues/15))
 - **T31:** nothing missing
 - **T40:** nothing missing
 - **T41:** nothing missing
@@ -329,6 +329,7 @@ Columns T10..T41 (T30 and T40 added 2026-10-10): one status symbol per SoC (lege
 - 2026-11-05 (T30 device evidence b26): WaitFrame stub -> dev (real library function, frame count rises, timeout path), IntegrationTime and Saturation qemu -> rt; compact NV12 (UV at w*h) proven on ch1 (night U=V=128.00); first-picture Y 99.3 vs vendor 100.7; Iridix at base still off (#202).
 - 2026-11-05 (T30): `ISP_Tuning_Get/SetRawDRC` cache -> dev after a hand review of the b21/b26/b28 device evidence (mode round trip PASS, picture effect Y 48 vs 102, strength read-back is the live Iridix register like the vendor).
 - 2026-11-05 (T30, user decision): `DMIC_*` and `DMIC_DisableAecRefFrame` counted as done for the RC3 gate as `nohw` (new cell code: done, explicitly not verified on hardware; no DMIC node on the T30X lab board).
+- 2026-11-05 (T30): `GetAFMetrices` follows the vendor libimp (no driver call, 16-bit value, 0xffff on the fixed-focus T30X; device proof pending, b30); AENC/ADEC row qemu -> dev (b29 silent codec case, 17 of 17 PASS).
 
 ### Matrix details
 
@@ -1009,9 +1010,9 @@ Per area and SoC: functions that work (device-tested or vendor no-op) / function
 - **FrameSource:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 22/22 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 18/19 ✅ · 1 🔧 · 0 gaps · 0 ? · T31 24/30 ✅ · 1 🔧 · 5 gaps · 0 ? · T32 0/47 (no OpenIMP build yet) · T33 0/49 (no OpenIMP build yet) · T40 28/28 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 31/31 ✅ · 0 🔧 · 0 gaps · 0 ?
 - **OSD:** T10 17/17 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 17/17 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 17/17 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 42/42 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 40/43 ✅ · 3 🔧 · 0 gaps · 0 ? · T41 41/42 ✅ · 0 🔧 · 1 gaps · 0 ?
 - **IVS:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T31 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/18 (no OpenIMP build yet) · T33 0/18 (no OpenIMP build yet) · T40 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 18/18 ✅ · 0 🔧 · 0 gaps · 0 ?
-- **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 73/90 ✅ · 17 🔧 · 0 gaps · 0 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
+- **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 90/90 ✅ · 0 🔧 · 0 gaps · 0 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
 - **System:** T10 23/48 ✅ · 25 🔧 · 0 gaps · 0 ? · T20 23/48 ✅ · 25 🔧 · 0 gaps · 0 ? · T21 23/48 ✅ · 25 🔧 · 0 gaps · 0 ? · T23 35/60 ✅ · 25 🔧 · 0 gaps · 0 ? · T30 16/46 ✅ · 30 🔧 · 0 gaps · 0 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 19 🔧 · 10 gaps · 0 ? · T41 20/51 ✅ · 31 🔧 · 0 gaps · 0 ?
-- **All areas:** T10 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T20 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T21 308/333 ✅ · 25 🔧 · 0 gaps · 0 ? · T23 419/457 ✅ · 33 🔧 · 5 gaps · 0 ? · T30 267/350 ✅ · 61 🔧 · 20 gaps · 2 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 349/389 ✅ · 28 🔧 · 12 gaps · 0 ? · T41 392/427 ✅ · 32 🔧 · 3 gaps · 0 ?
+- **All areas:** T10 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T20 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T21 308/333 ✅ · 25 🔧 · 0 gaps · 0 ? · T23 419/457 ✅ · 33 🔧 · 5 gaps · 0 ? · T30 284/350 ✅ · 44 🔧 · 20 gaps · 2 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 349/389 ✅ · 28 🔧 · 12 gaps · 0 ? · T41 392/427 ✅ · 32 🔧 · 3 gaps · 0 ?
 
 ### Priorities for streamers
 
@@ -2038,7 +2039,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | Vendor function | T10 | T20 | T21 | T23 | T30 | T31 | T32 | T33 | T40 | T41 | Used by |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `ADEC_ReleaseDecoder` | · | · | · | · | · | · | · | · | · | · | – |
-| `AENC_* / ADEC_*` | ✅ | ✅ | ✅ | ✅ | 🔧+ | ✅ | 📋 | 📋 | ✅ | ✅ | r† |
+| `AENC_* / ADEC_*` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 📋 | 📋 | ✅ | ✅ | r† |
 | `AENC_ReleaseEncoder` | · | · | · | · | · | · | · | · | · | · | – |
 | `AI_Disable` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 📋 | 📋 | ✅ | ✅ | p† r† t t† |
 | `AI_DisableAec` | ✅rt | ✅rt | ✅rt | ✅rt | ✅rt | ✅rt | 📋 | 📋 | ✅rt | ✅rt | r† t t† |
@@ -2120,7 +2121,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 <details><summary>Notes and references (66)</summary>
 
 - `ADEC_ReleaseDecoder`: T10/T20 (4 builds each) and T31 (28 builds): declared in the SDK header, exported by none of the vendor libimp builds (nm)
-- `AENC_* / ADEC_*`: T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): all AENC/ADEC calls except the custom codec registration pass in QEMU T30 (G.711A encode and decode round trip). T41: apitest rc3-cases 2026-10-27 .34 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC). T10: apitest rc3-cases 2026-10-27 .31 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC). T40: apitest rc3-cases 2026-10-27 .184 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC). T30: apitest t30audit 2026-10-31 QEMU (no camera).
+- `AENC_* / ADEC_*`: T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): all AENC/ADEC calls except the custom codec registration pass in QEMU T30 (G.711A encode and decode round trip). T41: apitest rc3-cases 2026-10-27 .34 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC). T10: apitest rc3-cases 2026-10-27 .31 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC). T40: apitest rc3-cases 2026-10-27 .184 (T41-audio: AENC G.711A and ADEC round trip of a microphone frame; custom codec registration SKIP as on every SoC). T30: apitest t30b29 2026-11-05 .231: audio area 92 PASS / 0 FAIL with the silent PCM-copy codec (OpenIMP claude/t30-audio-codec): AENC/ADEC CreateChn/DestroyChn/SendFrame/SendStream/GetStream/PollingStream/ReleaseStream/ClearChnBuf and Register/UnRegisterEncoder/Decoder (handle 6, bytes equal, 1 callback each), all 17 lines PASS; nothing played (silent test).
 - `AENC_ReleaseEncoder`: T10/T20 (4 builds each) and T31 (28 builds): declared in the SDK header, exported by none of the vendor libimp builds (nm)
 - `AI_Disable`: audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): PASS (dev 1). T10: apitest rc3-cases 2026-10-26 .31. T20: apitest rc3-cases 2026-10-26 .107. T21: apitest rc3-cases 2026-10-27 .24. T23: apitest rc3-cases 2026-10-27 .30. T31: apitest next+ko/libimp swap 2026-10-27 .26. T40: apitest t40pass 2026-11-04 .184. T41: apitest t41pass 2026-11-04 .34. T30: apitest t30b29 2026-11-05 .231.
 - `AI_DisableAec`: audit: reaches the driver/kernel; used by: T10/T20/T31: raptor†, timps; T21/T23/T41: raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #26): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT (rt: AEC off). T10: apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected). T20: apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected). T21: apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected). T40: apitest rc3-cases/T40-audio 2026-10-27 .184 (API round trip, no visible effect expected; muted, volume at the minimum, zero-filled PCM only; the audible effect and the echo cancellation are not tested by the no-sound rule). T41: apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected). T31: apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected). T23: apitest rc3-cases 2026-10-27 .30 (API round trip, no visible effect expected). T30: apitest t30b27 2026-11-05 .231 (API round trip, no visible effect expected).

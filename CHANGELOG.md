@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: `IMP_ISP_Tuning_GetAFMetrices` like the vendor libimp (no driver call); AENC/ADEC row `dev` (hand-set from b29)
+
+- Vendor T30 libimp 1.0.5 (0xcbb84) does not call the driver: with the ISP context up it returns 0 and stores a library-held 16-bit value (`ctx(+0x15c8)->(+0xa4)+0x880`); device batch b29 on the fixed-focus T30X: the vendor stack returns 0 and writes 0xffff, unchanged 10 s later. OpenIMP sent the T31 control 0x8000043 (ret 0x8000043, nothing written). T30 now returns 0 and writes 0xffff while the tuning context is up, -1 otherwise. The `GetAFMetrices` cell stays open until the open stack is proven on the device (batch b30, case `t30pass_afmetrics`).
+- `AENC_*` / `ADEC_*` (T30): `qemu` -> `dev` by hand (the wildcard row is not mapped by results2json): audio area 92 / 0 in b29 with the silent PCM-copy codec, all 17 AENC/ADEC lines PASS, nothing played.
+
 ## 2026-11-05, apitest: T30 case for GetAFMetrices (QEMU: FAIL, library gap found; no cell moved)
 
 - `t30pass_afmetrics` (in `APITEST_CASES=t30pass2`): calls `IMP_ISP_Tuning_GetAFMetrices` twice through a local prototype (the vendor T30 libimp 1.0.5 exports it, its header does not declare it). The vendor function returns a value the library keeps (16-bit store from its ISP context) and 0, with no driver call; OpenIMP sends the T31 control `0x8000043`, which the T30 driver does not take, so QEMU shows FAIL (return `0x8000043`, metric not written). The case documents the gap for the library fix; mapped in `T30PASS_ALIAS`.
@@ -20,7 +25,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-ring-per-frame` `3ff342ab` and OpenIMP next at run time, no flash): the **vendor libsysutils 1.0.5 loaded from /tmp on the open stack** (OpenIMP has no SU_ code for T30; the stock image carries no libsysutils): su area 28 PASS / 2 FAIL / 10 N/A. 5 T30 cells `qemu` -> `dev`: `SU_Base_GetVersion` ("SYSUTILS-1.0.5"), `SU_Base_GetModelNumber`, `SU_Base_SUTime2Raw`, `SU_Key_OpenEvent` / `CloseEvent`. Not counted: `SU_Base_GetDevID` (returns -1 with a zero id), RTC / ADC calls (no `/dev/rtc0`, no ADC node). T30 API 262/350 -> 267/350 works.
 - Same boot, for review (not merged by the tool): the audio area with the new silent PCM copy codec passes 92 / 0, all 17 `IMP_AENC_*` / `IMP_ADEC_*` lines PASS including Register/UnRegisterEncoder and -Decoder (the `AENC_* / ADEC_*` row is a wildcard key that `results2json.py` does not map).
 
-## 2026-11-05, T30: DMIC rows count for the RC3 gate as `host`, not verified on hardware (user decision)
+## 2026-11-05, T30: DMIC rows count for the RC3 gate as `nohw`, not verified on hardware (user decision)
 
 - The T30X lab board has no digital microphone: the audio probe of b27 and b28 shows only `/dev/dsp` with the vendor audio module, no DMIC node, so `DMIC_*` and `DMIC_DisableAecRefFrame` cannot be tested there. User decision 2026-11-05: done for the gate, but explicitly not verified on hardware. The cells use the new code `nohw` ("done, not verified on hardware"), which the RC3 gate counts as works (docs/status/release.yaml works_cells), and which every table and legend labels as not hardware-verified; the reference text says so. To be verified on hardware when a T30 camera with a DMIC is available.
 
