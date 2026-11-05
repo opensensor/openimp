@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, apitest: T30 case for GetAFMetrices (QEMU: FAIL, library gap found; no cell moved)
+
+- `t30pass_afmetrics` (in `APITEST_CASES=t30pass2`): calls `IMP_ISP_Tuning_GetAFMetrices` twice through a local prototype (the vendor T30 libimp 1.0.5 exports it, its header does not declare it). The vendor function returns a value the library keeps (16-bit store from its ISP context) and 0, with no driver call; OpenIMP sends the T31 control `0x8000043`, which the T30 driver does not take, so QEMU shows FAIL (return `0x8000043`, metric not written). The case documents the gap for the library fix; mapped in `T30PASS_ALIAS`.
+
 ## 2026-11-05, T30: RawDRC cells `cache` -> `dev` (review of the KEPT-GAP, no new run)
 
 - `ISP_Tuning_GetRawDRC` / `SetRawDRC` were kept at `cache` by the evidence tool (a PASS never replaces a recorded stub/cache note). Reviewed by hand against the device runs: the driver path is real since b21 (RawDRC enable/strength reach the ISP, Iridix 0x3dc 0x100, manual/off/unlimit strength 54/45/222, picture effect Y 48 vs 102 against the vendor 67/67/142 / Y 102) and the mode round trip PASSes on the device in b26 and b28 (`t30pass_rawdrc`). The strength read-back is the live Iridix register on both stacks, so it differs from the set value on the vendor stack too. Cells: `cache` -> `dev`.

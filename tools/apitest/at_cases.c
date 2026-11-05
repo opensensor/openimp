@@ -6255,8 +6255,31 @@ static void t30pass_fwfreeze(void)
         "rt: SetFWFreeze enable (ret %d) for 0.3 s, then disable (ret %d); frames flow %d", r1, r2, f);
 }
 
+/* exported by the vendor T30 libimp 1.0.5 (nm: T IMP_ISP_Tuning_GetAFMetrices) but missing from the 1.0.5 header: T31 prototype */
+#if !HAS_IMP_ISP_Tuning_GetAFMetrices
+extern int IMP_ISP_Tuning_GetAFMetrices(unsigned int *metric) __attribute__((weak));
+#endif
+
+static void t30pass_afmetrics(void)
+{
+    unsigned int m1 = 0xdeadbeef, m2 = 0xdeadbeef;
+    int r1, r2;
+
+    if (!IMP_ISP_Tuning_GetAFMetrices) {
+        rep(LBL("t30pass_afmetrics"), 0, V_NA, "IMP_ISP_Tuning_GetAFMetrices not exported by this libimp");
+        return;
+    }
+    r1 = IMP_ISP_Tuning_GetAFMetrices(&m1);
+    usleep(200000);
+    r2 = IMP_ISP_Tuning_GetAFMetrices(&m2);
+    rep(LBL("t30pass_afmetrics"), r1 | r2, (r1 == 0 && r2 == 0 && m1 != 0xdeadbeef && m2 != 0xdeadbeef && flow()) ? V_PASS : V_FAIL,
+        "rt: GetAFMetrices twice 0.2 s apart (ret %d/%d): metric %u, %u (written by the call); not in the T30 1.0.5 header, the vendor libimp exports it; frames flow",
+        r1, r2, m1, m2);
+}
+
 static void cs_t30pass2(void)
 {
+    t30pass_afmetrics();
     t30pass_wb();
     t30pass_temperstrength();
     t30pass_aehist_rt();
