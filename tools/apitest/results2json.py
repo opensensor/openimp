@@ -739,6 +739,16 @@ T30PASS_ALIAS = {
     "t30pass_rawdrc": ["ISP_Tuning_GetRawDRC", "ISP_Tuning_SetRawDRC"],
     "t30pass_rawdrc_strength": ["ISP_Tuning_GetRawDRC", "ISP_Tuning_SetRawDRC"],
     "t30pass_daynight": ["ISP_Tuning_Get/SetISPRunningMode"], "t30pass_csc": ["ISP_Tuning_Get/SetCsc_Attr"],
+    "t30pass_wb": ["ISP_Tuning_Get/SetWB"], "t30pass_temperstrength": ["ISP_Tuning_SetTemperStrength"],
+    "t30pass_aehist": ["ISP_Tuning_Get/SetAeHist"], "t30pass_aeweight": ["ISP_Tuning_Get/SetAeWeight"],
+    "t30pass_awbhist": ["ISP_Tuning_Get/SetAwbHist"], "t30pass_awbweight": ["ISP_Tuning_Get/SetAwbWeight"],
+    "t30pass_afhist": ["ISP_Tuning_Get/SetAfHist"], "t30pass_rgbcoefft": ["ISP_Tuning_Awb_Get/SetRgbCoefft"],
+    "t30pass_sinterdns": ["ISP_Tuning_Get/SetSinterDnsAttr"], "t30pass_temperdns": ["ISP_Tuning_Get/SetTemperDnsAttr"],
+    "t30pass_aeroi": ["ISP_Tuning_AE_Get/SetROI"], "t30pass_sensorreg": ["ISP_Get/SetSensorRegister"],
+    "t30pass_movestate": ["ISP_Tuning_EnableMovestate", "ISP_Tuning_DisableMovestate"],
+    "t30pass_colorfx": ["ISP_Tuning_Get/SetColorfxMode"],
+    "t30pass_scene": ["ISP_Tuning_GetSceneMode", "ISP_Tuning_SetSceneMode"],
+    "t30pass_videodrop": ["ISP_Tuning_SetVideoDrop"], "t30pass_fwfreeze": ["ISP_Tuning_SetFWFreeze"],
 }
 
 PAIR_ALIAS = {"ISP_Tuning_Get/SetHVFLIP": ["ISP_Tuning_GetHVFlip", "ISP_Tuning_SetHVFLIP"]}      # the vendor header spells the pair differently

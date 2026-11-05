@@ -6073,14 +6073,217 @@ static void cs_t30pass(void)
     t30pass_daynight();
 }
 static void cs_t30pass_csc(void) { t30pass_csc(); }
+/* ---------------------------------------------------------------------- t30pass2 (2026-11-05)
+ * More T30 API gate cases, same rules as t30pass (labels "t30pass_<item>", PASS / FAIL / N/A with the reason, "rt:" = no picture effect
+ * claimed).  Struct pairs run a round trip: Get the live value, Set the same value back, Get again; PASS = all return codes 0, the second
+ * Get equals the first byte for byte, frames still flow.  Calls with a visible state change (WB manual, colour effect, move state, FW
+ * freeze) set a value, read it back and restore the original.  Sensor register: the SC4236 chip id (0x3107/0x3108 = 0x32/0x35) is read,
+ * and one register is written with the value it already holds.  Explicit only: APITEST_CASES=t30pass2. */
+#define T30RT(label, T, getf, setf)                                                                                              \
+    static void label##_rt(void)                                                                                                 \
+    {                                                                                                                            \
+        G(T, o); G(T, c);                                                                                                        \
+        int r0, rs = -1, rg = -1, same = 0;                                                                                      \
+                                                                                                                                 \
+        if (!getf || !setf) {                                                                                                    \
+            rep(LBL(#label), 0, V_NA, #getf "/" #setf " not exported by this libimp");                                           \
+            gfree(o); gfree(c);                                                                                                  \
+            return;                                                                                                              \
+        }                                                                                                                        \
+        r0 = getf(o); gchk(o);                                                                                                   \
+        if (r0 == 0) {                                                                                                           \
+            rs = setf(o);                                                                                                        \
+            rg = getf(c); gchk(c);                                                                                               \
+            same = !memcmp(o, c, sizeof(T));                                                                                     \
+        }                                                                                                                        \
+        rep(LBL(#label), r0 | rs | rg, (r0 == 0 && rs == 0 && rg == 0 && same && flow()) ? V_PASS : V_FAIL,                     \
+            "rt: " #getf " (ret %d) -> " #setf " of the same value (ret %d) -> " #getf " (ret %d): %s (%u bytes); frames flow",   \
+            r0, rs, rg, same ? "unchanged" : "DIFFERENT", (unsigned)sizeof(T));                                                  \
+        gfree(o); gfree(c);                                                                                                      \
+    }
+
+T30RT(t30pass_aehist, IMPISPAEHist, IMP_ISP_Tuning_GetAeHist, IMP_ISP_Tuning_SetAeHist)
+T30RT(t30pass_aeweight, IMPISPWeight, IMP_ISP_Tuning_GetAeWeight, IMP_ISP_Tuning_SetAeWeight)
+T30RT(t30pass_awbhist, IMPISPAWBHist, IMP_ISP_Tuning_GetAwbHist, IMP_ISP_Tuning_SetAwbHist)
+T30RT(t30pass_awbweight, IMPISPWeight, IMP_ISP_Tuning_GetAwbWeight, IMP_ISP_Tuning_SetAwbWeight)
+T30RT(t30pass_afhist, IMPISPAFHist, IMP_ISP_Tuning_GetAfHist, IMP_ISP_Tuning_SetAfHist)
+T30RT(t30pass_rgbcoefft, IMPISPCOEFFTWB, IMP_ISP_Tuning_Awb_GetRgbCoefft, IMP_ISP_Tuning_Awb_SetRgbCoefft)
+T30RT(t30pass_sinterdns, IMPISPSinterDenoiseAttr, IMP_ISP_Tuning_GetSinterDnsAttr, IMP_ISP_Tuning_SetSinterDnsAttr)
+T30RT(t30pass_temperdns, IMPISPTemperDenoiseAttr, IMP_ISP_Tuning_GetTemperDnsAttr, IMP_ISP_Tuning_SetTemperDnsAttr)
+T30RT(t30pass_aeroi, IMPISPAERoi, IMP_ISP_Tuning_AE_GetROI, IMP_ISP_Tuning_AE_SetROI)
+
+static void t30pass_wb(void)
+{
+    IMPISPWB o, a, c;
+    int r0, rs = -1, rg = -1, rr = -1, rb = -1, ok = 0;
+
+    if (!IMP_ISP_Tuning_GetWB || !IMP_ISP_Tuning_SetWB) {
+        rep(LBL("t30pass_wb"), 0, V_NA, "IMP_ISP_Tuning_Set/GetWB not exported by this libimp");
+        return;
+    }
+    memset(&o, 0, sizeof(o)); memset(&c, 0, sizeof(c));
+    r0 = IMP_ISP_Tuning_GetWB(&o);
+    if (r0 == 0) {
+        a.mode = ISP_CORE_WB_MODE_MANUAL; a.rgain = 100; a.bgain = 150;     /* 8 bit values: the gain items are one byte (vendor wraps 256 to 0) */
+        rs = IMP_ISP_Tuning_SetWB(&a);
+        usleep(200000);
+        rg = IMP_ISP_Tuning_GetWB(&c);
+        ok = c.mode == ISP_CORE_WB_MODE_MANUAL && c.rgain == 100 && c.bgain == 150;
+        rr = IMP_ISP_Tuning_SetWB(&o);
+        memset(&a, 0, sizeof(a)); rb = IMP_ISP_Tuning_GetWB(&a);
+    }
+    rep(LBL("t30pass_wb"), r0 | rs | rg | rr | rb, (r0 == 0 && rs == 0 && rg == 0 && rr == 0 && rb == 0 && ok && a.mode == o.mode && flow()) ? V_PASS : V_FAIL,
+        "rt: Get/SetWB: original mode %d r %u b %u; manual r 100 b 150 set (ret %d), read back mode %d r %u b %u (ret %d); original set back (ret %d), mode now %d; colour effect: case awb-manual",
+        (int)o.mode, o.rgain, o.bgain, rs, (int)c.mode, c.rgain, c.bgain, rg, rr, (int)a.mode);
+}
+
+static void t30pass_temperstrength(void)
+{
+    int r1, r2;
+
+    if (!IMP_ISP_Tuning_SetTemperStrength) {
+        rep(LBL("t30pass_temperstrength"), 0, V_NA, "IMP_ISP_Tuning_SetTemperStrength not exported by this libimp");
+        return;
+    }
+    r1 = IMP_ISP_Tuning_SetTemperStrength(64);
+    r2 = IMP_ISP_Tuning_SetTemperStrength(128);
+    rep(LBL("t30pass_temperstrength"), r1 | r2, (r1 == 0 && r2 == 0 && flow()) ? V_PASS : V_FAIL,
+        "rt: SetTemperStrength 64 then 128 (ret %d/%d), no getter; temper itself is off on T30 (0x2c0 bit 0) like the vendor; frames flow", r1, r2);
+}
+
+static void t30pass_sensorreg(void)
+{
+    uint32_t id_h = 0, id_l = 0, v = 0, v2 = 0;
+    int r1, r2, rs = -1, rg = -1;
+
+    if (!IMP_ISP_GetSensorRegister || !IMP_ISP_SetSensorRegister) {
+        rep(LBL("t30pass_sensorreg"), 0, V_NA, "IMP_ISP_Get/SetSensorRegister not exported by this libimp");
+        return;
+    }
+    r1 = IMP_ISP_GetSensorRegister(0x3107, &id_h);
+    r2 = IMP_ISP_GetSensorRegister(0x3108, &id_l);
+    if (r1 == 0 && r2 == 0 && IMP_ISP_GetSensorRegister(0x3e03, &v) == 0) {   /* gain mode register: written back unchanged */
+        rs = IMP_ISP_SetSensorRegister(0x3e03, v);
+        rg = IMP_ISP_GetSensorRegister(0x3e03, &v2);
+    }
+    rep(LBL("t30pass_sensorreg"), r1 | r2 | rs | rg, (r1 == 0 && r2 == 0 && rs == 0 && rg == 0 && (id_h & 0xff) == 0x32 && (id_l & 0xff) == 0x35 && v == v2 && flow()) ? V_PASS : V_FAIL,
+        "rt: GetSensorRegister chip id 0x3107/0x3108 = 0x%02x/0x%02x (want 0x32/0x35, ret %d/%d); 0x3e03 = 0x%02x written back unchanged (ret %d), read 0x%02x (ret %d); frames flow",
+        id_h, id_l, r1, r2, v, rs, v2, rg);
+}
+
+static void t30pass_movestate(void)
+{
+    int r1, r2, f1, f2;
+
+    if (!IMP_ISP_Tuning_EnableMovestate || !IMP_ISP_Tuning_DisableMovestate) {
+        rep(LBL("t30pass_movestate"), 0, V_NA, "IMP_ISP_Tuning_Enable/DisableMovestate not exported by this libimp");
+        return;
+    }
+    r1 = IMP_ISP_Tuning_EnableMovestate(); usleep(300000); f1 = flow();
+    r2 = IMP_ISP_Tuning_DisableMovestate(); usleep(300000); f2 = flow();
+    rep(LBL("t30pass_movestate"), r1 | r2, (r1 == 0 && r2 == 0 && f1 && f2) ? V_PASS : V_FAIL,
+        "rt: EnableMovestate (ret %d, frames flow %d), DisableMovestate (ret %d, frames flow %d)", r1, f1, r2, f2);
+}
+
+static void t30pass_colorfx(void)
+{
+    IMPISPColorfxMode o = 0, g = 0, b = 0;
+    int r0, rs = -1, rg = -1, rr = -1, rb = -1;
+
+    if (!IMP_ISP_Tuning_GetColorfxMode || !IMP_ISP_Tuning_SetColorfxMode) {
+        rep(LBL("t30pass_colorfx"), 0, V_NA, "IMP_ISP_Tuning_Set/GetColorfxMode not exported by this libimp");
+        return;
+    }
+    r0 = IMP_ISP_Tuning_GetColorfxMode(&o);
+    if (r0 == 0) {
+        rs = IMP_ISP_Tuning_SetColorfxMode(IMPISP_COLORFX_MODE_BW);
+        rg = IMP_ISP_Tuning_GetColorfxMode(&g);
+        rr = IMP_ISP_Tuning_SetColorfxMode(o);
+        rb = IMP_ISP_Tuning_GetColorfxMode(&b);
+    }
+    rep(LBL("t30pass_colorfx"), r0 | rs | rg | rr | rb, (r0 == 0 && rs == 0 && rg == 0 && rr == 0 && rb == 0 && g == IMPISP_COLORFX_MODE_BW && b == o && flow()) ? V_PASS : V_FAIL,
+        "rt: Get/SetColorfxMode: original %d; B/W set (ret %d), read %d (ret %d); original set back (ret %d), read %d; picture: case colorfx-bw", (int)o, rs, (int)g, rg, rr, (int)b);
+}
+
+static void t30pass_scene(void)
+{
+    IMPISPSceneMode o = 0, g = 0;
+    int r0, rs = -1, rg = -1;
+
+    if (!IMP_ISP_Tuning_GetSceneMode || !IMP_ISP_Tuning_SetSceneMode) {
+        rep(LBL("t30pass_scene"), 0, V_NA, "IMP_ISP_Tuning_Set/GetSceneMode not exported by this libimp");
+        return;
+    }
+    r0 = IMP_ISP_Tuning_GetSceneMode(&o);
+    if (r0 == 0) {
+        rs = IMP_ISP_Tuning_SetSceneMode(o);
+        rg = IMP_ISP_Tuning_GetSceneMode(&g);
+    }
+    rep(LBL("t30pass_scene"), r0 | rs | rg, (r0 == 0 && rs == 0 && rg == 0 && g == o && flow()) ? V_PASS : V_FAIL,
+        "rt: GetSceneMode %d (ret %d), SetSceneMode of the same mode (ret %d), read %d (ret %d); the vendor T30 driver stores nothing on set (stays 0)", (int)o, r0, rs, (int)g, rg);
+}
+
+static volatile int t30_vdrop_calls;
+static void t30_vdrop_cb(void) { t30_vdrop_calls++; }
+
+static void t30pass_videodrop(void)
+{
+    int r;
+
+    if (!IMP_ISP_Tuning_SetVideoDrop) {
+        rep(LBL("t30pass_videodrop"), 0, V_NA, "IMP_ISP_Tuning_SetVideoDrop not exported by this libimp");
+        return;
+    }
+    r = IMP_ISP_Tuning_SetVideoDrop(t30_vdrop_cb);
+    usleep(500000);
+    rep(LBL("t30pass_videodrop"), r, (r == 0 && flow()) ? V_PASS : V_FAIL,
+        "rt: SetVideoDrop(callback) (ret %d); callback calls in 0.5 s: %d (called only when the sensor input drops); frames flow", r, t30_vdrop_calls);
+}
+
+static void t30pass_fwfreeze(void)
+{
+    int r1, r2, f;
+
+    if (!IMP_ISP_Tuning_SetFWFreeze) {
+        rep(LBL("t30pass_fwfreeze"), 0, V_NA, "IMP_ISP_Tuning_SetFWFreeze not exported by this libimp");
+        return;
+    }
+    r1 = IMP_ISP_Tuning_SetFWFreeze(IMPISP_TUNING_OPS_MODE_ENABLE); usleep(300000);
+    r2 = IMP_ISP_Tuning_SetFWFreeze(IMPISP_TUNING_OPS_MODE_DISABLE); usleep(300000);
+    f = flow();
+    rep(LBL("t30pass_fwfreeze"), r1 | r2, (r1 == 0 && r2 == 0 && f) ? V_PASS : V_FAIL,
+        "rt: SetFWFreeze enable (ret %d) for 0.3 s, then disable (ret %d); frames flow %d", r1, r2, f);
+}
+
+static void cs_t30pass2(void)
+{
+    t30pass_wb();
+    t30pass_temperstrength();
+    t30pass_aehist_rt();
+    t30pass_aeweight_rt();
+    t30pass_awbhist_rt();
+    t30pass_awbweight_rt();
+    t30pass_afhist_rt();
+    t30pass_rgbcoefft_rt();
+    t30pass_sinterdns_rt();
+    t30pass_temperdns_rt();
+    t30pass_aeroi_rt();
+    t30pass_sensorreg();
+    t30pass_movestate();
+    t30pass_colorfx();
+    t30pass_scene();
+    t30pass_videodrop();
+    t30pass_fwfreeze();
+}
 #else
 static void cs_t30pass(void) {}
 static void cs_t30pass_csc(void) {}
+static void cs_t30pass2(void) {}
 #endif
 
 void cases_list(void)
 {
-    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass", "t30pass", "t30pass_csc", "maskblock_t23", "ispcover1_t23", "secprobe_t23", "drawblock_t23" };
+    static const char *n[] = { "sensorreg", "log", "logmacro", "waitframe", "videodrop", "movestate", "aefreeze", "aehistorigin", "autozoom", "framedrop", "cwf", "sinter", "temper", "process", "fwfreeze", "hilight", "inttime", "expr", "scene", "colorfx", "gamma", "modctl", "ccm", "autozoom_set", "isposd", "aeroi", "rawdrc", "wdr_t41", "bypass_t40", "camsel", "binpath", "rgbcoef", "ispbypass", "switchbin", "scalerlv", "contrast", "hue", "aecomp", "backlight", "dpc", "custom", "wdr", "wdrout", "ispflip", "hvflip", "ispbypass_old", "gamma_old", "csc", "awbct", "scalerlv_old", "stalesnap", "aestats", "faceae", "aeexplist", "dmic", "fspool", "sensorflip", "aestrategy", "alloc", "decoder_t2x", "isposdapi", "inject_t40", "aeevlist", "faceaeweight", "tmofaceae", "drawblock", "scalerlv_t40", "fixedcontrast", "faceawb", "aeinfo_t40", "faceae_t40", "switchbin_t40", "itmax", "fixedcontrast_old", "poolid_t31", "ncu_t31", "fsset_t31", "fscb_t31", "evstart_t31", "shading_t31", "override_t31", "encgrp_t31", "osdhelp_t31", "ispcover_t23", "isppicupd_t23", "enchelp_t23", "t140c", "ispdraw_t23", "padframe_t23", "tisppar_t40", "tispminmax_t40", "tispawb_t40", "framedrop_t40", "ratiohang_t40", "awbctstart_t40", "ctmove_t40", "tisp2open_t40", "sensorattr_t40", "emu", "rgnisp", "dec", "framerel", "t41isp", "switchbin_t23", "osdalloc_t23", "decoder_t23", "wbalgo_t23", "customalgo_t40", "customalgo_t41", "wdrtoggle_t41", "fscycle", "hskip", "demask", "fisheye", "transcfg", "rctrig", "meshscale", "t41pass", "t30pass", "t30pass_csc", "t30pass2", "maskblock_t23", "ispcover1_t23", "secprobe_t23", "drawblock_t23" };
     unsigned i;
 
     for (i = 0; i < sizeof(n) / sizeof(n[0]); i++) puts(n[i]);
@@ -6187,6 +6390,7 @@ void t_cases(void)
     if (cs_on("t41pass")) cs_t41pass(); wdog("cases", 60);
     if (cs_on("t30pass")) cs_t30pass(); wdog("cases", 120);
     if (getenv("APITEST_CASES") && cs_on("t30pass_csc")) cs_t30pass_csc(); wdog("cases", 60);   /* explicit only: OpenIMP extension */
+    if (getenv("APITEST_CASES") && cs_on("t30pass2")) cs_t30pass2(); wdog("cases", 120);       /* explicit only */
     if (cs_on("override_t31")) cs_override_t31(); wdog("cases", 90);
     if (cs_on("encgrp_t31")) cs_encgrp_t31(); wdog("cases", 120);
     if (cs_on("osdhelp_t31")) cs_osdhelp_t31(); wdog("cases", 60);
