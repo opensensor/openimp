@@ -8,6 +8,19 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: software rotation through `SetChnRotate` (#212, extra beyond vendor), rotation marker and limits for every rotating SoC
+
+- T30: `IMP_FrameSource_SetChnRotate` now rotates on the T21 path (`FS_SW_ROTATE`, `nv12_rotate` C plus MXU2 after the bit-exact selftest).
+  - Vendor enum: 1 = 90 CCW, 2 = 90 CW; OpenIMP 3 = 180.
+  - Call it before CreateChn with the landscape size, and create the encoder with the rotated size.
+  - Envelope as on T21: both sides multiples of 16, pixel cap 1280x720. Main streams above that (e.g. a 1088x1920 portrait main) stay refused (-1).
+  - Before this change the call stored the value and the frames were not rotated.
+- T30X lab camera (b36, idle, ms per frame, MXU2 == C bit-exact):
+  - rot90: 640x360 1.6-2.5, 1280x720 8.6-10.6, 1920x1080 22-24, 2048x1536 40-41;
+  - rot180: 1.2 / 4.8 / 11.2 / 15.0.
+  - Proof with this library: sub 640x352 -> 352x640, modes 1 and 2, 24.8 fps next to the 2048x1536 main, valid H.264 352x640.
+- New for streamers on every SoC that rotates in software (T31, T10/T20/T21, T30): `OpenIMP_Cap_FsRotate` and `OpenIMP_FS_RotateLimits(chn, &max_w, &max_h, &max_fps, &align)`, declared in `imp_framesource.h`, exported through `libimp.map`.
+
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-iridix2` `d09dc553` and OpenIMP next `7b9f3448` at run time, no flash): `ISP_Tuning_GetAFMetrices` returns 0 and writes the 16-bit value `0xffff` like the vendor libimp 1.0.5 (b29: vendor ret 0, `0xffff`, fixed-focus unit), `?` -> `dev`; t30pass + t30pass2 49 / 0. T30 API 284/350 -> 285/350 works.

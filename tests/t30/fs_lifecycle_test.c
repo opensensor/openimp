@@ -1193,7 +1193,7 @@ static void test_disable_during_dqbuf(void)
     check_clean("disable during dqbuf");
 }
 
-#if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
+#if !defined(PLATFORM_T23)
 #include "framesource/nv12_rotate.h"
 
 void openimp_fs_rotate_capture(int chn, void *frame);
@@ -1239,13 +1239,29 @@ static void test_rotate(void)
     int waited;
     pthread_t thread;
 
-    /* gate: the vendor values only, even, 16-aligned, <= 704x576 */
+    /* gate: the vendor values only, even, 16-aligned, <= the pixel cap
+     * (704x576 on T10/T20/T21, 1280x720 on T30) */
     CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 360) == -1,
           "640x360 (height not 16-aligned) must be refused");
     CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1920, 1080) == -1,
           "1080p main stream must be refused");
+#if defined(PLATFORM_T30)
+    /* T30: cap 1280x720 pixels (T30X measurement, #212) */
+    CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1280, 736) == -1,
+          "above 1280x720 pixels must be refused");
+    {
+        int mw = 0, mh = 0, mf = -1, al = 0;
+
+        CHECK(OpenIMP_Cap_FsRotate == 1, "rotation marker");
+        CHECK(OpenIMP_FS_RotateLimits(1, &mw, &mh, &mf, &al) == 0 &&
+              mw == 1280 && mh == 720 && mf == 0 && al == 16,
+              "limits %dx%d fps %d align %d", mw, mh, mf, al);
+        CHECK(OpenIMP_FS_RotateLimits(9, &mw, &mh, &mf, &al) == -1, "limits bad chn");
+    }
+#else
     CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1280, 720) == -1,
           "720p main stream must be refused");
+#endif
     CHECK(IMP_FrameSource_SetChnRotate(1, 7, 640, 368) == -1, "bad mode");
     CHECK(IMP_FrameSource_SetChnRotate(5, 1, 640, 368) == -1, "bad channel");
     CHECK(IMP_FrameSource_SetChnRotate(0, 0, 1920, 1080) == 0, "rot 0");
@@ -1331,7 +1347,7 @@ static void test_rotate(void)
     check_clean("rotate");
 }
 #else
-/* T23 rotates in the caller (unbound YuvEncode), the T30 vendor libimp has no SetChnRotate: it refuses. */
+/* T23 rotates in the caller (unbound YuvEncode): SetChnRotate refuses. */
 static void test_rotate(void)
 {
     CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 368) == -1, "T23 refuses");

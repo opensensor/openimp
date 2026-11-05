@@ -104,6 +104,8 @@ compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
 compile framesource src/framesource/framesource_tseries.c
+compile nv12_rotate src/framesource/nv12_rotate.c $hot_flags -Werror
+compile core_mxu2 src/core/openimp_mxu2.c -Werror
 compile isp src/isp/isp_tseries.c
 compile t23_compat src/t31/openimp_t31_compat.c
 compile t23_state src/t31/openimp_t31_state.c -Werror
@@ -161,6 +163,8 @@ compile t30_dmic src/t31/openimp_t31_dmic.c -Werror
     "$output_dir/core_video_drop.o" \
     "$output_dir/core_su_base_shutdown.o" \
     "$output_dir/framesource.o" \
+    "$output_dir/nv12_rotate.o" \
+    "$output_dir/core_mxu2.o" \
     "$output_dir/isp.o" \
     "$output_dir/t23_compat.o" \
     "$output_dir/t23_state.o" \
