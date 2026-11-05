@@ -27,6 +27,12 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - OpenIMP: new read-only `OpenIMP_FS_DebugLockOwner()` (kernel tid of the `g_fs_lock` holder, 0 = free; exported in `libimp.map`); `FS_LOCK`/`FS_TRYLOCK` store it, locking unchanged.
 - Host test `tests/tdwatch` (in `make check`): a faked stall (sleep in a stub, fake lock holder thread) writes exactly one block with step, state word, holder and owner marked; a normal teardown writes nothing and arm+disarm takes about 0.1 ms (limit 5 ms); disabled watch writes nothing; a second stall adds no second block. `tests/t30/fs_lifecycle_test.c` checks the owner is 0 after every lifecycle.
 
+## 2026-11-05, T30: device evidence b26 (WaitFrame dev, IntegrationTime and Saturation rt; T30 API 178/350 works, 4 of them rt, counts from the generator)
+
+- T30X lab camera, batch b26 (open-tx-isp b26 ko e542368b = next + SDK oracles + Iridix clamp/trace, OpenIMP next 410a2d69): `IMP_ISP_Tuning_WaitFrame` with the real library function: 10 waits return 0, the frame count rises 7158 -> 7167, slowest wait 67 ms; timeout path: 53 of 60 waits with timeout 1 returned non-zero, none took over 500 ms. Cell stub -> dev.
+- `Get/SetIntegrationTime` and `Get/SetSaturation`: API round trip on the device (QEMU -> rt, no picture verdict).
+- Picture checks of the same batch (not matrix cells): compact NV12 on ch1: night U=V=128.00, saturation-0 125.85/125.85 (vendor 125.82), no green band; first open picture Y 99.3 (vendor 100.7, was 134.6); the Iridix state at base is still off (0x3dc = 0, 0x3c4 = 0x19, vendor 0xff/0x21), tracked in #202.
+
 ## 2026-11-04, T30 apitest: `t30pass_*` lines map to matrix cells; rawdrc_strength expectation (no cell moved)
 
 - `tools/apitest/results2json.py` maps the nine `t30pass_<item>` labels (device batch b23: they were reported as unmapped) to the T30 cells (IntegrationTime, WaitFrame, AeComp, AntiFog, RawDRC, ISPRunningMode, Csc_Attr). They are `rt:` read-back lines, so they merge as RT, never as a picture PASS.

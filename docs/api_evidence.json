@@ -453,7 +453,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Bypass_Bind": {
@@ -546,7 +546,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_DelSensor": {
@@ -624,7 +624,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_DisableSensor": {
@@ -702,7 +702,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_DisableTuning": {
@@ -780,7 +780,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_EnableSensor": {
@@ -858,7 +858,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_EnableTuning": {
@@ -936,7 +936,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Get/SetCsccrMode": {
@@ -1290,7 +1290,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_RAW_RwControl": {
@@ -1984,7 +1984,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T41": "apitest agg47 2026-10-26 .34",
     "T21": "apitest rc3-cases 2026-10-26 .24",
-    "T30": "apitest t30b19 2026-11-04 .231",
+    "T30": "apitest t30b26 2026-11-05 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -2213,7 +2213,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T20": "apitest issue-121 2026-10-27 .107 (open-tx-isp b4d8eae0): Get returns the active curve (128/129 points, was all 0); same curve written back: luma unchanged; x^0.3 vs linear Y 131.6 vs 42.3",
-    "T30": "apitest t30b19 2026-11-04 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Tuning_Get/SetGammaAttr": {
@@ -2434,7 +2434,7 @@
    "ref": {
     "T10": "apitest t10wrench 2026-11-03 .31",
     "T20": "apitest agg47 2026-10-26 .107",
-    "T30": "apitest t30b20 2026-11-04 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Tuning_Get/SetISPHflip": {
@@ -2484,7 +2484,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "apitest t30b20 2026-11-04 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Tuning_Get/SetISPRunningMode": {
@@ -2612,7 +2612,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest rc3-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "apitest t30b20 2026-11-04 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Tuning_Get/SetIntegrationTime": {
@@ -2622,7 +2622,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2648,7 +2648,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest inttime 2026-10-27 .107, night (open-tx-isp 4e961167, #128): 30 -> 240 lines Y 5.6 -> 37.3, readback 30/240; AE no longer overrides the manual time",
     "T21": "apitest issue-110 2026-10-27 .24 (open-tx-isp 28b26d20, stock libimp): Get mode/it/max 0/1350/2246, manual 30 read back; Set 30->240 lines Y 16.1->78.9; QEMU T21 equal (beyond vendor: stock T21 ignores the block)",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b26 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetMask": {
@@ -2856,7 +2856,7 @@
     "T20": "dev",
     "T21": "rt",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -2923,7 +2923,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177",
+    "T30": "apitest t30b26 2026-11-05 .231 (API round trip, no visible effect expected)",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -3246,7 +3246,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "apitest t30b19 2026-11-04 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Tuning_GetEVAttr": {
@@ -3613,7 +3613,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "apitest t30b19 2026-11-04 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "ISP_Tuning_GetTotalGain": {
@@ -3829,7 +3829,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest agg47 2026-10-26 .34",
-    "T30": "apitest t30b19 2026-11-04 .231",
+    "T30": "apitest t30b26 2026-11-05 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -4298,7 +4298,7 @@
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
     "T41": "apitest next+ko/libimp swap 2026-10-27 .34",
-    "T30": "apitest t30b19 2026-11-04 .231",
+    "T30": "apitest t30b26 2026-11-05 .231",
     "T40": "apitest t40pass 2026-11-04 .184"
    }
   },
@@ -4354,7 +4354,7 @@
     "T21": "apitest rc3-cases 2026-10-27 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest agg47 2026-10-26 .26",
-    "T30": "apitest t30b19 2026-11-04 .231",
+    "T30": "apitest t30b26 2026-11-05 .231",
     "T20": "apitest t20pass 2026-11-04 .107"
    }
   },
@@ -4548,7 +4548,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "stub",
+    "T30": "dev",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4581,7 +4581,8 @@
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest issue-110 2026-10-27 .24 (open-tx-isp 28b26d20): frame count 49->50, -ETIMEDOUT on timeout; QEMU 96->97",
     "T23": "apitest agg47-cases 2026-10-26 .30",
-    "T31": "apitest next+ko/libimp swap 2026-10-27 .26"
+    "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
+    "T30": "apitest t30b26 2026-11-05 .231: real WaitFrame (OpenIMP next 410a2d69): 10 waits ret 0, frame count 7158 -> 7167, slowest wait 67 ms; timeout path 53 of 60 waits with timeout 1 returned non-zero, none > 500 ms"
    }
   },
   "ISP_Tuning_WaitFrameDone": {
@@ -9747,7 +9748,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "FrameSource_DequeueBuffer": {
@@ -9845,7 +9846,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "FrameSource_DisableChn": {
@@ -9923,7 +9924,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "FrameSource_EnableChn": {
@@ -10001,7 +10002,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "FrameSource_ExternInject_CreateChn": {
@@ -10267,7 +10268,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "FrameSource_Get/SetDirectModeAttr": {
@@ -10421,7 +10422,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "FrameSource_Get/SetPool": {
@@ -18125,7 +18126,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "System_GetBindbyDest": {
@@ -18475,7 +18476,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest T30X lab 2026-11-03 .231"
+    "T30": "apitest t30b26 2026-11-05 .231"
    }
   },
   "System_MemPoolFree": {
