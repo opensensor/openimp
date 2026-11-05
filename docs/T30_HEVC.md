@@ -29,6 +29,10 @@ Like the vendor libimp 1.0.5 (an x265-derived encoder, "i265e"):
 | `src/t30/radix/t30_radix_cmdlist.c/.h` | the command list builder (GPL-2.0, register map from the kernel's `radix.h`) |
 | `src/t30/radix/t30_radix_intp.h` | HEVC luma/chroma interpolation formats, generated from `radix.h` by `tools/gen_radix_intp.py` |
 | `tests/t30/radix/radix_cmdlist_test.c` | host test (`make -C tests/t30 check`): 64 parameter blocks must give the vendor's lists |
+| `src/t30/radix/t30_radix_cabac.c/.h` | the 156 initial CABAC context states for slice type and QP (HEVC initValue tables, vendor context order) |
+| `src/t30/radix/t30_radix_hevc.c/.h` | VPS, SPS (with VUI/HRD), PPS and slice header RBSP writers and the NAL framing (start code, emulation prevention) |
+| `tests/t30/radix/radix_cabac_test.c`, `radix_hevc_test.c` | host tests against vendor hashes (`make -C tests/t30 check`) |
+| `tests/t30/radix/hevc_diff.c` | desk tool: CABAC, header writers and NAL framing against the vendor functions under qemu-mipsel |
 | `tests/t30/radix/radix_diff.c` | desk tool: compares the builder with the vendor function under qemu-mipsel (`make -C tests/t30 radix-diff O=<thingino output> VENDOR_LIBIMP=<libimp.so> QEMU_MIPSEL=<qemu-mipsel>`) |
 
 The builder gives the same list as the vendor library word for word (25 000 random blocks, I and P pictures). It is not
@@ -36,5 +40,6 @@ linked into libimp yet.
 
 ## Still to do
 
-Parameter-block defaults and CABAC context states, the HEVC header writer for the Radix syntax, the encoder object
+Parameter-block defaults (mode decision, CRP/SAS, ROI, RC fields that the vendor's eprc layer sets), the values the
+vendor derives from the channel attributes for VPS/SPS/PPS (profile/level, VUI timing, CTB sizes), the encoder object
 (buffers, channel, packs, rate control), the QEMU proof (the QEMU T30 machine has a Radix model) and a T30X device proof.

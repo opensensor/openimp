@@ -12,7 +12,8 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 - Study: the T30 encodes H.265 on Radix (0x13600000), a block separate from Helix; its GPL kernel driver is built into every thingino T30 kernel and uses the same `/dev/soc_vpu` channel ABI as the H.264 path, so H.265 is library work only. The vendor libimp 1.0.5 writes VPS/SPS/PPS/SEI and the slice header itself and lets Radix write the slice data (docs/T30_HEVC.md).
 - New `src/t30/radix/`: the 0x1204-byte per-picture parameter block (names/offsets from the vendor debug dumper) and the command list builder written from the vendor `H265E_T30_SliceInit` (0x3ad5c) with the register map and interpolation tables of the kernel's GPL `radix.h`. Desk proof: under qemu-mipsel against the vendor function, 25 000 random blocks (I and P) give identical lists; host test `radix_cmdlist_test` (64 vendor list hashes) in `make -C tests/t30 check`.
-- Not linked into libimp yet: `IMP_Encoder_CreateChn(PT_H265)` on T30 still returns -1. Open: block defaults, CABAC states, header writer, encoder object, QEMU and T30X proofs. Matrix row 23 unchanged.
+- CABAC context init (`t30_radix_cabac.c`, = vendor `Entropy::resetEntropy` for every slice type and QP), VPS/SPS/PPS/slice header writers and NAL framing (`t30_radix_hevc.c`, bit-identical to the vendor `codeVPS`/`codeSPS`/`codePPS`/`codeSliceHeader`/`NALList::serialize` over 20 000 random value sets under qemu-mipsel); host tests `radix_cabac_test`, `radix_hevc_test` (vendor hashes) in `make -C tests/t30 check`.
+- Not linked into libimp yet: `IMP_Encoder_CreateChn(PT_H265)` on T30 still returns -1. Open: block defaults, the vendor's header values per channel setting, encoder object, QEMU and T30X proofs. Matrix row 23 unchanged.
 
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 

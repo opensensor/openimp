@@ -51,3 +51,5 @@ radix_cmdlist_test
 radix_diff
 radix_cabac_test
 hevc_diff
+radix_hevc_test
+radix_hevc_headers.265
