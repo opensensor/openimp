@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: device evidence for audio output and AEC (T30X audio run b27, API cells only)
+
+- Device (T30X lab camera, `.231`, stock audio module with `/dev/dsp`, no ALSA; open-tx-isp `claude/t30-b27b` `e2c2ee24` and OpenIMP next `8f2cb422` at run time, no flash): apitest audio area PASS 65 / FAIL 0 / SKIP 4 (custom codec registration). 26 T30 cells `qemu` -> `dev`: `AO_Enable` / `Disable`, `AO_EnableChn` / `DisableChn`, `AO_Get/SetPubAttr`, `AO_Get/SetVol`, `AO_Get/SetGain`, `AO_SetVolMute`, `AO_Soft_Mute` / `UNMute`, `AO_SendFrame`, `AO_PauseChn` / `ResumeChn`, `AO_ClearChnBuf`, `AO_FlushChnBuf`, `AO_QueryChnStat`, `AO_CacheSwitch`, `AO_Enable/DisableHpf`, `AO_Enable/DisableAgc`, `AI_Enable/DisableAec`, `AI_Enable/DisableAecRefFrame`, `AI_GetFrameAndRef`. T30 API 178/350 -> 207/350 works.
+- The output path was tested silent (muted, volume at the minimum, zero-filled frames only); the vendor stack in the same boot: 59 / 2 (ADEC stream size, AEC enable).
+
 ## 2026-11-04, T30: `IMP_FrameSource_GetFrame` delivers compact NV12 like the vendor libimp (#202; no cell moved, device proof pending)
 
 - Found in T30X device batch b24 (ch1 640x360 NV12): the lib handed out the capture buffer, whose chroma plane sits at `width * ALIGN16(height)` (640 * 368), while consumers read it at `width * height` (640 * 360): 8 garbage chroma rows (about 45) at the top and a 16-line chroma shift, which showed as a green band and U/V about 4 too low (night, saturation 0, b/w, green cast).
