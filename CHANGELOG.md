@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, apitest: T30 custom codec registration case (silent PCM copy; device test pending)
+
+- T30 audio area: `IMP_AENC_RegisterEncoder` / `UnRegisterEncoder` and `IMP_ADEC_RegisterDecoder` / `UnRegisterDecoder` are no longer skipped. A PCM copy codec is registered, one microphone frame runs through an encoder channel of the returned handle and one stream through a decoder channel; PASS needs the handle, the callback calls and unchanged bytes; nothing is played. Other SoCs keep the skip.
+- QEMU T30 has no audio device (AI/AO enable fail before the case), so the proof is the T30X run.
+
 ## 2026-11-05, T30: DMIC rows count for the RC3 gate as `host`, not verified on hardware (user decision)
 
 - The T30X lab board has no digital microphone: the audio probe of b27 and b28 shows only `/dev/dsp` with the vendor audio module, no DMIC node, so `DMIC_*` and `DMIC_DisableAecRefFrame` cannot be tested there. User decision 2026-11-05: done for the gate, but explicitly not verified on hardware. The cells use the new code `nohw` ("done, not verified on hardware"), which the RC3 gate counts as works (docs/status/release.yaml works_cells), and which every table and legend labels as not hardware-verified; the reference text says so. To be verified on hardware when a T30 camera with a DMIC is available.

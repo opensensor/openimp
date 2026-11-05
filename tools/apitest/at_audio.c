@@ -49,6 +49,98 @@ static int ai_frames(int dev, int n, unsigned *rms, int *ts_ok)
     return got;
 }
 
+
+#if defined(PLATFORM_T30)
+/* Custom codec registration (T30): a silent PCM copy codec.  The encoder copies the microphone frame into the
+ * stream unchanged, the decoder copies the stream back; nothing is played.  PASS = registration returns a handle,
+ * a channel of that type runs one frame through the callbacks with the bytes unchanged, unregistration returns 0. */
+static int cp_enc_calls, cp_dec_calls;
+static int cp_encode(void *enc, IMPAudioFrame *d, unsigned char *out, int *outlen)
+{
+    (void)enc;
+    cp_enc_calls++;
+    if (!d || !out || !outlen || d->len <= 0 || d->len > 2048) return -1;
+    memcpy(out, (const void *)(uintptr_t)d->virAddr, d->len);
+    *outlen = d->len;
+    return 0;
+}
+static int cp_decode(void *dec, unsigned char *in, int inlen, unsigned short *out, int *outlen, int *chns)
+{
+    (void)dec;
+    cp_dec_calls++;
+    if (!in || !out || !outlen || inlen <= 0) return -1;
+    memcpy(out, in, inlen);
+    *outlen = inlen;
+    if (chns) *chns = 1;
+    return 0;
+}
+static int cp_getinfo(void *dec, void *info) { (void)dec; (void)info; return 0; }
+
+static void codec_register_test(int dev)
+{
+    IMPAudioEncEncoder e;
+    IMPAudioDecDecoder dd;
+    IMPAudioEncChnAttr ea;
+    IMPAudioDecChnAttr da;
+    G(IMPAudioFrame, f);
+    G(IMPAudioStream, es);
+    G(IMPAudioStream, ds);
+    unsigned char pcm[2048];
+    int he = -1, hd = -1, r, r2, len = 0, same = 0, cap = 800, want;
+
+    memset(&e, 0, sizeof(e)); e.maxFrmLen = 2048; snprintf(e.name, sizeof(e.name), "AT_PCMCOPY");
+    e.encoderFrm = cp_encode;
+    r = IMP_AENC_RegisterEncoder(&he, &e);
+    CHECK(IMP_AENC_RegisterEncoder, r, he >= 0, "silent PCM copy encoder, handle %d", he);
+    if (r == 0) {
+        memset(&ea, 0, sizeof(ea)); ea.type = he; ea.bufSize = 20;
+        r2 = IMP_AENC_CreateChn(1, &ea);
+        if (r2 == 0 && IMP_AI_GetFrame(dev, 0, f, BLOCK) == 0) {
+            len = f->len < (int)sizeof(pcm) ? f->len : (int)sizeof(pcm);
+            memcpy(pcm, (const void *)(uintptr_t)f->virAddr, len);
+            r2 = IMP_AENC_SendFrame(1, f);
+            IMP_AI_ReleaseFrame(dev, 0, f);
+            if (r2 == 0 && IMP_AENC_GetStream(1, es, BLOCK) == 0) {
+                same = es->len == len && es->stream && !memcmp(es->stream, pcm, len);
+                IMP_AENC_ReleaseStream(1, es);
+            }
+        }
+        IMP_AENC_DestroyChn(1);
+        r2 = IMP_AENC_UnRegisterEncoder(&he);
+        CHECK(IMP_AENC_UnRegisterEncoder, r2, same && cp_enc_calls > 0,
+              "after one frame through the registered encoder: %d callback calls, stream %s the %d byte PCM frame", cp_enc_calls, same ? "equals" : "DIFFERS from", len);
+    } else rep(FN(IMP_AENC_UnRegisterEncoder), -1, V_SKIP, "encoder not registered");
+
+    memset(&dd, 0, sizeof(dd)); snprintf(dd.name, sizeof(dd.name), "AT_PCMCOPY");
+    dd.decodeFrm = cp_decode; dd.getFrmInfo = cp_getinfo;
+    r = IMP_ADEC_RegisterDecoder(&hd, &dd);
+    CHECK(IMP_ADEC_RegisterDecoder, r, hd >= 0, "silent PCM copy decoder, handle %d", hd);
+    if (r == 0) {
+        same = 0;
+        { G(IMPAudioIOAttr, ga); if (IMP_AO_GetPubAttr(0, ga) == 0 && ga->numPerFrm > 0) cap = ga->numPerFrm * 2; gfree(ga); }
+        if (len <= 0) { memset(pcm, 0, 640); len = 640; }
+        want = len < cap ? len : cap;
+        memset(&da, 0, sizeof(da)); da.type = hd; da.bufSize = 20; da.mode = ADEC_MODE_PACK;
+        r2 = IMP_ADEC_CreateChn(1, &da);
+        if (r2 == 0) {
+            ds->stream = pcm; ds->len = want; ds->timeStamp = 0; ds->seq = 0;
+            if (IMP_ADEC_SendStream(1, ds, BLOCK) == 0) {
+                memset(ds, 0, sizeof(*ds));
+                if (IMP_ADEC_GetStream(1, ds, BLOCK) == 0) {
+                    same = ds->len == want && ds->stream && !memcmp(ds->stream, pcm, want);
+                    IMP_ADEC_ReleaseStream(1, ds);
+                }
+            }
+            IMP_ADEC_DestroyChn(1);
+        }
+        r2 = IMP_ADEC_UnRegisterDecoder(&hd);
+        CHECK(IMP_ADEC_UnRegisterDecoder, r2, same && cp_dec_calls > 0,
+              "after one stream through the registered decoder: %d callback calls, PCM %s the %d sent bytes (nothing played)", cp_dec_calls, same ? "equals" : "DIFFERS from", want);
+    } else rep(FN(IMP_ADEC_UnRegisterDecoder), -1, V_SKIP, "decoder not registered");
+    gfree(f); gfree(es); gfree(ds);
+}
+#endif
+
 static void ai_flow(int dev)
 {
     G(IMPAudioIOAttr, attr);
@@ -301,10 +393,14 @@ static void ai_flow(int dev)
             }
             NEED(IMP_ADEC_DestroyChn) { r2 = r == 0 ? IMP_ADEC_DestroyChn(0) : -1; RET0(IMP_ADEC_DestroyChn, r2, "chn 0"); }
         }
+#if defined(PLATFORM_T30)
+        codec_register_test(dev);
+#else
         rep(FN(IMP_AENC_RegisterEncoder), 0, V_SKIP, "custom codec registration (callbacks), not exercised");
         rep(FN(IMP_AENC_UnRegisterEncoder), 0, V_SKIP, "see RegisterEncoder");
         rep(FN(IMP_ADEC_RegisterDecoder), 0, V_SKIP, "custom codec registration (callbacks), not exercised");
         rep(FN(IMP_ADEC_UnRegisterDecoder), 0, V_SKIP, "see RegisterDecoder");
+#endif
         gfree(f); gfree(es); gfree(ds);
     }
 
