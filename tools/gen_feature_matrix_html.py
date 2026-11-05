@@ -163,6 +163,7 @@ CODE = {
     "host": ("s-wip", "done (host)"),
     "aud": ("s-unk", "done (?)"),
     "no-op": ("s-plan", "vendor no-op"),
+    "nohw": ("s-wip", "done, not verified on hardware"),
     "cache": ("s-bug", "cache-only"),
     "stub": ("s-bug", "stub"),
     "err": ("s-miss", "error"),

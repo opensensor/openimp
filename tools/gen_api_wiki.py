@@ -63,6 +63,7 @@ CELL = {
     "rt": ("✅rt", "API round trip on device, no visible effect expected"),
     "run": ("✅r", "works: called by the streamer on fleet cameras of this SoC that passed the fleet soak"),
     "no-op": ("✅○", "vendor no-op, OpenIMP matches that"),
+    "nohw": ("✅?", "counted as done by user decision, not verified on hardware (the lab board lacks the hardware)"),
     "qemu": ("🔧+", "API round trip in QEMU, no camera"),
     "host": ("🔧h", "implemented, host tests only (no camera run yet)"),
     "aud": ("🔧a", "really connected per static audit, no device test tracked"),
@@ -303,7 +304,7 @@ def render_function(d, key, ent, expo):
 
 def legend():
     o = ["Status symbols are those of the [feature matrix](%s) (API coverage tables):" % MATRIX_URL, ""]
-    for c in ("dev", "dev+", "rt", "run", "no-op", "host", "aud", "qemu", "cache", "stub", "err", "miss", "n.a.", "?", "nob"):
+    for c in ("dev", "dev+", "rt", "run", "no-op", "nohw", "host", "aud", "qemu", "cache", "stub", "err", "miss", "n.a.", "?", "nob"):
         o.append("- `%s` %s" % (CELL[c][0], CELL[c][1]))
     return o + [""]
 

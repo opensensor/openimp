@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: DMIC rows count for the RC3 gate as `host`, not verified on hardware (user decision)
+
+- The T30X lab board has no digital microphone: the audio probe of b27 and b28 shows only `/dev/dsp` with the vendor audio module, no DMIC node, so `DMIC_*` and `DMIC_DisableAecRefFrame` cannot be tested there. User decision 2026-11-05: done for the gate, but explicitly not verified on hardware. The cells use the new code `nohw` ("done, not verified on hardware"), which the RC3 gate counts as works (docs/status/release.yaml works_cells), and which every table and legend labels as not hardware-verified; the reference text says so. To be verified on hardware when a T30 camera with a DMIC is available.
+
 ## 2026-11-05, T30: RawDRC cells `cache` -> `dev` (review of the KEPT-GAP, no new run)
 
 - `ISP_Tuning_GetRawDRC` / `SetRawDRC` were kept at `cache` by the evidence tool (a PASS never replaces a recorded stub/cache note). Reviewed by hand against the device runs: the driver path is real since b21 (RawDRC enable/strength reach the ISP, Iridix 0x3dc 0x100, manual/off/unlimit strength 54/45/222, picture effect Y 48 vs 102 against the vendor 67/67/142 / Y 102) and the mode round trip PASSes on the device in b26 and b28 (`t30pass_rawdrc`). The strength read-back is the live Iridix register on both stacks, so it differs from the set value on the vendor stack too. Cells: `cache` -> `dev`.

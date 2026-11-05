@@ -19,7 +19,7 @@ Rules (machine-readable: `docs/status/release.yaml`). **RC3** is green only if (
 Project board status of an open issue (https://github.com/users/Lu-Fi/projects/1): Todo, In progress, **Monitoring** (diagnostics are running, waiting for the next event of the kind), **Waiting** (blocked from outside, for example on test hardware or a measurement setup; the issue says what it waits for, such as a light box A/B), Review, Done. Monitoring and Waiting issues are still open: they keep counting for the gates above.
 
 - **RC3: 🔴 RED** (3 blocking issues; streamer cells missing)
-  - (a) streamer functions: 🔴 1975 of 2017 cells work, 42 missing
+  - (a) streamer functions: 🔴 1997 of 2017 cells work, 20 missing
   - (b) no open issue with severity critical or high: 🔴 2 critical, 1 high
   - (c) no open issue in milestone RC3: 🔴 3 open
 - **Release 1: 🔴 RED** (0 of 8 SoCs reached 14 stable days; image –, soak as of 2026-11-05 06:58)
@@ -47,7 +47,7 @@ Per SoC: vendor functions that at least one streamer calls (a Get/Set row counts
 | T20 | 228/228 | `████████████████████` | 0 |
 | T21 | 252/252 | `████████████████████` | 0 |
 | T23 | 290/290 | `████████████████████` | 0 |
-| T30 | 188/230 | `████████████████░░░░` | 42 |
+| T30 | 210/230 | `██████████████████░░` | 20 |
 | T31 | 319/319 | `████████████████████` | 0 |
 | T40 | 217/217 | `████████████████████` | 0 |
 | T41 | 253/253 | `████████████████████` | 0 |
@@ -56,7 +56,7 @@ Per SoC: vendor functions that at least one streamer calls (a Get/Set row counts
 - **T20:** nothing missing
 - **T21:** nothing missing
 - **T23:** nothing missing
-- **T30** (42 missing, 6 rows): `ISP_Tuning_SetISPBypass` (stub; p† r†; [#14](https://github.com/Lu-Fi/openimp/issues/14)), `SU_Base_GetVersion` (qemu; p† r†; [#21](https://github.com/Lu-Fi/openimp/issues/21)), `AENC_* / ADEC_*` (qemu; r†; [#20](https://github.com/Lu-Fi/openimp/issues/20)), `DMIC_*` (aud; r†; no issue yet), `DMIC_DisableAecRefFrame` (aud; r†; no issue yet), `ISP_Tuning_GetAFMetrices` (?; r†; [#15](https://github.com/Lu-Fi/openimp/issues/15))
+- **T30** (20 missing, 4 rows): `ISP_Tuning_SetISPBypass` (stub; p† r†; [#14](https://github.com/Lu-Fi/openimp/issues/14)), `SU_Base_GetVersion` (qemu; p† r†; [#21](https://github.com/Lu-Fi/openimp/issues/21)), `AENC_* / ADEC_*` (qemu; r†; [#20](https://github.com/Lu-Fi/openimp/issues/20)), `ISP_Tuning_GetAFMetrices` (?; r†; [#15](https://github.com/Lu-Fi/openimp/issues/15))
 - **T31:** nothing missing
 - **T40:** nothing missing
 - **T41:** nothing missing
@@ -327,6 +327,7 @@ Columns T10..T41 (T30 and T40 added 2026-10-10): one status symbol per SoC (lege
 - 2026-11-04 (T30 apitest): `t30pass_*` lines now map to cells in results2json (RT only); `rawdrc_strength` no longer fails on the live-register read-back, which the vendor stack shows too (batch b23). No cell moved.
 - 2026-11-05 (T30 device evidence b26): WaitFrame stub -> dev (real library function, frame count rises, timeout path), IntegrationTime and Saturation qemu -> rt; compact NV12 (UV at w*h) proven on ch1 (night U=V=128.00); first-picture Y 99.3 vs vendor 100.7; Iridix at base still off (#202).
 - 2026-11-05 (T30): `ISP_Tuning_Get/SetRawDRC` cache -> dev after a hand review of the b21/b26/b28 device evidence (mode round trip PASS, picture effect Y 48 vs 102, strength read-back is the live Iridix register like the vendor).
+- 2026-11-05 (T30, user decision): `DMIC_*` and `DMIC_DisableAecRefFrame` counted as done for the RC3 gate as `nohw` (new cell code: done, explicitly not verified on hardware; no DMIC node on the T30X lab board).
 
 ### Matrix details
 
@@ -1007,9 +1008,9 @@ Per area and SoC: functions that work (device-tested or vendor no-op) / function
 - **FrameSource:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 22/22 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 18/19 ✅ · 1 🔧 · 0 gaps · 0 ? · T31 24/30 ✅ · 1 🔧 · 5 gaps · 0 ? · T32 0/47 (no OpenIMP build yet) · T33 0/49 (no OpenIMP build yet) · T40 28/28 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 31/31 ✅ · 0 🔧 · 0 gaps · 0 ?
 - **OSD:** T10 17/17 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 17/17 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 17/17 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 42/42 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T31 16/17 ✅ · 1 🔧 · 0 gaps · 0 ? · T32 0/44 (no OpenIMP build yet) · T33 0/44 (no OpenIMP build yet) · T40 40/43 ✅ · 3 🔧 · 0 gaps · 0 ? · T41 41/42 ✅ · 0 🔧 · 1 gaps · 0 ?
 - **IVS:** T10 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T31 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/18 (no OpenIMP build yet) · T33 0/18 (no OpenIMP build yet) · T40 18/18 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 18/18 ✅ · 0 🔧 · 0 gaps · 0 ?
-- **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 51/90 ✅ · 39 🔧 · 0 gaps · 0 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
+- **Audio:** T10 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T20 68/68 ✅ · 0 🔧 · 0 gaps · 0 ? · T21 70/70 ✅ · 0 🔧 · 0 gaps · 0 ? · T23 77/77 ✅ · 0 🔧 · 0 gaps · 0 ? · T30 73/90 ✅ · 17 🔧 · 0 gaps · 0 ? · T31 96/96 ✅ · 0 🔧 · 0 gaps · 0 ? · T32 0/127 (no OpenIMP build yet) · T33 0/127 (no OpenIMP build yet) · T40 99/99 ✅ · 0 🔧 · 0 gaps · 0 ? · T41 106/107 ✅ · 1 🔧 · 0 gaps · 0 ?
 - **System:** T10 23/48 ✅ · 25 🔧 · 0 gaps · 0 ? · T20 23/48 ✅ · 25 🔧 · 0 gaps · 0 ? · T21 23/48 ✅ · 25 🔧 · 0 gaps · 0 ? · T23 35/60 ✅ · 25 🔧 · 0 gaps · 0 ? · T30 11/46 ✅ · 35 🔧 · 0 gaps · 0 ? · T31 36/64 ✅ · 28 🔧 · 0 gaps · 0 ? · T32 0/104 (no OpenIMP build yet) · T33 0/102 (no OpenIMP build yet) · T40 21/50 ✅ · 19 🔧 · 10 gaps · 0 ? · T41 20/51 ✅ · 31 🔧 · 0 gaps · 0 ?
-- **All areas:** T10 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T20 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T21 308/333 ✅ · 25 🔧 · 0 gaps · 0 ? · T23 419/457 ✅ · 33 🔧 · 5 gaps · 0 ? · T30 240/350 ✅ · 88 🔧 · 20 gaps · 2 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 349/389 ✅ · 28 🔧 · 12 gaps · 0 ? · T41 392/427 ✅ · 32 🔧 · 3 gaps · 0 ?
+- **All areas:** T10 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T20 304/329 ✅ · 25 🔧 · 0 gaps · 0 ? · T21 308/333 ✅ · 25 🔧 · 0 gaps · 0 ? · T23 419/457 ✅ · 33 🔧 · 5 gaps · 0 ? · T30 262/350 ✅ · 66 🔧 · 20 gaps · 2 ? · T31 365/406 ✅ · 34 🔧 · 7 gaps · 0 ? · T32 0/610 (no OpenIMP build yet) · T33 0/625 (no OpenIMP build yet) · T40 349/389 ✅ · 28 🔧 · 12 gaps · 0 ? · T41 392/427 ✅ · 32 🔧 · 3 gaps · 0 ?
 
 ### Priorities for streamers
 
@@ -1110,6 +1111,7 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `✅rt` API round trip on device, no visible effect expected
 - `✅r` works: called by the streamer on fleet cameras of this SoC that passed the fleet soak (not an individual device test; see the reference)
 - `✅○` vendor no-op, OpenIMP matches that
+- `✅?` counted as done by user decision, NOT verified on hardware (the lab board lacks the hardware; see the reference)
 - `🔧h` implemented, host tests only (no camera run yet)
 - `🔧a` really connected per static audit, no device test tracked
 - `🔧+` API round trip in QEMU, no camera
@@ -2111,8 +2113,8 @@ Completeness list, separate from the streamer priorities: every vendor function 
 | `AO_Soft_Mute` | ✅rt | ✅rt | ✅rt | ✅ | ✅rt | ✅rt | 📋 | 📋 | ✅rt | ✅rt | r† |
 | `AO_Soft_UNMute` | ✅rt | ✅rt | ✅rt | ✅ | ✅rt | ✅rt | 📋 | 📋 | ✅rt | ✅rt | r† |
 | `Audio_Select_Codec` | · | · | · | · | · | · | 📋 | 📋 | · | 🔧h | – |
-| `DMIC_*` | · | · | · | · | 🔧a | ✅rt | 📋 | 📋 | ✅rt | ✅rt | r† |
-| `DMIC_DisableAecRefFrame` | · | · | · | · | 🔧a | · | 📋 | 📋 | ✅rt | ✅rt | r† |
+| `DMIC_*` | · | · | · | · | ✅? | ✅rt | 📋 | 📋 | ✅rt | ✅rt | r† |
+| `DMIC_DisableAecRefFrame` | · | · | · | · | ✅? | · | 📋 | 📋 | ✅rt | ✅rt | r† |
 
 <details><summary>Notes and references (66)</summary>
 
@@ -2180,8 +2182,8 @@ Completeness list, separate from the streamer priorities: every vendor function 
 - `AO_Soft_Mute`: audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT. T10: apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected). T20: apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected). T21: apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected). T40: apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected). T41: apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected). T31: apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected). T30: apitest t30b27 2026-11-05 .231 (API round trip, no visible effect expected).
 - `AO_Soft_UNMute`: audit: reaches the driver/kernel; userspace implementation; T41: software mute as in the vendor library (no ioctl); API-level test only 2026-10-10 (rc 0, invalid argument -1), the T41 test board has no audio hardware. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #20): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. QEMU T30 (sc4236 model, no camera): RT. T10: apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected). T20: apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected). T21: apitest rc3-cases 2026-10-27 .24 (API round trip, no visible effect expected). T40: apitest rc3-cases 2026-10-27 .184 (API round trip, no visible effect expected). T41: apitest rc3-cases 2026-10-27 .34 (API round trip, no visible effect expected). T31: apitest rc3-cases 2026-10-27 .26 (API round trip, no visible effect expected). T30: apitest t30b27 2026-11-05 .231 (API round trip, no visible effect expected).
 - `Audio_Select_Codec`: T41 pass 2026-11-04 (Cinnado .34 and Vanhua .32, OpenIMP libimp of next loaded from /tmp, apitest): stays: with AI enabled the ioctl answers -1 (errno 1) on the Cinnado, the dsp_ioctl of the image's audio module (ingenic-sdk common/audio/t41/oss3/audio_dsp.c) has no select-codec command (default branch 'not supported'); device 2 and channel 1 are refused with -1 as in the library code; the external codec is not selected (routing change); needs a board whose audio module has the command. T41: OpenIMP claude/t4x-api-gaps (2026-10-26): host test; no camera run yet.
-- `DMIC_*`: vendor dmic.c rebuilt (T31 oss2 and T40/T41 OSS3 ioctls); T40/T41 refuse Enable when the audio module has dmic_enable=0 (the driver would oops, seen in QEMU); stream path (Enable..GetFrame, gain, AEC) is not run without a DMIC board T31: apitest dmic 2026-10-27 .26 + QEMU T31: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T40: apitest dmic 2026-10-27 .184 + QEMU T40: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T41: apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board.
-- `DMIC_DisableAecRefFrame`: vendor dmic.c rebuilt (T31 oss2 and T40/T41 OSS3 ioctls); T40/T41 refuse Enable when the audio module has dmic_enable=0 (the driver would oops, seen in QEMU); stream path (Enable..GetFrame, gain, AEC) is not run without a DMIC board T40: apitest dmic 2026-10-27 .184 + QEMU T40: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T41: apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board.
+- `DMIC_*`: vendor dmic.c rebuilt (T31 oss2 and T40/T41 OSS3 ioctls); T40/T41 refuse Enable when the audio module has dmic_enable=0 (the driver would oops, seen in QEMU); stream path (Enable..GetFrame, gain, AEC) is not run without a DMIC board T31: apitest dmic 2026-10-27 .26 + QEMU T31: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T40: apitest dmic 2026-10-27 .184 + QEMU T40: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T41: apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T30: 2026-11-05, user decision (RC3 gate): counted as done but NOT verified on hardware: the T30X lab board has no DMIC node (b27/b28 probe: only /dev/dsp with the vendor audio module); code path audited only. To be verified when a T30 camera with a digital microphone is available.
+- `DMIC_DisableAecRefFrame`: vendor dmic.c rebuilt (T31 oss2 and T40/T41 OSS3 ioctls); T40/T41 refuse Enable when the audio module has dmic_enable=0 (the driver would oops, seen in QEMU); stream path (Enable..GetFrame, gain, AEC) is not run without a DMIC board T40: apitest dmic 2026-10-27 .184 + QEMU T40: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T41: apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board. T30: 2026-11-05, user decision (RC3 gate): counted as done but NOT verified on hardware: the T30X lab board has no DMIC node (b27/b28 probe: only /dev/dsp with the vendor audio module); code path audited only. To be verified when a T30 camera with a digital microphone is available.
 
 </details>
 

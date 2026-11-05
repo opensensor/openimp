@@ -46,6 +46,7 @@ CELL = {
     "dev+": ("s-plus", "✅+", "✅+", "works, device-tested, better than the vendor"),
     "rt": ("s-ok", "✅rt", "✅ rt", "API round trip on device, no visible effect expected"),
     "no-op": ("s-ok", "✅○", "✅ no-op", "vendor no-op, OpenIMP matches that"),
+    "nohw": ("s-ok", "✅?", "✅ not hw-verified", "counted as done by user decision, NOT verified on hardware (the lab board lacks the hardware; see the reference)"),
     "run": ("s-ok", "✅r", "✅ run", "works: called by the streamer on fleet cameras of this SoC that passed the fleet soak (not an individual device test; see the reference)"),
     "qemu": ("s-wip", "🔧+", "🔧 qemu", "API round trip in QEMU, no camera"),
     "host": ("s-wip", "🔧h", "🔧 host", "implemented, host tests only (no camera run yet)"),
@@ -58,8 +59,8 @@ CELL = {
     "?": ("s-unk", "?", "?", "state not determined"),
     "nob": ("s-plan", "📋", "📋", "no OpenIMP build for this SoC yet (planned)"),
 }
-OK, WIPC, GAP, UNK = {"dev", "dev+", "run", "no-op", "rt"}, {"host", "aud", "qemu"}, {"cache", "stub", "err", "miss"}, {"?"}
-LEVEL = {"dev", "rt", "run", "host", "aud", "qemu", "no-op", "cache", "stub", "err"}     # states that need an exported symbol
+OK, WIPC, GAP, UNK = {"dev", "dev+", "run", "no-op", "rt", "nohw"}, {"host", "aud", "qemu"}, {"cache", "stub", "err", "miss"}, {"?"}
+LEVEL = {"dev", "rt", "run", "nohw", "host", "aud", "qemu", "no-op", "cache", "stub", "err"}     # states that need an exported symbol
 SEV = {"err": 0, "miss": 0, "cache": 1, "stub": 1, "?": 2}
 
 
@@ -402,7 +403,7 @@ class Model:
             o.append("")
         o.append("### Legend")
         o.append("")
-        for c in ("dev", "dev+", "rt", "run", "no-op", "host", "aud", "qemu", "cache", "stub", "err", "miss", "n.a.", "?", "nob"):
+        for c in ("dev", "dev+", "rt", "run", "no-op", "nohw", "host", "aud", "qemu", "cache", "stub", "err", "miss", "n.a.", "?", "nob"):
             o.append("- `%s` %s" % (CELL[c][1], CELL[c][3]))
         o.append("- `🚧` appended to a symbol: work in progress, from the public GitHub issues labelled `type:wip` (`docs/status/issues.json`)")
         o.append("")
@@ -605,7 +606,7 @@ class Model:
                  'Legend: %s. A construction sign (&#128679;) marks work in progress (open GitHub issue labelled type:wip, docs/status/issues.json).</p>' % (
                      esc(self.ev["asof"]), " &middot; ".join(
                          '<span class="sym %s">%s</span> %s' % (CELL[c][0], esc(CELL[c][2] or "&middot;"), esc(CELL[c][3]))
-                         for c in ("dev", "dev+", "rt", "run", "no-op", "host", "aud", "qemu", "cache", "stub", "err", "miss", "n.a.", "?", "nob"))))
+                         for c in ("dev", "dev+", "rt", "run", "no-op", "nohw", "host", "aud", "qemu", "cache", "stub", "err", "miss", "n.a.", "?", "nob"))))
         o.append('<div class="mxctl"><div class="fg"><span class="fl">Rows</span>'
                  '<label><input type="checkbox" id="apg"> only gaps / unknown</label> '
                  '<label><input type="checkbox" id="apu"> only streamer-used</label> '

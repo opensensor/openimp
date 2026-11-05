@@ -17032,7 +17032,7 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "aud",
+    "T30": "nohw",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -17062,7 +17062,8 @@
    "ref": {
     "T31": "apitest dmic 2026-10-27 .26 + QEMU T31: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board",
     "T40": "apitest dmic 2026-10-27 .184 + QEMU T40: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board",
-    "T41": "apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board"
+    "T41": "apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board",
+    "T30": "2026-11-05, user decision (RC3 gate): counted as done but NOT verified on hardware: the T30X lab board has no DMIC node (b27/b28 probe: only /dev/dsp with the vendor audio module); code path audited only. To be verified when a T30 camera with a digital microphone is available."
    },
    "note": "vendor dmic.c rebuilt (T31 oss2 and T40/T41 OSS3 ioctls); T40/T41 refuse Enable when the audio module has dmic_enable=0 (the driver would oops, seen in QEMU); stream path (Enable..GetFrame, gain, AEC) is not run without a DMIC board"
   },
@@ -17073,7 +17074,7 @@
     "T20": "n.a.",
     "T21": "n.a.",
     "T23": "n.a.",
-    "T30": "aud",
+    "T30": "nohw",
     "T31": "n.a.",
     "T32": "nob",
     "T33": "nob",
@@ -17100,7 +17101,8 @@
    "note": "vendor dmic.c rebuilt (T31 oss2 and T40/T41 OSS3 ioctls); T40/T41 refuse Enable when the audio module has dmic_enable=0 (the driver would oops, seen in QEMU); stream path (Enable..GetFrame, gain, AEC) is not run without a DMIC board",
    "ref": {
     "T40": "apitest dmic 2026-10-27 .184 + QEMU T40: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board",
-    "T41": "apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board"
+    "T41": "apitest dmic 2026-10-27 .34 + QEMU T41: API round trip (argument validation, Set/Get, not-enabled paths), no DMIC hardware on the test board",
+    "T30": "2026-11-05, user decision (RC3 gate): counted as done but NOT verified on hardware: the T30X lab board has no DMIC node (b27/b28 probe: only /dev/dsp with the vendor audio module); code path audited only. To be verified when a T30 camera with a digital microphone is available."
    }
   },
   "Log_Get_Option": {

@@ -40,7 +40,7 @@ gates:
       - id: rc3.streamer-functions
         text: >-
           Every vendor function that a streamer (timps, prudynt, raptor) calls works on every gate SoC.
-          "Works" means the API matrix cell is dev, dev+, run, rt or no-op (a vendor no-op that OpenIMP matches).
+          "Works" means the API matrix cell is dev, dev+, run, rt, no-op (a vendor no-op that OpenIMP matches) or nohw (counted as done by an explicit user decision, but NOT verified on hardware because the lab board lacks the hardware: shown as such everywhere).
           The streamer call sets are the "Used by" data of docs/api_evidence.json (docs/api_run.json for the fleet runs).
       - id: rc3.no-critical-high
         text: >-
@@ -50,7 +50,7 @@ gates:
       - id: rc3.milestone-empty
         text: No open GitHub issue is in the milestone RC3 (user decision 2026-10-30).
         block_milestone: RC3
-    works_cells: [dev, dev+, run, rt, no-op]
+    works_cells: [dev, dev+, run, rt, no-op, nohw]
   - id: release1
     title: Release 1
     milestone: Release 1
