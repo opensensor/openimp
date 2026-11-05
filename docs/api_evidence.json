@@ -453,7 +453,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_Bypass_Bind": {
@@ -546,7 +546,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_DelSensor": {
@@ -624,7 +624,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_DisableSensor": {
@@ -702,7 +702,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_DisableTuning": {
@@ -780,7 +780,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_EnableSensor": {
@@ -858,7 +858,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_EnableTuning": {
@@ -936,7 +936,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_Get/SetCsccrMode": {
@@ -1085,7 +1085,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -1132,7 +1132,7 @@
     "T23": "apitest agg47-cases 2026-10-26 .30 (API round trip, no visible effect expected)",
     "T31": "apitest issue-113 2026-10-26 .26 (open-tx-isp 3e9a5d2c + OpenIMP 662b0d8c): chip id 0xcb3a read, same-value write round trip PASS; QEMU T31 equal",
     "T40": "apitest agg47-cases 2026-10-26 .184 (API round trip, no visible effect expected)",
-    "T30": "QEMU T30 2026-11-03 (no camera), tests/t30_qemu/sensor_register.c + apitest isp area"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_GetCameraInputMode": {
@@ -1290,7 +1290,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_RAW_RwControl": {
@@ -1540,7 +1540,7 @@
     "T20": "rt",
     "T21": "dev",
     "T23": "no-op",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -1573,7 +1573,7 @@
     "T20": "apitest issue-109 2026-10-27 .107 + QEMU: ret 0 (was -1); vendor 3.12.0 logic (SYSTEM_TAB block, same as T31), picture effect not measured, no move.txt in the image (vendor alike)",
     "T21": "apitest movestate 2026-10-27 .24 (movestate-t21-t30, in next): IT max 2246 -> 1347 -> 2246, frames flow",
     "T31": "apitest agg47-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "QEMU T30 2026-10-27 (movestate-t21-t30): IT max 1916 -> 1149 -> 1916 (no T30 camera)"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_EnableDRC": {
@@ -1639,7 +1639,7 @@
     "T20": "rt",
     "T21": "dev",
     "T23": "no-op",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -1672,7 +1672,7 @@
     "T20": "apitest issue-109 2026-10-27 .107 + QEMU: ret 0 (was -1); vendor 3.12.0 logic (SYSTEM_TAB block, same as T31), picture effect not measured, no move.txt in the image (vendor alike)",
     "T21": "apitest movestate 2026-10-27 .24 (movestate-t21-t30, in next): IT max 2246 -> 1347 -> 2246, frames flow",
     "T31": "apitest agg47-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
-    "T30": "QEMU T30 2026-10-27 (movestate-t21-t30): IT max 1916 -> 1149 -> 1916 (no T30 camera)"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAntiFlickerAttr": {
@@ -1878,7 +1878,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -1907,7 +1907,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest agg47-cases 2026-10-26 .24",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetContrast": {
@@ -2972,7 +2972,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -2998,7 +2998,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest agg47-cases 2026-10-26 .24",
-    "T30": "apitest agg47-cases 2026-10-26 QEMU (no camera)"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetStatisConfig": {
@@ -3027,7 +3027,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -3053,7 +3053,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest agg47-cases 2026-10-26 .24",
-    "T30": "apitest agg47-cases 2026-10-26 QEMU (no camera)"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetTmoCurve": {
@@ -3414,7 +3414,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -3426,7 +3426,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest rc3-cases 2026-10-27 .24",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_GetSensorAttr": {
@@ -3861,7 +3861,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -3873,7 +3873,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
     "T20": "apitest agg47-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
     "T21": "apitest agg47-cases 2026-10-26 .24 (API round trip, no visible effect expected)",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_SetFixedContraster": {
@@ -4117,7 +4117,7 @@
     "T20": "dev",
     "T21": "no-op",
     "T23": "n.a.",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4143,7 +4143,7 @@
     "T10": "apitest agg47-cases 2026-10-26 .31",
     "T20": "apitest agg47-cases 2026-10-26 .107",
     "T21": "apitest scene 2026-10-27 .24 (#120): ret 0, NIGHT/AUTO no picture change on the open and the stock stack (stock oem-t21 handler returns 0 without effect)",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_SetSensorFPS": {
@@ -4386,7 +4386,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "rt",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "aud",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4428,7 +4428,7 @@
    "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #14): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (tuning_strength QEMU test: Set 100/128, Get 100, 2 cycles, rc 0). OpenIMP scales driver table 132 through 0x8000161 like the vendor 1.0.5 (0xdaff0); see SetSinterStrength. No picture effect shown in QEMU.  T20 2026-11-04 (T20 camera, sensor JXF23; OpenIMP T20 build loaded from /tmp, installed library untouched; QEMU T20 first): strength 0 and 255 set and read back (128 -> 0, 128 -> 255), frame detail energy 8.16 at 0 vs 5.51 at 255 (temporal denoise acts); device PASS.  T21 2026-11-04 (T21 camera, sensor JXF23; OpenIMP T21 build loaded from /tmp, installed library, modules and flash untouched; QEMU T21 first): picture case temper (frame statistics in memory, three runs): strength 0 and 255 set (return 0, the T21 library has no getter, so no read-back), frame detail energy 26.4/26.5/26.6 at strength 0 vs 23.5/23.6/23.6 at 255 and 23.1/23.2 at the default 128 (run-to-run spread of the base picture 0.03-0.1): turning the temporal denoise off lifts the detail energy by about 15 percent, reproducibly; 255 equals the default in this bright Day scene. Device PASS.  T23 2026-11-04 (T23 cameras, sensors SC1A4T and SC2336P; OpenIMP T23 build of next loaded from /tmp, installed library, modules and flash untouched): strength 0 and 255 are accepted (ret 0, no getter exists) and move the frame detail energy reproducibly (SC2336P camera: 7.67 / 7.68 / 7.68 at 0 against 8.16 at 255 and in the base picture, three runs; SC1A4T camera: 10.96 / 10.94 at 0 against 11.33 in one scene, 11.64 / 11.51 against 11.33 in a darker IR scene), but the sign depends on the scene, so the temporal-denoise direction is not rated against the vendor: cell rt, not dev.",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177",
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)",
     "T20": "apitest t20pass 2026-11-04 .107",
     "T21": "apitest t21pass 2026-11-04 .24",
     "T23": "apitest t23pass 2026-11-04 .30"
@@ -4459,7 +4459,7 @@
     "T20": "rt",
     "T21": "rt",
     "T23": "rt",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "rt",
     "T32": "nob",
     "T33": "nob",
@@ -4507,7 +4507,7 @@
     "T31": "apitest agg47-cases 2026-10-26 .26 (API round trip, no visible effect expected)",
     "T41": "apitest agg47-cases 2026-10-26 .34 (API round trip, no visible effect expected)",
     "T40": "apitest agg47-cases 2026-10-26 .184 (API round trip, no visible effect expected)",
-    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_SwitchBin": {
@@ -4582,7 +4582,7 @@
     "T21": "apitest issue-110 2026-10-27 .24 (open-tx-isp 28b26d20): frame count 49->50, -ETIMEDOUT on timeout; QEMU 96->97",
     "T23": "apitest agg47-cases 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "apitest t30b26 2026-11-05 .231: real WaitFrame (OpenIMP next 410a2d69): 10 waits ret 0, frame count 7158 -> 7167, slowest wait 67 ms; timeout path 53 of 60 waits with timeout 1 returned non-zero, none > 500 ms"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "ISP_Tuning_WaitFrameDone": {
@@ -4766,7 +4766,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4796,7 +4796,7 @@
    "note": "T23: stock handlers routed (open-tx-isp agg-25), no device test; _Sec/MultiCamera_ variants unverified; used by: T10/T20: prudynt†; T21/T23/T31: prudynt†, raptor†. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #23): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 roi 0x4040c0c0; case aeroi PASS). The control 0x8000024 get is served (firmware AE ROI).",
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31 (API round trip, no visible effect expected)",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_AwbSync": {
@@ -4842,7 +4842,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4880,7 +4880,7 @@
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
     "T10": "apitest rc3-cases 2026-10-26 .31",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAeAttr": {
@@ -5023,7 +5023,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5063,7 +5063,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAeMin": {
@@ -5187,7 +5187,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "nob",
     "T33": "nob",
@@ -5245,7 +5245,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAfHist": {
@@ -5255,7 +5255,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5289,7 +5289,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAfWeight": {
@@ -5457,7 +5457,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "no-op",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "no-op",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5497,7 +5497,7 @@
     "T21": "apitest agg47 2026-10-26 .24",
     "T23": "apitest agg47 2026-10-26 .30",
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAwbWeight": {
@@ -5507,7 +5507,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "no-op",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "no-op",
     "T32": "nob",
     "T33": "nob",
@@ -5565,7 +5565,7 @@
     "T31": "apitest next+ko/libimp swap 2026-10-27 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177"
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)"
    }
   },
   "ISP_Tuning_Get/SetAwbZoneWeight": {
@@ -5649,7 +5649,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "dev",
-    "T30": "qemu",
+    "T30": "rt",
     "T31": "dev",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -5690,7 +5690,7 @@
    },
    "note": "audit: reaches the driver/kernel. T30 audit 2026-11-01 (OpenIMP claude/t30-audit, #15): Exported by the T30 1.0.5 vendor libimp and by OpenIMP's T30 build. Control id and transport equal to the 1.0.5 disassembly (call-site comparison). T30 2026-11-03 (#177, QEMU T30 sc4236 model, no camera, open-tx-isp with tx_isp_t30_tuning_ctl.h): PASS (Get ret=0 mode 0 rgain 50 bgain 50). The AWB mode and the red/blue gains are read from the firmware; Set follows the stock handler (mode, manual gains). T10 2026-11-03 on the T10 camera (picture statistics, ISP running mode Night at the time): GetWB ret 0 (mode 0, gains 128/128); SetWB manual gains read back exactly (red gain doubled: V +42, blue gain doubled: U +34 in the frame statistics) and all preset modes (daylight, cloudy, incandescent, fluorescent, twilight, shade, warm fluorescent) read back their mode with the matching gains and a U/V shift against the base frame; auto restores. Device PASS.",
    "ref": {
-    "T30": "apitest 2026-11-03 QEMU T30 (no camera), open-tx-isp claude/issue-177",
+    "T30": "apitest t30b28 2026-11-05 .231 (API round trip, no visible effect expected)",
     "T10": "apitest t10wrench 2026-11-03 .31"
    }
   },
@@ -9748,7 +9748,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "FrameSource_DequeueBuffer": {
@@ -9846,7 +9846,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "FrameSource_DisableChn": {
@@ -9924,7 +9924,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "FrameSource_EnableChn": {
@@ -10002,7 +10002,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "FrameSource_ExternInject_CreateChn": {
@@ -10268,7 +10268,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "FrameSource_Get/SetDirectModeAttr": {
@@ -10422,7 +10422,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "FrameSource_Get/SetPool": {
@@ -18126,7 +18126,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "System_GetBindbyDest": {
@@ -18476,7 +18476,7 @@
     "T31": "apitest agg61 2026-10-31 .26",
     "T40": "apitest t40pass 2026-11-04 .184",
     "T41": "apitest t41pass 2026-11-04 .34",
-    "T30": "apitest t30b27 2026-11-05 .231"
+    "T30": "apitest t30b28 2026-11-05 .231"
    }
   },
   "System_MemPoolFree": {

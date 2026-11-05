@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: device evidence from the t30pass2 gate cases (T30X run b28, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp next `e2c2ee24` and OpenIMP next `4caf979a` at run time, no flash): `APITEST_CASES=t30pass,t30pass2` 48 PASS / 0 FAIL. 19 T30 cells `qemu` -> `dev` (round trips and read-backs, no picture effect claimed): `ISP_Get/SetSensorRegister` (SC4236 chip id 0x32/0x35), `Enable/DisableMovestate`, `Get/SetColorfxMode`, `Get/SetSinterDnsAttr`, `Get/SetTemperDnsAttr`, `Get/SetSceneMode`, `SetFWFreeze`, `SetTemperStrength`, `SetVideoDrop`, `AE_Get/SetROI`, `Awb_Get/SetRgbCoefft`, `Get/SetAeHist`, `Get/SetAeWeight`, `Get/SetAfHist`, `Get/SetAwbHist`, `Get/SetAwbWeight`, `Get/SetWB`. T30 API 207/350 -> 238/350 works.
+- Same boot, no cell moved: the su area (23 PASS, 16 N/A: the stock image has no libsysutils, no RTC and no ADC node; the SU_* calls are not exported by libimp), no DMIC device node on this unit (only `/dev/dsp`).
+
 ## 2026-11-05, apitest: T30 gate cases t30pass2 (QEMU only, no cell moved)
 
 - New explicit case group `APITEST_CASES=t30pass2` for the T30 rows that still have no device proof: WB manual round trip, SetTemperStrength, byte-identical Get/Set round trips of AeHist, AeWeight, AwbHist, AwbWeight, AfHist, Awb RgbCoefft, SinterDnsAttr, TemperDnsAttr and AE ROI, the SC4236 chip id through GetSensorRegister plus a write-back of an unchanged register, Enable/DisableMovestate, ColorfxMode B/W round trip, SceneMode, SetVideoDrop and SetFWFreeze on/off. Each line is a `t30pass_<item>` label with PASS / FAIL / N/A and the reason; `results2json.py` maps them in `T30PASS_ALIAS`.
