@@ -79,7 +79,7 @@ static uint32_t global_mode = 2;
 #endif
 static int tseries_isp_stream_started;
 static int tseries_bypass_link_setup_done;
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 static int tseries_bypass_graph_active;
 #endif
 static pthread_t tseries_tuning_thread;
@@ -2127,16 +2127,20 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
      * after ISP_PROCESS=0, none at all when set before the FrameSource), and
      * no streamer uses the raw bypass in normal operation.  Nothing is
      * touched, so the running pipeline keeps streaming. */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #if defined(PLATFORM_T23)
 #define TSERIES_BYPASS_GRAPH_ENV "OPENIMP_T23_BYPASS_GRAPH"
+#elif defined(PLATFORM_T30)
+#define TSERIES_BYPASS_GRAPH_ENV "OPENIMP_T30_BYPASS_GRAPH"
 #else
 #define TSERIES_BYPASS_GRAPH_ENV "OPENIMP_T31_BYPASS_GRAPH"
 #endif
     /* Optional vendor bypass graph (T31 and T23, issue 129): OPENIMP_T31_BYPASS_GRAPH=1
      * resp. OPENIMP_T23_BYPASS_GRAPH=1 together with the tx_isp_t31 / tx_isp_t23
-     * module parameter isp_bypass_graph=1.  The
-     * OEM five-step link rebuild around the control; afterwards the channel is
+     * module parameter isp_bypass_graph=1; T30: OPENIMP_T30_BYPASS_GRAPH=1, the
+     * tx_isp_t30 driver serves link 1 and ISP_PROCESS without a parameter.  The
+     * OEM five-step link rebuild around the control (T30 1.0.5 0xc541c: d3 NULL,
+     * d1 &-1, S_CTRL 0x8000164 = mode, d0 &(mode ? 0 : 1), d2 NULL); afterwards the channel is
      * (re)created by the caller (RAW format while bypassed, as the vendor
      * sample does).  Default off: DISABLE stays refused below. */
     if (tseries_bypass_graph_active ||
@@ -2145,13 +2149,27 @@ int IMP_ISP_Tuning_SetISPBypass(IMPISPTuningOpsMode enable)
         int32_t link_arg = (enable == IMPISP_TUNING_OPS_MODE_DISABLE) ? 1 : 0;
         int32_t destroy_arg = -1;
 
-        if (ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0) != 0 ||
-            ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &destroy_arg) != 0 ||
-            tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable) != 0 ||
-            ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &link_arg) != 0 ||
-            ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0) != 0) {
-            kmsg_trace("libimp/ISP: SetISPBypass link rebuild failed value=%d errno=%d\n",
-                       enable, errno);
+        int step = 0;
+        int started = 0;
+
+#if defined(PLATFORM_T30)
+        /* T30: the open library starts the sensor at the first EnableChn
+         * (ISP_EnsureLinkStreamOn), the vendor already in EnableSensor.  The
+         * core refuses the link stream-off before that (EPERM), so start the
+         * sensor first, then run the vendor sequence. */
+        if (tseries_isp_stream_started == 0) {
+            ++step;
+            started = ioctl(isp->fd, TISP_VIDIOC_ENABLE_SENSOR, 0) == 0 ? 0 : -1;
+        }
+#endif
+        if (started < 0 ||
+            (++step, ioctl(isp->fd, TISP_VIDIOC_DISABLE_LINKS, 0)) != 0 ||
+            (++step, ioctl(isp->fd, TISP_VIDIOC_DESTROY_LINKS, &destroy_arg)) != 0 ||
+            (++step, tseries_v4l2_set(TISP_CID_ISP_PROCESS, enable)) != 0 ||
+            (++step, ioctl(isp->fd, TISP_VIDIOC_CREATE_LINKS, &link_arg)) != 0 ||
+            (++step, ioctl(isp->fd, TISP_VIDIOC_ENABLE_LINKS, 0)) != 0) {
+            kmsg_trace("libimp/ISP: SetISPBypass link rebuild failed at step %d value=%d errno=%d\n",
+                       step, enable, errno);
             return -1;
         }
         tseries_bypass_graph_active = (enable == IMPISP_TUNING_OPS_MODE_DISABLE);

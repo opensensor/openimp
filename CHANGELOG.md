@@ -8,6 +8,17 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: optional ISP bypass graph (OPENIMP_T30_BYPASS_GRAPH, QEMU T30; device proof pending)
+
+- `IMP_ISP_Tuning_SetISPBypass(DISABLE)` runs the vendor sequence of the 1.0.5 libimp (`0xc541c`) when `OPENIMP_T30_BYPASS_GRAPH` is set: link stream off, link destroy, S_CTRL `0x8000164`, link setup 1, link stream on. `ENABLE` afterwards rebuilds graph 0, as on T23/T31. Before the first `EnableChn` the open library has not started the sensor yet (the vendor does that in `EnableSensor`), so the sensor is started first. Each failing step is traced.
+- `PIX_FMT_RAW` on T30: the frame size is 2 bytes per pixel, and the fourcc is the one the bypassed core offers (the sensor Bayer pattern, e.g. BG12 for the SC4236). It is taken from the channel format.
+- Default off: without the variable `DISABLE` stays refused (-1) and `ENABLE` stays a no-op, the cell stays `rt`. Needs open-tx-isp `claude/t30-bypass-graph`.
+- QEMU T30:
+  - vendor sample order: DISABLE 0, raw BG12 channel created, buffers queued, stream on/off, ENABLE 0.
+  - Run time on a running NV12 channel: NV12 10/10, then raw, then a new NV12 channel 25/25.
+  - The QEMU model has no core DMA writer, so there are no raw frames.
+  - `isp` area 48 / 0, no oopses.
+
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-iridix2` `d09dc553` and OpenIMP next `7b9f3448` at run time, no flash): `ISP_Tuning_GetAFMetrices` returns 0 and writes the 16-bit value `0xffff` like the vendor libimp 1.0.5 (b29: vendor ret 0, `0xffff`, fixed-focus unit), `?` -> `dev`; t30pass + t30pass2 49 / 0. T30 API 284/350 -> 285/350 works.

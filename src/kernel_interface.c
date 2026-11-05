@@ -488,6 +488,20 @@ int fs_set_format(int fd, fs_format_t *fmt) {
     /* Convert enum pixfmt to fourcc if needed */
     uint32_t fourcc = (fmt->pixelformat < 0x100) ? pixfmt_to_fourcc(fmt->pixelformat)
                                                  : (uint32_t)fmt->pixelformat;
+#if defined(PLATFORM_T30)
+    /* PIX_FMT_RAW (bypass graph): the bypassed T30 core offers one format,
+     * the 12-bit Bayer fourcc of the sensor pattern (BG12/GB12/BA12/RG12);
+     * take it from the channel format (the vendor 1.0.5 libimp has no fixed
+     * Bayer code, its VBMCreatePool compares the driver fourcc). */
+    if (fmt->pixelformat == 0x22) {
+        struct fs_ioctl_format70 g = {0};
+
+        g.type = 1;
+        if (ioctl(fd, VIDIOC_GET_FMT, &g) == 0 && g.pixelformat >= 0x100) {
+            fourcc = g.pixelformat;
+        }
+    }
+#endif
     s.pixelformat = fourcc;
     s.field = 0;         /* V4L2_FIELD_NONE */
 
@@ -1330,7 +1344,7 @@ static int calculate_frame_size(int width, int height, int pixfmt) {
             size = ((width + 15) & 0xfffffff0) * (height << 2);
             break;
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
         case 0x22:      /* PIX_FMT_RAW (bypass graph): 2 bytes per pixel */
 #endif
         case 0x32314742: /* BG12 */
