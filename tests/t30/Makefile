@@ -308,6 +308,9 @@ RADIX_SOURCES := radix/radix_cmdlist_test.c $(ROOT)/src/t30/radix/t30_radix_cmdl
 radix_cmdlist_test: $(RADIX_SOURCES) radix/radix_case.h $(wildcard $(ROOT)/src/t30/radix/*.h)
 	$(CC) $(CFLAGS) -I$(ROOT)/src -Iradix -o $@ $(RADIX_SOURCES)
 
+radix_cabac_test: radix/radix_cabac_test.c $(ROOT)/src/t30/radix/t30_radix_cabac.c
+	$(CC) $(CFLAGS) -I$(ROOT)/src -o $@ $^
+
 # Opt-in desk check against the vendor function itself (mipsel, qemu-mipsel,
 # vendor libimp 1.0.5): make radix-diff O=<thingino output dir> VENDOR_LIBIMP=<libimp.so>
 radix-diff:
@@ -315,6 +318,10 @@ radix-diff:
 		-I$(ROOT)/src -Iradix radix/radix_diff.c $(ROOT)/src/t30/radix/t30_radix_cmdlist.c -ldl -o radix_diff
 	$(QEMU_MIPSEL) -L $(O)/target -E LD_LIBRARY_PATH=$(O)/target/usr/lib:$(O)/target/lib \
 		./radix_diff $(VENDOR_LIBIMP) 20000
+	$(O)/host/bin/mipsel-linux-gcc -std=gnu99 -O2 -Wall -Wextra -Werror -mabi=32 -march=mips32r2 \
+		-I$(ROOT)/src radix/hevc_diff.c $(ROOT)/src/t30/radix/t30_radix_cabac.c -ldl -o hevc_diff
+	$(QEMU_MIPSEL) -L $(O)/target -E LD_LIBRARY_PATH=$(O)/target/usr/lib:$(O)/target/lib \
+		./hevc_diff $(VENDOR_LIBIMP)
 QEMU_MIPSEL ?= qemu-mipsel
 
 check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test nv12_compact_test helix_encoder_test \
@@ -324,8 +331,9 @@ check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test 
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 fs_lifecycle_test_t30 \
 	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
 	p2_gap_test_t21 p2_gap_test_t20 osd_attach_test isp_gap_test_t21 isp_gap_test_t20 \
-	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test radix_cmdlist_test
+	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test radix_cmdlist_test radix_cabac_test
 	./radix_cmdlist_test
+	./radix_cabac_test
 	./isp_t1x_test_t20
 	./isp_t1x_test_t21
 	./isp_t31_movestate_test
@@ -441,7 +449,7 @@ dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c
 		-o $@ dmic_t30_test.c -pthread -ldl
 
 clean:
-	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff
+	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test hevc_diff
 	$(RM) p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	$(RM) isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test isp_t1x_test_t20 isp_t1x_test_t21 p2_t1x_test_t20 p2_t1x_test_t21
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \

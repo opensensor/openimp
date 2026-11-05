@@ -49,3 +49,5 @@ isp_t31_awbzone_test
 nv12_compact_test
 radix_cmdlist_test
 radix_diff
+radix_cabac_test
+hevc_diff
