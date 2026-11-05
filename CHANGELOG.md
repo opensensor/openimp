@@ -15,6 +15,10 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 - T30 audio area: `IMP_AENC_RegisterEncoder` / `UnRegisterEncoder` and `IMP_ADEC_RegisterDecoder` / `UnRegisterDecoder` are no longer skipped. A PCM copy codec is registered, one microphone frame runs through an encoder channel of the returned handle and one stream through a decoder channel; PASS needs the handle, the callback calls and unchanged bytes; nothing is played. Other SoCs keep the skip.
 - QEMU T30 has no audio device (AI/AO enable fail before the case), so the proof is the T30X run.
+## 2026-11-05, T30: device evidence for the vendor sysutils on the open stack (T30X run b29, API cells only)
+
+- Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-ring-per-frame` `3ff342ab` and OpenIMP next at run time, no flash): the **vendor libsysutils 1.0.5 loaded from /tmp on the open stack** (OpenIMP has no SU_ code for T30; the stock image carries no libsysutils): su area 28 PASS / 2 FAIL / 10 N/A. 5 T30 cells `qemu` -> `dev`: `SU_Base_GetVersion` ("SYSUTILS-1.0.5"), `SU_Base_GetModelNumber`, `SU_Base_SUTime2Raw`, `SU_Key_OpenEvent` / `CloseEvent`. Not counted: `SU_Base_GetDevID` (returns -1 with a zero id), RTC / ADC calls (no `/dev/rtc0`, no ADC node). T30 API 262/350 -> 267/350 works.
+- Same boot, for review (not merged by the tool): the audio area with the new silent PCM copy codec passes 92 / 0, all 17 `IMP_AENC_*` / `IMP_ADEC_*` lines PASS including Register/UnRegisterEncoder and -Decoder (the `AENC_* / ADEC_*` row is a wildcard key that `results2json.py` does not map).
 
 ## 2026-11-05, T30: DMIC rows count for the RC3 gate as `host`, not verified on hardware (user decision)
 
