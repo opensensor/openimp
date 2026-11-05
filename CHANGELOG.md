@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T23: FrameSource software rotation (`IMP_FrameSource_SetChnRotate`, beyond vendor)
+
+- T23 now rotates 90/270 through `IMP_FrameSource_SetChnRotate` like T31 and T10/T20/T21: the same `nv12_rotate` path on the FrameSource dequeue thread, before OSD, IVS and the encoders (`FS_SW_ROTATE` and the `kernel_interface.c` capture hook now include `PLATFORM_T23`; `nv12_rotate.o`/`core_mxu2.o` in `build-t23.sh`). Rules as on T21: width and height multiples of 16, at most 704x576 (sub stream), encoder channel created with the rotated size. The vendor T23 libimp has no rotation call; streamers rotated in their own software path.
+- T23 never runs the MXU2 selftest: the T23 has no MXU, and its kernel does not raise SIGILL for a COP2 instruction but oopses in `xburst_cop2_restore` (one `lu1q` from user space reset a T23N, sled `kernel_oops`). `SetChnRotate` fixes the C path on T23.
+- Device (two T23N, sc1a4t and sc2336p, test client, no flash): 640x352 -> 352x640 (both directions), 704x576 -> 576x704, H.264 + JPEG correctly oriented, 0 decode errors, 15/15 fps; 2.9-3.9 ms per 640x352 frame, 6.5 ms per 704x576, 14.8 ms per 1280x720 (cap raised for the measurement). Host: `fs_lifecycle_test_t23` runs the rotation test (geometry gate, bit-exact picture against a reference, consumer sees the rotated record). Details: docs/T31_ROTATE.md "T23".
+
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-iridix2` `d09dc553` and OpenIMP next `7b9f3448` at run time, no flash): `ISP_Tuning_GetAFMetrices` returns 0 and writes the 16-bit value `0xffff` like the vendor libimp 1.0.5 (b29: vendor ret 0, `0xffff`, fixed-focus unit), `?` -> `dev`; t30pass + t30pass2 49 / 0. T30 API 284/350 -> 285/350 works.

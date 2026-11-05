@@ -1193,7 +1193,7 @@ static void test_disable_during_dqbuf(void)
     check_clean("disable during dqbuf");
 }
 
-#if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
+#if !defined(PLATFORM_T30)
 #include "framesource/nv12_rotate.h"
 
 void openimp_fs_rotate_capture(int chn, void *frame);
@@ -1223,7 +1223,7 @@ static void ref_rotate(const uint8_t *src, uint8_t *dst, uint32_t w,
     }
 }
 
-/* T10/T20/T21 SetChnRotate: geometry gate (16-aligned, sub-stream pixel
+/* T10/T20/T21/T23 SetChnRotate: geometry gate (16-aligned, sub-stream pixel
  * cap), the per-frame rotate on a frame record against the reference,
  * and the size the consumers see on a running channel. */
 static void test_rotate(void)
@@ -1331,11 +1331,11 @@ static void test_rotate(void)
     check_clean("rotate");
 }
 #else
-/* T23 rotates in the caller (unbound YuvEncode), the T30 vendor libimp has no SetChnRotate: it refuses. */
+/* The T30 vendor libimp has no SetChnRotate: it refuses. */
 static void test_rotate(void)
 {
-    CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 368) == -1, "T23 refuses");
-    CHECK(IMP_FrameSource_SetChnRotate(1, 0, 640, 368) == 0, "T23 rot 0");
+    CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 368) == -1, "T30 refuses");
+    CHECK(IMP_FrameSource_SetChnRotate(1, 0, 640, 368) == 0, "T30 rot 0");
 }
 #endif
 

@@ -1844,7 +1844,7 @@ extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
 /* IMP_FrameSource_SetChnRotate software rotation (framesource_tseries.c) */
 extern void openimp_fs_rotate_capture(int chn, void *frame)
     __attribute__((weak));
@@ -2326,7 +2326,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     defined(PLATFORM_T21) || defined(PLATFORM_T30)
     /* IVS groups bound to this channel copy the luma they need now, while
      * the buffer is still private to this thread (openimp_t31_ivs.c). */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
     /* Rotate first, as the vendor does before notifying any consumer. */
     if (openimp_fs_rotate_capture)
         openimp_fs_rotate_capture(chn, &pool->frames[idx]);
