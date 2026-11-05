@@ -15,6 +15,7 @@
         OpenIMP_Cap_*;
         OpenIMP_TestPattern_*;
         OpenIMP_FrameSource_*;
+        OpenIMP_FS_RotateLimits;
         FrameSourceInit;
         EncoderInit;
         EncoderExit;

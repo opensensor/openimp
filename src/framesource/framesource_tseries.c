@@ -1861,9 +1861,10 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 }
 
 /* Software 90/270 rotation of a FrameSource channel: T31 (vendor
- * SetChnRotate), the T20/T21 userspace (T10, T20, T21) and T23 (OpenIMP
- * only, the vendor T20/T21/T23 libimp has no rotation). */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
+ * SetChnRotate), the T20/T21 userspace (T10, T20, T21), T23 and T30
+ * (OpenIMP only: the vendor T20/T21/T23/T30 libimp has no rotation, the
+ * T30 has no rotate hardware, audit of IPU/MSCA/Helix in #212). */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #define FS_SW_ROTATE 1
 #endif
 
@@ -3477,13 +3478,28 @@ void openimp_fs_rotate_capture(int chn, void *frame)
  * called before the channel is created, with the encoder channel set to
  * the rotated size. Here it also takes effect on a running channel from
  * its next frame. */
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23)
-/* Largest rotated picture on T10/T20/T21/T23: 704x576 (D1). T31 rotates
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* Largest rotated picture on T10/T20/T21/T23/T30: 704x576 (D1). T31 rotates
  * 1280x704 in ~9 ms on 1.5 GHz; the ~1 GHz T10/T20/T21 cores with slower
  * DDR need about 15-20 ms per megapixel, so a 720p main stream would cost
  * ~25 % CPU at 15 fps and 1080p ~50-60 %. OPENIMP_FS_ROTATE_MAX_PIXELS
  * overrides the cap (tests only). */
-#define FS_ROT_T21_MAX_PIXELS (704u * 576u)
+#define FS_ROT_T21_MAX_W 704u
+#define FS_ROT_T21_MAX_H 576u
+/* T30 (XBurst1 with MXU2, T30X lab camera 2026-11-05, idle, MXU2 path):
+ * rot90 1280x720 8.6-10.6 ms, 1920x1080 22-24 ms per frame, plus the copy
+ * back over the capture buffer.  At 15 fps 720p costs about 20 % CPU, a
+ * 1088x1920 portrait main about 45 %, so the cap is 1280x720 pixels. */
+#define FS_ROT_T30_MAX_W 1280u
+#define FS_ROT_T30_MAX_H 720u
+#if defined(PLATFORM_T30)
+#define FS_ROT_MAX_W FS_ROT_T30_MAX_W
+#define FS_ROT_MAX_H FS_ROT_T30_MAX_H
+#else
+#define FS_ROT_MAX_W FS_ROT_T21_MAX_W
+#define FS_ROT_MAX_H FS_ROT_T21_MAX_H
+#endif
+#define FS_ROT_MAX_PIXELS (FS_ROT_MAX_W * FS_ROT_MAX_H)
 
 static uint32_t fs_rotate_max_pixels(void)
 {
@@ -3494,7 +3510,7 @@ static uint32_t fs_rotate_max_pixels(void)
         unsigned long v = e && e[0] ? strtoul(e, NULL, 0) : 0;
 
         max_pixels = v && v <= 4096ul * 4096ul ? (uint32_t)v
-                                               : FS_ROT_T21_MAX_PIXELS;
+                                               : FS_ROT_MAX_PIXELS;
     }
     return max_pixels;
 }
@@ -3520,7 +3536,7 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
                 chnNum, mode, width, height);
         return -1;
     }
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if ((width | height) & 15) {
         fprintf(stderr, "[FS] SetChnRotate ch%d: %dx%d not rotated: width "
                 "and height must be multiples of 16 on this SoC\n",
@@ -3546,6 +3562,38 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
 #endif
     __atomic_store_n(&r->cfg, FS_ROT_CFG(mode, width, height),
                      __ATOMIC_RELEASE);
+    return 0;
+}
+
+/*
+ * OpenIMP extras (docs/OPENIMP_BEYOND_VENDOR.md, #212): a streamer binds
+ * these weakly to learn whether SetChnRotate really rotates in this libimp
+ * and within which envelope.  OpenIMP_Cap_FsRotate is defined only in builds
+ * with the software rotation (T31, T10/T20/T21, T23, T30); I2D SoCs have
+ * OpenIMP_Cap_I2dRotate.
+ *
+ * OpenIMP_FS_RotateLimits: 0 and the envelope SetChnRotate accepts for the
+ * channel (pre-rotation pixels at most *max_w x *max_h, both sides multiples
+ * of *align, *max_fps 0 = no frame-rate cap), -1 for an invalid channel.
+ */
+const int OpenIMP_Cap_FsRotate = 1;
+
+int OpenIMP_FS_RotateLimits(int chn, int *max_w, int *max_h, int *max_fps,
+                            int *align)
+{
+    uint32_t w = 4096u, h = 4096u, a = 2u;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS)
+        return -1;
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    w = FS_ROT_MAX_W;
+    h = fs_rotate_max_pixels() / w;
+    a = 16u;
+#endif
+    if (max_w) *max_w = (int)w;
+    if (max_h) *max_h = (int)h;
+    if (max_fps) *max_fps = 0;
+    if (align) *align = (int)a;
     return 0;
 }
 
