@@ -1861,10 +1861,10 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 }
 
 /* Software 90/270 rotation of a FrameSource channel: T31 (vendor
- * SetChnRotate), the T20/T21 userspace (T10, T20, T21) and T30 (OpenIMP
- * only: the vendor T20/T21/T30 libimp has no rotation, the T30 has no
- * rotate hardware, audit of IPU/MSCA/Helix in #212). */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T30)
+ * SetChnRotate), the T20/T21 userspace (T10, T20, T21), T23 and T30
+ * (OpenIMP only: the vendor T20/T21/T23/T30 libimp has no rotation, the
+ * T30 has no rotate hardware, audit of IPU/MSCA/Helix in #212). */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #define FS_SW_ROTATE 1
 #endif
 
@@ -3287,7 +3287,7 @@ int IMP_FrameSource_SetChnCallback(int chnNum, int (*cb)(int, void *))
  * library; here it is updated to the rotated size so consumers that read
  * the record (JPEG copy, OSD, IVS) see the geometry they get.
  *
- * T10/T20/T21 (OpenIMP extension, docs/T31_ROTATE.md "T10/T20/T21"): the
+ * T10/T20/T21/T23 (OpenIMP extension, docs/T31_ROTATE.md "T10/T20/T21"): the
  * same path. The Helix/NVPU encoder takes the picture size from the frame
  * record and reads NV12 with pitch = width and the chroma plane after
  * ALIGN16(height) luma lines, which is the nv12_rotate layout when both
@@ -3449,7 +3449,7 @@ void openimp_fs_rotate_capture(int chn, void *frame)
 #if defined(FS_FRAME_ROTATE_FLAG)
     memcpy(f + FS_FRAME_ROTATE_FLAG, &flag, 4);
 #else
-    (void)flag;   /* the T21 record has no rotate_osdflag */
+    (void)flag;   /* the T21/T23 records have no rotate_osdflag */
 #endif
 
     if (t0) {
@@ -3478,8 +3478,8 @@ void openimp_fs_rotate_capture(int chn, void *frame)
  * called before the channel is created, with the encoder channel set to
  * the rotated size. Here it also takes effect on a running channel from
  * its next frame. */
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
-/* Largest rotated picture on T10/T20/T21: 704x576 (D1). T31 rotates
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* Largest rotated picture on T10/T20/T21/T23/T30: 704x576 (D1). T31 rotates
  * 1280x704 in ~9 ms on 1.5 GHz; the ~1 GHz T10/T20/T21 cores with slower
  * DDR need about 15-20 ms per megapixel, so a 720p main stream would cost
  * ~25 % CPU at 15 fps and 1080p ~50-60 %. OPENIMP_FS_ROTATE_MAX_PIXELS
@@ -3536,7 +3536,7 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
                 chnNum, mode, width, height);
         return -1;
     }
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if ((width | height) & 15) {
         fprintf(stderr, "[FS] SetChnRotate ch%d: %dx%d not rotated: width "
                 "and height must be multiples of 16 on this SoC\n",
@@ -3551,6 +3551,15 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
         return -1;
     }
 #endif
+#if defined(PLATFORM_T23)
+    /* The T23 core has no COP2 (no MXU), and the T23 kernel does not
+     * answer a COP2 instruction with SIGILL: its CU2 handler restores the
+     * MXU context and oopses, and the watchdog resets the board (device
+     * 2026-11-05: one lu1q from user space, sled kernel_oops in
+     * xburst_cop2_restore). The SIGILL-guarded MXU2 selftest must never
+     * run here: fix the C path before the first rotated frame. */
+    nv12_rotate_set_impl(0);
+#endif
     __atomic_store_n(&r->cfg, FS_ROT_CFG(mode, width, height),
                      __ATOMIC_RELEASE);
     return 0;
@@ -3560,7 +3569,7 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
  * OpenIMP extras (docs/OPENIMP_BEYOND_VENDOR.md, #212): a streamer binds
  * these weakly to learn whether SetChnRotate really rotates in this libimp
  * and within which envelope.  OpenIMP_Cap_FsRotate is defined only in builds
- * with the software rotation (T31, T10/T20/T21, T30); I2D SoCs have
+ * with the software rotation (T31, T10/T20/T21, T23, T30); I2D SoCs have
  * OpenIMP_Cap_I2dRotate.
  *
  * OpenIMP_FS_RotateLimits: 0 and the envelope SetChnRotate accepts for the
@@ -3576,7 +3585,7 @@ int OpenIMP_FS_RotateLimits(int chn, int *max_w, int *max_h, int *max_fps,
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS)
         return -1;
-#if defined(PLATFORM_T21) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
     w = FS_ROT_MAX_W;
     h = fs_rotate_max_pixels() / w;
     a = 16u;

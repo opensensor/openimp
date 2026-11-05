@@ -120,6 +120,8 @@ compile core_imp_log_emit src/core/imp_log_emit.c -Werror
 compile core_video_drop src/core/video_drop.c -Werror
 compile core_su_base_shutdown src/core/su_base_shutdown.c -Werror
 compile framesource src/framesource/framesource_tseries.c
+compile nv12_rotate src/framesource/nv12_rotate.c $hot_flags -Werror
+compile core_mxu2 src/core/openimp_mxu2.c -Werror
 compile isp src/isp/isp_tseries.c
 compile isp_t23_tuning src/isp/isp_t23_tuning.c -Werror
 compile t23_compat src/t31/openimp_t31_compat.c
@@ -177,6 +179,8 @@ compile t23_helix_jpeg src/t30/helix_jpeg.c -Werror
     "$output_dir/hw_encoder.o" \
     "$output_dir/time64_shim.o" \
     "$output_dir/kernel_interface.o" \
+    "$output_dir/nv12_rotate.o" \
+    "$output_dir/core_mxu2.o" \
     "$output_dir/dma_alloc.o" \
     "$output_dir/core_device.o" \
     "$output_dir/core_group.o" \

@@ -128,7 +128,8 @@ Limits:
 - Which parts grant MXU2 to a user process (device-checked): T31X, T20X,
   T10L yes. T31L no: the kernel answers the first MXU2 instruction of a
   task with SIGILL, so the library stays on C. T21 (MXU2 opcodes reserved)
-  and T23 (no MXU) do not have it.
+  and T23 (no MXU) do not have it. On T23 the probe itself is unsafe (see
+  "T23" below): the T23 build never runs it.
 - 90/270: 16x16 luma / 8x8 CbCr-pair blocks, four (three) rounds of the
   same perfect shuffle, one SHUFV per output register (64 SHUFV, 16 loads,
   16 stores per 256 luma pixels). `tools/gen_nv12_rotate_mxu2.py` writes
@@ -221,3 +222,44 @@ CPU estimate, scaled from the T31 device number (1280x704 in 9 ms at
 
 The rotation runs on the FrameSource dequeue thread, so it adds that much
 latency to the rotated channel's frames.
+
+## T23 (OpenIMP extension, device-tested 2026-11-05)
+
+The vendor T23 libimp (1.3.0) has no `IMP_FrameSource_SetChnRotate`.
+OpenIMP builds the T10/T20/T21 path above for T23 too (`FS_SW_ROTATE` in
+`framesource_tseries.c`, the capture hook in `kernel_interface.c`,
+`nv12_rotate.o` in `build-t23.sh`), with the same rules: width and height
+multiples of 16, at most 704x576 pixels (`OPENIMP_FS_ROTATE_MAX_PIXELS`
+for measurements), the encoder channel created with the rotated size, the
+frame record (`+0x08/+0x0c`) carries the rotated size. The T23 record has
+no `rotate_osdflag` (+0x28 is the capture timestamp there).
+
+- Encoder: the T23 native Helix encoder (`src/t30/t30_helix_encoder.c`)
+  reads NV12 with stride = width and chroma at `mb_width*16 * mb_height*16`,
+  the T21 layout, so a rotated 16-aligned frame needs no change there.
+- No MXU on T23 (BSP guide V1.1: "The MXU is not supported by the T23";
+  `/proc/cpuinfo` ASEs empty). Worse, the T23 kernel does not answer a COP2
+  instruction with SIGILL: one `lu1q` from user space oopsed the kernel in
+  `xburst_cop2_restore` and the watchdog reset the board (device
+  2026-11-05, T23N sc1a4t, sled `kernel_oops` at 0x80011c38). The T23
+  `SetChnRotate` therefore fixes the C path (`nv12_rotate_set_impl(0)`)
+  before the first frame, so the SIGILL-guarded selftest never runs.
+- Device numbers (two T23N, sensor 15 fps, test client: ch0 at the sensor
+  size, ch1 rotated, H.264 + JPEG on ch1, `OPENIMP_FS_ROTATE_STATS=1`,
+  15 s per case; every stream decodes with 0 errors, 15.0 fps out):
+
+| size (before rotation) | hook per frame (rotate alone) | CPU at 15 fps |
+|---|---|---|
+| 640x352 | 2.9-3.9 ms (2.3-3.2 ms) | ~5 % |
+| 704x576 | 6.5-6.7 ms (5.5-5.6 ms) | ~10 % |
+| 960x544 (cap raised) | 9.1 ms (7.9 ms) | ~14 % |
+| 1280x720 (cap raised, no main stream) | 14.7-15.0 ms (13.0-13.4 ms) | ~22 % |
+
+  The 704x576 cap stays: a rotated 720p main stream keeps 15 fps but costs
+  about a fifth of the single core, and 1080 is not a multiple of 16. On the
+  sc2336p board a 1280x720 rotated sub stream next to the 1080p main
+  encoder did not fit in rmem (the main encoder failed; rotation itself
+  takes no rmem).
+- Orientation checked on the pictures (mode 1 CCW, mode 2 CW) at night
+  (grey); the chroma rotation is proven bit-exact on the host only
+  (`fs_lifecycle_test_t23`).
