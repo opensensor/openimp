@@ -188,3 +188,4 @@ Columns T10..T41 (T30 and T40 added 2026-10-10): one status symbol per SoC (lege
 - 2026-11-05 (T30): `ISP_Tuning_Get/SetRawDRC` cache -> dev after a hand review of the b21/b26/b28 device evidence (mode round trip PASS, picture effect Y 48 vs 102, strength read-back is the live Iridix register like the vendor).
 - 2026-11-05 (T30, user decision): `DMIC_*` and `DMIC_DisableAecRefFrame` counted as done for the RC3 gate as `nohw` (new cell code: done, explicitly not verified on hardware; no DMIC node on the T30X lab board).
 - 2026-11-05 (T30): `GetAFMetrices` follows the vendor libimp (no driver call, 16-bit value, 0xffff on the fixed-focus T30X; device proof pending, b30); AENC/ADEC row qemu -> dev (b29 silent codec case, 17 of 17 PASS).
+- 2026-11-05 (T30): `ISP_Tuning_SetISPBypass` stub -> rt after the device run b31 (ENABLE 0, DISABLE refused -1, frames flow, no hang), like T23/T31/T40; real bypass (vendor link rebuild) not implemented on T30.

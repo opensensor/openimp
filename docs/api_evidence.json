@@ -3901,7 +3901,7 @@
     "T20": "rt",
     "T21": "no-op",
     "T23": "rt",
-    "T30": "stub",
+    "T30": "rt",
     "T31": "rt",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -3946,7 +3946,7 @@
     "T10": "OpenIMP claude/issue-129-t20-bypass 2026-11-01 .31 (open-tx-isp next, own process with the new libimp, timps stopped; #129): ENABLE ret 0, runtime DISABLE ret 0 (vendor 3.12.0 sends one S_CTRL 0x98e907 and returns its result): ISP top registers 0x40/0x44 read back ds1_dma_source 0/raw_bypass 0/processing_bypass_mode 0 -> 1/1/2 (raw bypass, picture darker, SSIM 0.37 vs processed) -> 0/0/0 after ENABLE, SSIM 0.98 vs before, RTSP decode clean, snapshot 200, oops 0; DISABLE before FrameSource (raw channel) not built",
     "T20": "OpenIMP claude/issue-129-t20-bypass 2026-11-01 .107 (open-tx-isp next, own process with the new libimp, timps stopped; #129): ENABLE ret 0, runtime DISABLE ret 0: ISP top registers 0x40/0x44 read back ds1_dma_source 0/raw_bypass 0/processing_bypass_mode 0 -> 1/1/2 -> 0/0/0 after ENABLE, SSIM 0.99 vs before, RTSP decode clean, snapshot 200, oops 0; DISABLE before FrameSource (raw channel) not built",
     "T31": "apitest ispbypass_old 2026-10-27 .26 (open-tx-isp + OpenIMP next, #119/#126): ENABLE (full ISP, the streamer call) ret 0, DISABLE (real bypass) refused with -1 like the vendor T21, nothing touched, frames flow; real bypass = #129",
-    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+    "T30": "apitest ispbypass_old (APITEST_BYPASS_DISABLE=1, user OK for this RISKY case) b31 2026-11-05 .231 (open-tx-isp next 3ff342ab + OpenIMP next 7b9f3448, T30X): ENABLE (full ISP, the streamer call) ret 0, DISABLE (real bypass) refused with -1, frames flow, the camera still answers, no hang. Same state as T23/T31/T40 (rt): the vendor 1.0.5 (0xc541c) runs a link rebuild (ioctls 0x800456d3, d1, S_CTRL 0x8000164, d0 with !bypass, d2); OpenIMP does not implement the real bypass for T30 (no streamer uses it); the T30 driver already serves the ioctls and the control, so an opt-in link rebuild like OPENIMP_T31_BYPASS_GRAPH is possible later."
    }
   },
   "ISP_Tuning_SetISPLDC": {
