@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: H.265 groundwork - Radix command list builder bit-exact with the vendor (#208, branch `claude/t30-h265`)
+
+- Study: the T30 encodes H.265 on Radix (0x13600000), a block separate from Helix; its GPL kernel driver is built into every thingino T30 kernel and uses the same `/dev/soc_vpu` channel ABI as the H.264 path, so H.265 is library work only. The vendor libimp 1.0.5 writes VPS/SPS/PPS/SEI and the slice header itself and lets Radix write the slice data (docs/T30_HEVC.md).
+- New `src/t30/radix/`: the 0x1204-byte per-picture parameter block (names/offsets from the vendor debug dumper) and the command list builder written from the vendor `H265E_T30_SliceInit` (0x3ad5c) with the register map and interpolation tables of the kernel's GPL `radix.h`. Desk proof: under qemu-mipsel against the vendor function, 25 000 random blocks (I and P) give identical lists; host test `radix_cmdlist_test` (64 vendor list hashes) in `make -C tests/t30 check`.
+- Not linked into libimp yet: `IMP_Encoder_CreateChn(PT_H265)` on T30 still returns -1. Open: block defaults, CABAC states, header writer, encoder object, QEMU and T30X proofs. Matrix row 23 unchanged.
+
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-iridix2` `d09dc553` and OpenIMP next `7b9f3448` at run time, no flash): `ISP_Tuning_GetAFMetrices` returns 0 and writes the 16-bit value `0xffff` like the vendor libimp 1.0.5 (b29: vendor ret 0, `0xffff`, fixed-focus unit), `?` -> `dev`; t30pass + t30pass2 49 / 0. T30 API 284/350 -> 285/350 works.

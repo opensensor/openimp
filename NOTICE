@@ -16,6 +16,10 @@ has no single project-wide license file yet.  Licensing is per file:
      2003-2014 x264 project; see the headers of cabac.c, set.h, slice.h,
      bitstream.h).  These files are built into the T21, T23 and T30
      libimp.so, so those binaries carry GPL-2.0-or-later obligations.
+   - GPL-2.0: src/t30/radix/t30_radix_cmdlist.c and the generated
+     src/t30/radix/t30_radix_intp.h (register map and interpolation
+     formats of the T30 kernel header drivers/video/soc_vpu/radix/radix.h,
+     Ingenic, GPL-2.0).  Not yet built into libimp.
    - BSD-3-Clause: src/audio/webrtc/ (third-party, see below).
 
 2. Files without a license header carry no explicit license grant.  They
