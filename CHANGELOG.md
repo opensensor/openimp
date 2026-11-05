@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-05, T30: RawDRC cells `cache` -> `dev` (review of the KEPT-GAP, no new run)
+
+- `ISP_Tuning_GetRawDRC` / `SetRawDRC` were kept at `cache` by the evidence tool (a PASS never replaces a recorded stub/cache note). Reviewed by hand against the device runs: the driver path is real since b21 (RawDRC enable/strength reach the ISP, Iridix 0x3dc 0x100, manual/off/unlimit strength 54/45/222, picture effect Y 48 vs 102 against the vendor 67/67/142 / Y 102) and the mode round trip PASSes on the device in b26 and b28 (`t30pass_rawdrc`). The strength read-back is the live Iridix register on both stacks, so it differs from the set value on the vendor stack too. Cells: `cache` -> `dev`.
+
 ## 2026-11-05, T30: device evidence from the t30pass2 gate cases (T30X run b28, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp next `e2c2ee24` and OpenIMP next `4caf979a` at run time, no flash): `APITEST_CASES=t30pass,t30pass2` 48 PASS / 0 FAIL. 19 T30 cells `qemu` -> `dev` (round trips and read-backs, no picture effect claimed): `ISP_Get/SetSensorRegister` (SC4236 chip id 0x32/0x35), `Enable/DisableMovestate`, `Get/SetColorfxMode`, `Get/SetSinterDnsAttr`, `Get/SetTemperDnsAttr`, `Get/SetSceneMode`, `SetFWFreeze`, `SetTemperStrength`, `SetVideoDrop`, `AE_Get/SetROI`, `Awb_Get/SetRgbCoefft`, `Get/SetAeHist`, `Get/SetAeWeight`, `Get/SetAfHist`, `Get/SetAwbHist`, `Get/SetAwbWeight`, `Get/SetWB`. T30 API 207/350 -> 238/350 works.

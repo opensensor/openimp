@@ -3378,7 +3378,7 @@
     "T20": "dev",
     "T21": "dev",
     "T23": "n.a.",
-    "T30": "cache",
+    "T30": "dev",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -3404,7 +3404,7 @@
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107",
     "T21": "apitest rc3-cases 2026-10-26 .24",
-    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+    "T30": "T30X lab: b21 2026-11-04 (RawDRC works, Iridix 0x3dc 0x100, manual/off/unlimit strength 54/45/222, picture effect Y 48 vs 102) and t30pass_rawdrc PASS in b26 and b28 2026-11-05 (mode round trip off 5 / manual 0 / unlimit 1 read back, frames flow); the strength read-back is the live Iridix register on both stacks (vendor-equal)"
    }
   },
   "ISP_Tuning_GetSceneMode": {
@@ -4045,7 +4045,7 @@
     "T20": "rt",
     "T21": "no-op",
     "T23": "n.a.",
-    "T30": "cache",
+    "T30": "dev",
     "T31": "n.a.",
     "T32": "n.a.",
     "T33": "n.a.",
@@ -4070,7 +4070,7 @@
    "ref": {
     "T10": "apitest rc3-cases 2026-10-26 .31",
     "T20": "apitest rc3-cases 2026-10-26 .107 (API round trip, no visible effect expected)",
-    "T30": "apitest t30audit 2026-10-31 QEMU (no camera)"
+    "T30": "T30X lab: b21 2026-11-04 (RawDRC works, Iridix 0x3dc 0x100, manual/off/unlimit strength 54/45/222, picture effect Y 48 vs 102) and t30pass_rawdrc PASS in b26 and b28 2026-11-05 (mode round trip off 5 / manual 0 / unlimit 1 read back, frames flow); the strength read-back is the live Iridix register on both stacks (vendor-equal)"
    }
   },
   "ISP_Tuning_SetScalerLv": {
