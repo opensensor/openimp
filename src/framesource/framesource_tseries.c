@@ -3720,9 +3720,20 @@ void openimp_fs_rotate_capture(int chn, void *frame)
  * 1088x1920 portrait main about 45 %, so the cap is 1280x720 pixels. */
 #define FS_ROT_T30_MAX_W 1280u
 #define FS_ROT_T30_MAX_H 720u
+/* T23 (XBurst1 without MXU, C kernel, T23N lab cameras 2026-11-06): the
+ * banded C kernel costs 10.3-11.5 ms per 1280x720 frame (whole hook) and
+ * 15.3 % process CPU at 15 fps with 15/15 fps delivered, so the cap is
+ * 1280x720 like the T30.  Memory is the other limit: a rotated 720p channel
+ * next to a 1080p main stream does not fit the rmem of a 1080p sensor
+ * camera, the encoder channel creation then fails visibly. */
+#define FS_ROT_T23_MAX_W 1280u
+#define FS_ROT_T23_MAX_H 720u
 #if defined(PLATFORM_T30)
 #define FS_ROT_MAX_W FS_ROT_T30_MAX_W
 #define FS_ROT_MAX_H FS_ROT_T30_MAX_H
+#elif defined(PLATFORM_T23)
+#define FS_ROT_MAX_W FS_ROT_T23_MAX_W
+#define FS_ROT_MAX_H FS_ROT_T23_MAX_H
 #else
 #define FS_ROT_MAX_W FS_ROT_T21_MAX_W
 #define FS_ROT_MAX_H FS_ROT_T21_MAX_H

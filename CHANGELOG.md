@@ -8,6 +8,12 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T23: rotation cap raised to 1280x720 (user request; T10/T20/T21 stay at 704x576)
+
+- `OpenIMP_FS_RotateLimits` and `SetChnRotate` now accept up to 1280x720 pixels (sides multiples of 16) on T23; `FS_ROT_T23_MAX_W/H` in `framesource_tseries.c`. The banded C kernel costs 10.3-11.5 ms per 1280x720 frame (whole hook, T23N 2026-11-06 measurement of #215) and 15.3 % process CPU at 15 fps, with 15/15 fps delivered.
+- Device (T23N sc1a4t lab camera, timps test build `efa490e`, no flash, libimp from this branch): main 1280x720 rot 90 -> 720x1280 (rotate_path hw, rotation_state 0, ffprobe h264 720x1280, 15 s `-c copy` 0 errors), process CPU 19.5 %; main 1280x720 rot 270 plus sub 640x352 rot 90 at once -> 720x1280 and 352x640, process CPU 23.4 %.
+- Limit: a rotated 720p channel next to a 1080p main stream does not fit the rmem of the 1080p sensor camera (T23N sc2336p): the encoder channel creation then fails visibly (seen with the rottest client in #215); the timps test binary was built for the sc1a4t camera and did not start on the sc2336p one (not a rotation result), so that case is not re-run here.
+
 ## 2026-11-06, T30: OEM picture rate control (eprc T30 revision, #210)
 
 - T30 CBR/VBR/SMART now run the vendor's own T30 rate controller, reimplemented in `src/eprc/eprc_t30.c` (`JZ_VPU_RC_*_T30` of the T30 1.0.5 libimp), instead of OpenIMP's GOP controller. The GOP controller changes QP only at GOP boundaries: on the T30X at 2048x1536 / 2000 kbit/s CBR the first GOP ran at QP 30 (about 82 Mbit/s), then QP sat at the maximum 45 (about 0.5 Mbit/s), 7.5 Mbit/s average over 12 s at 25 fps. The vendor CBR held 2018 kbit/s.
