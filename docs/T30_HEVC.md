@@ -1,8 +1,10 @@
 # T30 H.265 (HEVC): Radix encoder (work in progress, #208)
 
-Status 2026-11-06: `IMP_Encoder_CreateChn(PT_H265)` on T30 returns -1 unless `OPENIMP_T30_H265=1` is set; with it the
-channel encodes on Radix (`src/t30/radix/t30_radix_encoder.c`); proven in the QEMU T30 machine with synthetic pictures, not
-yet on a T30X. This page describes the hardware path and what of it is in the tree.
+Status 2026-11-06: `IMP_Encoder_CreateChn(PT_H265)` on T30 returns -1 unless `OPENIMP_T30_H265=1` is set (default off until
+the device proof); with it the channel encodes on Radix (`src/t30/radix/t30_radix_encoder.c`). Proven in the QEMU T30 machine
+with synthetic pictures; on a T30X (run b40) Radix runs, VPS/SPS/PPS are byte-equal to the vendor and IDR pictures are
+correct; the P-picture drift seen there had two causes that are fixed since (below), the re-run is pending. This page
+describes the hardware path and what of it is in the tree. Only the real T30 build contains it (not T20/T21/T23).
 
 ## Hardware and kernel
 
@@ -40,12 +42,47 @@ Like the vendor libimp 1.0.5 (an x265-derived encoder, "i265e"):
 | `tests/t30/radix/hevc_cfg_diff.c`, `radix_hevc_chan_test.c` | desk tool (vendor `IMP_Encoder_CreateChn`/`I265e` setup + `codeVPS/SPS/PPS` under qemu-mipsel, 5000 random channels, 0 differ) and host test (500 channels, vendor hash) |
 | `tests/t30/radix/radix_diff.c` | desk tool: compares the builder with the vendor function under qemu-mipsel (`make -C tests/t30 radix-diff O=<thingino output> VENDOR_LIBIMP=<libimp.so> QEMU_MIPSEL=<qemu-mipsel>`) |
 
-The builder gives the same list as the vendor library word for word (25 000 random blocks, I and P pictures). It is not
-linked into libimp yet.
+The builder gives the same list as the vendor library word for word (25 000 random blocks, I and P pictures).
 
 ## Still to do
 
-The T30X device proof (audit DEVICE_PLAN: Radix present, OpenIMP H.265 run, decode and RC checks, vendor reference).
+The T30X device proof: re-run of b40 with the two fixes (P pictures decode clean over 300 frames, IDR/POC pattern,
+bit rate against the vendor's 1080p25 CBR 2000 = 2034 kbit/s, VBR, 2048x1536 and 1280x720, H.265 next to H.264, channel
+restarts). After it passes, the matrix cell becomes device-proven and `OPENIMP_T30_H265` can default to on.
+
+## Device run b40 (T30X, 2026-11-06)
+
+Radix on silicon: one interrupt per picture, no oops or timeout, 0 GetStream errors; VPS/SPS/PPS byte-identical to the
+vendor in all four common configurations, first QPs equal (40 42 41 38 ...), IDR pictures show the same scene and colours
+as the vendor's. P pictures drifted. Causes, both fixed after the run and covered by `radix_encoder_test`:
+- the first P picture after an IDR carried POC 0 (the count before the increment; vendor `decTypeAndRef`: the picture
+  count since the IDR);
+- the reference chroma stride (block 0x34) was halved; the vendor `codec_enc` writes the reference picture's stride as
+  is and halves only the reconstruction's (block 0x30). QEMU did not show it (its model ignores the strides).
+
+## Run-time changes
+
+As in the vendor library (Ghidra, libimp 1.0.5): `IMP_Encoder_SetChnAttrRcMode` has an H.265 branch (`i265e_set_param`
+3, `I265eReconfig::setRc`), the frame-rate/GOP path (`encoder_get_fps_mask`, used by `SetChnFrmRate` / `SetGOPSize`)
+sends `set_param` 5/7 and requests an IDR, and `I265e::reconfig` applies the latched values on an IDR only
+(`ReconfigIdrFrame` -> `I265e::reset`: `configure`, levels, `initVPS/SPS/PPS`, `I265eRatectrl::rcInit` on the running
+controller). OpenIMP: `OpenIMP_T30_RadixUpdateParams` (fed with a snapshot of the channel parameters before every
+picture) latches the change, the next IDR rebuilds the parameter sets and calls `EPRC30_Reinit`, which runs the setup and
+VIDEO_CFG again on the live controller without clearing it, as rcInit does. Proof: `tools/eprc_t30_oracle.py LIB
+--h265-reconf` runs rcInit a second time on the vendor controller; `tests/eprc/eprc_t30_h265_reconf_vectors.txt`
+(12 changes, 3520 decisions incl. block and QP-map CRC) 0 differ; a fresh controller instead gives 450 differences.
+`IMP_Encoder_RequestIDR` works as before.
+
+## Not ported (vendor has it, no streamer on T30 reaches it)
+
+- ROI on H.265: vendor `SetChnROI` (H.265 branch) packs up to 16 regions (7 bytes, coordinates / 16) into
+  `I265eReconfig::setRoi`; `ReconfigPFrame` copies them to the i265e parameters, `codec_enc` into block 0x3b (the command
+  list builder already programs them). timps: ROI is H.264 only and its tier on T30 is "unsupported" (`src/roi_caps.h`), prudynt sets no ROI.
+- User data SEI on H.265: vendor `InsertUserData` queues it for H.265 channels too (`SEIUserDataUnregistered`); no call in
+  timps or prudynt.
+- The eprc ROI offsets / Gaussian SAS map (E+148/149) and the other A+152 variants: debug switches only, 0 in every
+  vendor T30 path (`eprc_default_set_T30`, rcInit does not set them).
+raptor was not checked (UNVERIFIED).
 
 ## QEMU proof (2026-11-06)
 

@@ -8,6 +8,14 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T30: H.265 on Radix - encoder, silicon run b40, run-time changes (#208, branch `claude/t30-h265`, device proof pending)
+
+- `IMP_Encoder_CreateChn(PT_H265)` on T30 encodes on Radix (`src/t30/radix/t30_radix_encoder.c`) **only with `OPENIMP_T30_H265=1`**; default off (-1 as before) until the T30X proof. Rate control, parameter sets, command list, CABAC init and NAL framing are bit-exact against the vendor libimp 1.0.5 on the desk (docs/T30_HEVC.md).
+- T30X run b40: Radix runs on silicon, VPS/SPS/PPS byte-equal to the vendor, IDR pictures correct; P pictures drifted. Two causes fixed: the first P picture after an IDR had POC 0, and the reference chroma stride was halved (vendor `codec_enc` writes it unshifted). Both now have host tests (`radix_encoder_test`, mutation-checked). Re-run (b41) pending.
+- Run-time changes as the vendor i265e: `IMP_Encoder_SetChnAttrRcMode`, `SetChnFrmRate`, `SetGOPSize` on an H.265 channel are latched and applied at the next IDR (I265eReconfig / I265e::reset: new parameter sets, rcInit on the running controller = new `EPRC30_Reinit`); a new frame rate or GOP requests that IDR. Oracle vectors `eprc_t30_h265_reconf_vectors.txt` (rcInit run twice on the vendor controller), 0 differ.
+- Fix: the Radix dispatch was compiled into the T21/T20 libimp through the PLATFORM_T30 alias (undefined `OpenIMP_T30_Radix*` symbols there); now real T30 only. T23/T31 libimp unchanged.
+- Not ported (not reached by timps/prudynt on T30): H.265 ROI (`SetChnROI` -> 16 regions in block 0x3b) and H.265 user-data SEI (`InsertUserData`); see docs/T30_HEVC.md.
+
 ## 2026-11-05, T30: H.265 groundwork - Radix command list builder bit-exact with the vendor (#208, branch `claude/t30-h265`)
 
 - Study: the T30 encodes H.265 on Radix (0x13600000), a block separate from Helix; its GPL kernel driver is built into every thingino T30 kernel and uses the same `/dev/soc_vpu` channel ABI as the H.264 path, so H.265 is library work only. The vendor libimp 1.0.5 writes VPS/SPS/PPS/SEI and the slice header itself and lets Radix write the slice data (docs/T30_HEVC.md).

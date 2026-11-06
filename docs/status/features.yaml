@@ -902,7 +902,7 @@ features:
       text: '— no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]'
     T30:
       sym: 🔧
-      text: 'in progress (#208, claude/t30-h265): Radix encoder (vendor rate control, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; host test of the encoder object; QEMU T30 machine: 3 RC modes x 60 synthetic pictures decode clean); PT_H265 only with OPENIMP_T30_H265=1 until the T30X proof'
+      text: 'in progress (#208, claude/t30-h265): Radix encoder (vendor rate control incl. run-time RC/fps/GOP changes, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; QEMU T30 machine: 3 RC modes x 60 pictures decode clean); T30X silicon (b40): Radix runs, VPS/SPS/PPS byte-equal to the vendor, IDR pictures correct, P pictures drifted (POC + reference chroma stride, both fixed after the run, re-run b41 pending); PT_H265 only with OPENIMP_T30_H265=1 until the T30X proof'
       issues: [208]
     T31:
       sym: ✅
