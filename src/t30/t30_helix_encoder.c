@@ -380,6 +380,10 @@ struct T30HelixEncoder {
     T30BlackStart bs;
     IMPDMABufferInfo black;
     int bs_now;
+    /* OPENIMP_T30_START_FLOOR: pictures left with the start QP floor in the
+     * controller, and the controller's own P/IDR min QP to restore */
+    uint32_t eprc30_floor_left;
+    uint8_t eprc30_min_p, eprc30_min_i;
 #endif
 #if defined(PLATFORM_T20)
     int t10;                    /* T10 NVPU: T10 command list, padded refs */
@@ -2379,10 +2383,9 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
     p.min_qp = t30_eprc_clip(encoder->eprc30_min_qp, 0, (int32_t)p.max_qp);
     p.bitrate = hp->bitrate / 1000u;
     p.max_bitrate = hp->bitrate / 1000u < 128u ? 128u : hp->bitrate / 1000u;
-    /* OpenIMP extra, default auto for CBR only (VBR/SMART keep the vendor 26
-     * unless an integer is set; OPENIMP_T30_START_QP=vendor: vendor start QP) */
-    p.init_qp = t30_start_qp(getenv("OPENIMP_T30_START_QP"),
-                             p.rc_mode == EPRC_MODE_CBR, hp->width,
+    /* OpenIMP extra, default auto in every mode (OPENIMP_T30_START_QP=vendor:
+     * the vendor start QP 26) */
+    p.init_qp = t30_start_qp(getenv("OPENIMP_T30_START_QP"), hp->width,
                              hp->height, hp->fps_num, hp->fps_den,
                              hp->bitrate / 1000u);
     if (app) {
@@ -2409,6 +2412,29 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
     if (p.init_qp > 0)
         IMP_LOG_INFO("Encoder", "T30 eprc: start QP %d (OPENIMP_T30_START_QP, "
                      "OpenIMP extra)", p.init_qp);
+    /* OPENIMP_T30_START_FLOOR (default on, "0" off; OpenIMP extra, #216
+     * b45): for the first GOP after a controller start with a start QP the
+     * controller's own min QP is raised to the start QP.  The vendor
+     * controller starts the first P at IDR + 3 and then lowers the QP by
+     * up to 3 per picture while the pictures stay under its budget (b45
+     * 2048x1536 15 fps: I38 P41 P38 P35 = 82/14/32/98 KB, the live picture
+     * still changing); the knots are converged QPs (converged P QP >=
+     * the map value at every b45 point), so the floor stops that descent
+     * below the level the stream settles at anyway.  Restored before the
+     * next IDR. */
+    encoder->eprc30_floor_left = 0u;
+    env = getenv("OPENIMP_T30_START_FLOOR");
+    if (p.init_qp > 0 && !(env && env[0] == '0')) {
+        uint8_t pm, im, f = (uint8_t)p.init_qp;
+
+        EPRC30_GetMinQp(&encoder->eprc30, &pm, &im);
+        encoder->eprc30_min_p = pm;
+        encoder->eprc30_min_i = im;
+        if (f > pm || f > im) {
+            EPRC30_SetMinQp(&encoder->eprc30, f > pm ? f : pm, f > im ? f : im);
+            encoder->eprc30_floor_left = p.gop + 1u;
+        }
+    }
     encoder->eprc30_on = 1;
     memset(encoder->eprc30_regs, 0, sizeof(encoder->eprc30_regs));
     env = getenv("OPENIMP_T30_EPRC_STATS");
@@ -3744,6 +3770,9 @@ t20_again:
     if (encoder->eprc30_on) {
         EprcPicture pic;
 
+        if (encoder->eprc30_floor_left && --encoder->eprc30_floor_left == 0u)
+            EPRC30_SetMinQp(&encoder->eprc30, encoder->eprc30_min_p,
+                            encoder->eprc30_min_i);
         EPRC30_FrameStart(&encoder->eprc30, idr, &pic);
         qp = pic.qp;
     }

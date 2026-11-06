@@ -2109,6 +2109,8 @@ static void test_t30_eprc(void)
     unsigned int i, j, reads;
 
     unsetenv("OPENIMP_T30_EPRC");
+    /* the encoder against a bare vendor controller: no start floor */
+    setenv("OPENIMP_T30_START_FLOOR", "0", 1);
     encoder = create(1280, 720, 25, 10);
     memset(&p, 0, sizeof(p));
     p.rc_mode = EPRC_MODE_CBR;
@@ -2173,6 +2175,7 @@ static void test_t30_eprc(void)
         assert(encode(encoder, &info) == 0);
     assert(reg_reads == reads);
     OpenIMP_T30_HelixDestroy(encoder);
+    unsetenv("OPENIMP_T30_START_FLOOR");
     unsetenv("OPENIMP_T30_EPRC");
 }
 
@@ -2205,63 +2208,59 @@ static void test_t30_start_qp(void)
     T30HelixEncoder *encoder;
     PictureInfo info;
     HWEncoderParams p;
-    int q2048_25, q2048_15, q1080, q720;
+    int q2048_25, q2048_15, q1080, q720, i;
 
     /* the pure mapping */
-    assert(t30_start_qp(NULL, 1, 1280, 720, 25, 1, 2000) == 26);   /* auto: 720p = vendor 26 */
-    assert(t30_start_qp("", 1, 1280, 720, 25, 1, 2000) == 26);
-    assert(t30_start_qp(NULL, 1, 2048, 1536, 15, 1, 2000) == 38);   /* default is auto */
-    assert(t30_start_qp(NULL, 1, 0, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("vendor", 1, 1280, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("36", 1, 1280, 720, 25, 1, 2000) == 36);
-    assert(t30_start_qp("10", 1, 1280, 720, 25, 1, 2000) == 10);
-    assert(t30_start_qp("51", 1, 1280, 720, 25, 1, 2000) == 51);
-    assert(t30_start_qp("9", 1, 1280, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("52", 1, 1280, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("abc", 1, 1280, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("30x", 1, 1280, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("auto", 1, 0, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("auto", 1, 1280, 720, 25, 1, 0) == -1);
-    /* auto: the measured knots (T30X b39/b42/b43, 2000 kbit/s) */
-    q720 = t30_start_qp("auto", 1, 1280, 720, 25, 1, 2000);
-    q1080 = t30_start_qp("auto", 1, 1920, 1080, 25, 1, 2000);
-    q2048_15 = t30_start_qp("auto", 1, 2048, 1536, 15, 1, 2000);
-    q2048_25 = t30_start_qp("auto", 1, 2048, 1536, 25, 1, 2000);
+    assert(t30_start_qp(NULL, 1280, 720, 25, 1, 2000) == 26);   /* auto: 720p = vendor 26 */
+    assert(t30_start_qp("", 1280, 720, 25, 1, 2000) == 26);
+    assert(t30_start_qp(NULL, 2048, 1536, 15, 1, 2000) == 40);   /* default is auto */
+    assert(t30_start_qp(NULL, 0, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("vendor", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("36", 1280, 720, 25, 1, 2000) == 36);
+    assert(t30_start_qp("10", 1280, 720, 25, 1, 2000) == 10);
+    assert(t30_start_qp("51", 1280, 720, 25, 1, 2000) == 51);
+    assert(t30_start_qp("9", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("52", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("abc", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("30x", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("auto", 0, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("auto", 1280, 720, 25, 1, 0) == -1);
+    /* auto: the measured converged QPs (T30X b39/b42-b45) */
+    q720 = t30_start_qp("auto", 1280, 720, 25, 1, 2000);
+    q1080 = t30_start_qp("auto", 1920, 1080, 25, 1, 2000);
+    q2048_15 = t30_start_qp("auto", 2048, 1536, 15, 1, 2000);
+    q2048_25 = t30_start_qp("auto", 2048, 1536, 25, 1, 2000);
     assert(q720 == 26);
-    assert(t30_start_qp("auto", 1, 640, 360, 25, 1, 2000) == 26);
-    assert(q2048_25 == 41);                 /* b39: IDR 41 */
-    assert(q2048_15 == 38);                 /* b39/b42: IDR 38 */
+    assert(t30_start_qp("auto", 640, 360, 25, 1, 2000) == 26);
+    assert(q2048_25 == 41);                 /* b39/b44/b45: IDR 41 */
+    assert(q2048_15 == 40);                 /* b42/b44/b45: IDR 38-40 */
     assert(q1080 == 32);                    /* b43: IDR 32 */
-    assert(t30_start_qp("auto", 1, 1920, 1080, 15, 1, 2000) == 28);    /* b43 */
+    assert(t30_start_qp("auto", 1920, 1080, 15, 1, 2000) == 29);    /* b43/b45: 28-32 */
     /* monotone in bpp within a class, the large class above the small */
-    assert(t30_start_qp("auto", 1, 1920, 1080, 25, 1, 1000) == 38);
-    assert(t30_start_qp("auto", 1, 1920, 1080, 25, 1, 1500) > q1080);
-    assert(t30_start_qp("auto", 1, 2048, 1536, 25, 1, 1500) > q2048_25);
-    assert(q2048_15 > t30_start_qp("auto", 1, 1920, 1080, 15, 1, 2000));
-    assert(t30_start_qp("auto", 1, 2048, 1536, 25, 1, 100) == 46);     /* clamp */
-    assert(t30_start_qp("auto", 1, 2048, 1536, 25, 1, 200000) == 26);
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 1000) == 33);
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 1500) >= q1080);
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 1500) >= q2048_25);
+    assert(q2048_15 > t30_start_qp("auto", 1920, 1080, 15, 1, 2000));
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 100) == 42);     /* floor */
+    assert(t30_start_qp("auto", 320, 240, 25, 1, 3) == 34);          /* floor */
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 200000) == 26);
 
-    /* class boundary: 1920x1088 is small, 1920x1090 large (same bpp, 7 QP apart) */
-    assert(t30_start_qp("auto", 1, 1920, 1088, 25, 1, 2000) == 32);
-    assert(t30_start_qp("auto", 1, 1920, 1090, 25, 1, 2000) == 39);
+    /* class boundary: 1920x1088 is small, 1920x1090 large (same bpp, 8 QP apart) */
+    assert(t30_start_qp("auto", 1920, 1088, 25, 1, 2000) == 32);
+    assert(t30_start_qp("auto", 1920, 1090, 25, 1, 2000) == 40);
     /* NTSC frame rate: 30000/1001 = 30 fps here (bpp 0.0322) */
-    assert(t30_start_qp("auto", 1, 1920, 1080, 30000, 1001, 2000) == 34);
-    assert(t30_start_qp("auto", 1, 1920, 1080, 30, 1, 2000) == 34);
-    /* below 1000 kbit/s; below the first knot the QP is a floor (no slope) */
-    assert(t30_start_qp("auto", 1, 1920, 1080, 25, 1, 999) == 38);
-    assert(t30_start_qp("auto", 1, 1920, 1080, 25, 1, 512) == 38);
-    assert(t30_start_qp("auto", 1, 1920, 1080, 25, 1, 128) == 38);
-    assert(t30_start_qp("auto", 1, 640, 360, 15, 1, 256) == 27);
-    assert(t30_start_qp("auto", 1, 640, 360, 25, 1, 256) == 31);
-    assert(t30_start_qp("auto", 1, 2048, 1536, 25, 1, 1000) == 46);  /* 47 -> clamp */
-    assert(t30_start_qp("auto", 1, 2048, 1536, 25, 1, 4000) == 35);
-    assert(t30_start_qp("auto", 1, 2048, 1536, 25, 1, 0) == -1);   /* < 1000 bit/s */
-    /* VBR/SMART (cbr == 0): auto keeps the vendor 26, an integer still applies */
-    assert(t30_start_qp(NULL, 0, 2048, 1536, 25, 1, 2000) == -1);
-    assert(t30_start_qp("", 0, 2048, 1536, 25, 1, 2000) == -1);
-    assert(t30_start_qp("auto", 0, 2048, 1536, 25, 1, 2000) == -1);
-    assert(t30_start_qp("41", 0, 2048, 1536, 25, 1, 2000) == 41);
-    assert(t30_start_qp("vendor", 0, 2048, 1536, 25, 1, 2000) == -1);
+    assert(t30_start_qp("auto", 1920, 1080, 30000, 1001, 2000) == 32);
+    assert(t30_start_qp("auto", 1920, 1080, 30, 1, 2000) == 32);
+    /* below 1000 kbit/s (b45 knots); below the first knot a floor */
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 999) == 33);
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 512) == 34);     /* b45: IDR 33, P 35 */
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 128) == 34);
+    assert(t30_start_qp("auto", 640, 360, 15, 1, 256) == 28);       /* b45: IDR 27-28 */
+    assert(t30_start_qp("auto", 640, 360, 25, 1, 256) == 31);
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 1000) == 42);  /* b45: IDR 42 */
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 4000) == 39);  /* b45: IDR 40 */
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 8000) == 26);  /* top knot */
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 0) == -1);   /* < 1000 bit/s */
 
     /* through the encoder: unset = auto (720p 25 fps 2000 kbit/s: 26), "vendor" = controller default,
      * a fixed integer is the first IDR's QP, an invalid value is vendor */
@@ -2290,7 +2289,7 @@ static void test_t30_start_qp(void)
     unsetenv("OPENIMP_T30_START_QP");
     /* a 1080p25 CBR 2000 channel starts at 32; a bitrate change re-runs the
      * controller init (as the OEM), the next IDR starts at the map value of
-     * the NEW bitrate (1000 kbit/s: 38) */
+     * the NEW bitrate (1000 kbit/s: 33) */
     encoder = create(1920, 1080, 25, 50);
     assert(encode(encoder, &info) == 0);
     assert(info.idr && info.qp == 32);
@@ -2308,19 +2307,20 @@ static void test_t30_start_qp(void)
     assert(OpenIMP_T30_HelixUpdateParams(encoder, &p) == 0);
     OpenIMP_T30_HelixRequestIDR(encoder);
     assert(encode(encoder, &info) == 0);
-    assert(info.idr && info.qp == 38);
+    assert(info.idr && info.qp == 33);
     OpenIMP_T30_HelixDestroy(encoder);
-    /* VBR: unset/auto keep the vendor 26 (no VBR device run yet), an
-     * integer applies; SMART likewise */
+    /* VBR and SMART: auto as in CBR (from the max bitrate; b45 VBR
+     * 2048x1536 25 fps started at 41: 1.6x in the first 0.5 s, vendor 26:
+     * 45x), "vendor" = 26, an integer applies */
     encoder = create_rc(1920, 1080, 25, 50, HW_RC_MODE_VBR, 0);
     assert(encode(encoder, &info) == 0);
-    assert(info.idr && info.qp == 26);
+    assert(info.idr && info.qp == 32);
     OpenIMP_T30_HelixDestroy(encoder);
     encoder = create_rc(1920, 1080, 25, 50, HW_RC_MODE_VBR, HW_RC_FLAG_SMART);
     assert(encode(encoder, &info) == 0);
-    assert(info.idr && info.qp == 26);
+    assert(info.idr && info.qp == 32);
     OpenIMP_T30_HelixDestroy(encoder);
-    setenv("OPENIMP_T30_START_QP", "auto", 1);
+    setenv("OPENIMP_T30_START_QP", "vendor", 1);
     encoder = create_rc(1920, 1080, 25, 50, HW_RC_MODE_VBR, 0);
     assert(encode(encoder, &info) == 0);
     assert(info.idr && info.qp == 26);
@@ -2331,6 +2331,35 @@ static void test_t30_start_qp(void)
     assert(info.idr && info.qp == 36);
     OpenIMP_T30_HelixDestroy(encoder);
     unsetenv("OPENIMP_T30_START_QP");
+    setenv("OPENIMP_T30_EPRC", "0", 1);
+    unsetenv("OPENIMP_T30_START_QP");
+    unsetenv("OPENIMP_T30_EPRC");
+    /* OPENIMP_T30_START_FLOOR: tiny pictures make the controller lower
+     * the P QP by 3 per picture; with the floor (default) the first GOP
+     * stays at >= the start QP (1080p25 2000: 32), the next GOP is free */
+    for (i = 0; i < 2; i++) {
+        unsigned int k, below = 0, below2 = 0;
+
+        if (i)
+            setenv("OPENIMP_T30_START_FLOOR", "0", 1);
+        fill_payload(200u, 30);
+        encoder = create(1920, 1080, 25, 10);
+        assert(encode(encoder, &info) == 0 && info.idr && info.qp == 32);
+        for (k = 1; k < 10u; k++) {
+            assert(encode(encoder, &info) == 0 && !info.idr);
+            below += info.qp < 32u;
+        }
+        assert(encode(encoder, &info) == 0 && info.idr);
+        for (k = 1; k < 10u; k++) {
+            assert(encode(encoder, &info) == 0 && !info.idr);
+            below2 += info.qp < 32u;
+        }
+        assert(i ? below > 0u : below == 0u);
+        assert(below2 > 0u);            /* restored: the application range */
+        OpenIMP_T30_HelixDestroy(encoder);
+    }
+    unsetenv("OPENIMP_T30_START_FLOOR");
+    fill_payload(1500u, 30);
     setenv("OPENIMP_T30_EPRC", "0", 1);
 }
 

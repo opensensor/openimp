@@ -741,6 +741,28 @@ int EPRC30_Reinit(Eprc30 *rc, const EprcParams *params)
     return e30_video_cfg(rc);
 }
 
+void EPRC30_GetMinQp(const Eprc30 *rc, uint8_t *p_min, uint8_t *i_min)
+{
+    const uint8_t *A = rc && rc->blk ? rc->blk : NULL;
+
+    *p_min = A ? A[64] : 0u;
+    *i_min = A ? A[65] : 0u;
+}
+
+void EPRC30_SetMinQp(Eprc30 *rc, uint8_t p_min, uint8_t i_min)
+{
+    uint8_t *A = rc ? rc->blk : NULL;
+
+    if (!A)
+        return;
+    if (p_min > A8(63))
+        p_min = A8(63);
+    if (i_min > A8(63))
+        i_min = A8(63);
+    A8(64) = p_min;
+    A8(65) = i_min;
+}
+
 void EPRC30_Free(Eprc30 *rc)
 {
     free(rc->blk);
