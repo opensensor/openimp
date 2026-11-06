@@ -52,4 +52,6 @@ radix_diff
 radix_cabac_test
 hevc_diff
 radix_hevc_test
+radix_hevc_chan_test
+hevc_cfg_diff
 radix_hevc_headers.265

@@ -6,6 +6,7 @@
  */
 #include "t30/radix/t30_radix_hevc.h"
 
+#include <math.h>
 #include <string.h>
 
 void t30_hevc_bits_init(T30HevcBits *b, uint8_t *buf, size_t cap)
@@ -113,7 +114,20 @@ void t30_hevc_write_vps(T30HevcBits *b, const T30HevcVps *v)
     t30_hevc_put(b, 0, 6);                      /* vps_max_layer_id */
     t30_hevc_ue(b, 0);                          /* vps_num_layer_sets_minus1 */
     t30_hevc_put(b, 0, 1);                      /* vps_timing_info_present */
-    t30_hevc_put(b, 0, 1);                      /* vps_extension */
+    t30_hevc_put(b, v->extension, 1);
+    if (v->extension)
+        t30_hevc_put(b, v->extension_bits, 16);
+}
+
+uint16_t t30_hevc_vps_extension_bits(uint32_t r1, uint32_t r2)
+{
+    uint32_t a = r1 & 0x7fu, c = r2 & 0x7fu, t;
+
+    a = a < 4u ? 5u : a | 1u;
+    if (c < 4u)
+        c = 4u;
+    t = ((c | 1u) & a & 0x1fu) >> 4;
+    return (uint16_t)((c | 1u) << 8 | a | t << 7 | (t ^ 1u) << 15);
 }
 
 static void put_hrd(T30HevcBits *b, const T30HevcHrd *h, uint32_t max_sub_layers)
@@ -412,4 +426,154 @@ size_t t30_hevc_nal(uint8_t *out, size_t cap, uint32_t nal_unit_type,
     if (!rbsp[len - 1])
         out[o++] = 3;           /* a final 0x00 is followed by 0x03 */
     return o;
+}
+
+/* x265 LevelSpec (I265E_NS::levels): max luma samples, samples per
+ * second, Main / High bit rate (kbit/s, UINT32_MAX: none), Main / High
+ * CPB, level_idc * 30 */
+static const struct {
+    uint32_t luma, rate, br_main, br_high, cpb_main, cpb_high, level;
+} t30_hevc_levels[14] = {
+    {36864u, 552960u, 128u, UINT32_MAX, 350u, UINT32_MAX, 30},
+    {122880u, 3686400u, 1500u, UINT32_MAX, 1500u, UINT32_MAX, 60},
+    {245760u, 7372800u, 3000u, UINT32_MAX, 3000u, UINT32_MAX, 63},
+    {552960u, 16588800u, 6000u, UINT32_MAX, 6000u, UINT32_MAX, 90},
+    {983040u, 33177600u, 10000u, UINT32_MAX, 10000u, UINT32_MAX, 93},
+    {2228224u, 66846720u, 12000u, 30000u, 12000u, 30000u, 120},
+    {2228224u, 133693440u, 20000u, 50000u, 20000u, 50000u, 123},
+    {8912896u, 267386880u, 25000u, 100000u, 25000u, 100000u, 150},
+    {8912896u, 534773760u, 40000u, 160000u, 40000u, 160000u, 153},
+    {8912896u, 1069547520u, 60000u, 240000u, 60000u, 240000u, 156},
+    {35651584u, 1069547520u, 60000u, 240000u, 60000u, 240000u, 180},
+    {35651584u, 2139095040u, 120000u, 480000u, 120000u, 480000u, 183},
+    {35651584u, 4278190080u, 240000u, 800000u, 240000u, 800000u, 186},
+    {UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX, 255},
+};
+
+static int32_t t30_clip3(int32_t v, int32_t lo, int32_t hi)
+{
+    return v < lo ? lo : v < hi ? v : hi;
+}
+
+static uint32_t t30_gcd(uint32_t a, uint32_t b)
+{
+    while (b) {
+        uint32_t t = a % b;
+
+        a = b;
+        b = t;
+    }
+    return a;
+}
+
+static uint32_t t30_d2u(double d)
+{
+    return d < 2147483648.0 ? (uint32_t)d : (uint32_t)(int32_t)(d - 2147483648.0) | 0x80000000u;
+}
+
+/* determineLevel (0xb0c40) for the Main profile with a 64 CTB, DPB 3 and
+ * high tier allowed; level 0 when none fits. */
+static void t30_hevc_level(uint32_t w, uint32_t h, uint32_t num, uint32_t den,
+                           uint32_t br, uint32_t *level, uint8_t *tier)
+{
+    uint32_t luma = w * h, rate = t30_d2u((double)num / (double)den * (double)luma);
+    int i;
+
+    *level = 0;
+    *tier = 0;
+    for (i = 0; i < 14; i++) {
+        uint32_t m = t30_hevc_levels[i].luma, lim = t30_hevc_levels[i].br_high;
+
+        if (luma > m || rate > t30_hevc_levels[i].rate)
+            continue;
+        if (t30_hevc_levels[i].br_main < br && lim == UINT32_MAX)
+            continue;
+        if (br > lim)
+            continue;
+        if ((double)w > sqrt((double)((float)m * 8.0f)) ||
+            (double)h > sqrt((double)((float)m * 8.0f)))
+            continue;
+        if (!(lim == UINT32_MAX || br <= t30_hevc_levels[i].br_main))
+            *tier = 1;
+        *level = t30_hevc_levels[i].level;
+        return;
+    }
+}
+
+void t30_hevc_channel_params(const T30HevcChannel *c, T30HevcVps *vps,
+                             T30HevcSps *sps, T30HevcPps *pps)
+{
+    uint32_t num = c->fps_num, den = c->fps_den, w, h, br = 0, g;
+    T30HevcPtl ptl;
+
+    if (num && den) {
+        g = t30_gcd(num, den);
+        num /= g;
+        den /= g;
+    }
+    if (!num || !den) {
+        num = 25;
+        den = 1;
+    }
+    w = (uint32_t)t30_clip3((int32_t)c->width, 256, 4096);
+    w = (w + 15u) & ~15u;
+    h = (uint32_t)t30_clip3((int32_t)c->height, 16, 2304);
+    h = (h + 7u) & ~7u;
+    if (c->rc_mode != 0) {
+        uint32_t cap = ((((h + 15u) & ~15u) * ((w + 15u) & ~15u) * 12u) /
+                        (w < 801u ? 6u : 10u)) >> 10;
+
+        br = (uint32_t)t30_clip3((int32_t)c->bitrate, (int32_t)(num / den),
+                                 (int32_t)(cap * num / den));
+    }
+
+    memset(&ptl, 0, sizeof(ptl));
+    ptl.profile_idc = 1;
+    ptl.bit_depth_constraint = 8;
+    ptl.chroma_format_constraint = 1;
+    ptl.progressive_source = 1;
+    ptl.frame_only_constraint = 1;
+    ptl.compat[1] = 1;
+    ptl.compat[2] = 1;
+    ptl.lower_bit_rate = 1;
+    t30_hevc_level(w, h, num, den, br, &ptl.level_idc, &ptl.tier_flag);
+
+    memset(vps, 0, sizeof(*vps));
+    vps->ptl = ptl;
+    vps->max_sub_layers = 1;
+    vps->max_dec_pic_buffering = 3;
+    vps->extension = 1;
+
+    memset(sps, 0, sizeof(*sps));
+    sps->ptl = ptl;
+    sps->max_sub_layers = 1;
+    sps->chroma_format_idc = 1;
+    sps->width = w;
+    sps->height = h;
+    sps->log2_max_poc_lsb = 8;
+    sps->max_dec_pic_buffering = 3;
+    sps->log2_min_cb = 3;
+    sps->log2_diff_max_min_cb = 3;
+    sps->log2_max_tb = 5;
+    sps->log2_min_tb = 2;
+    sps->max_tu_depth_inter = 1;
+    sps->max_tu_depth_intra = 1;
+    sps->sao = 1;
+    sps->timing_info = 1;
+    sps->hrd_flag_written = 1;
+    sps->vui.video_format = 5;
+    sps->vui.colour_primaries = 2;
+    sps->vui.transfer_characteristics = 2;
+    sps->vui.matrix_coeffs = 2;
+    sps->vui.num_units_in_tick = den;
+    sps->vui.time_scale = num;
+
+    memset(pps, 0, sizeof(*pps));
+    pps->cu_qp_delta_enabled = 1;
+    pps->diff_cu_qp_delta_depth = 2;
+    pps->cb_qp_offset = -3;
+    pps->cr_qp_offset = -3;
+    pps->num_ref_idx_l0_default = 1;
+    pps->num_ref_idx_l1_default = 1;
+    pps->loop_filter_across_slices = 1;
 }

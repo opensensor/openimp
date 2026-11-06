@@ -33,6 +33,8 @@ Like the vendor libimp 1.0.5 (an x265-derived encoder, "i265e"):
 | `src/t30/radix/t30_radix_hevc.c/.h` | VPS, SPS (with VUI/HRD), PPS and slice header RBSP writers and the NAL framing (start code, emulation prevention) |
 | `tests/t30/radix/radix_cabac_test.c`, `radix_hevc_test.c` | host tests against vendor hashes (`make -C tests/t30 check`) |
 | `tests/t30/radix/hevc_diff.c` | desk tool: CABAC, header writers and NAL framing against the vendor functions under qemu-mipsel |
+| `t30_hevc_channel_params()` (`t30_radix_hevc.c`) | the VPS/SPS/PPS values the vendor announces for a channel (size, frame rate, RC mode, bit rate) |
+| `tests/t30/radix/hevc_cfg_diff.c`, `radix_hevc_chan_test.c` | desk tool (vendor `IMP_Encoder_CreateChn`/`I265e` setup + `codeVPS/SPS/PPS` under qemu-mipsel, 5000 random channels, 0 differ) and host test (500 channels, vendor hash) |
 | `tests/t30/radix/radix_diff.c` | desk tool: compares the builder with the vendor function under qemu-mipsel (`make -C tests/t30 radix-diff O=<thingino output> VENDOR_LIBIMP=<libimp.so> QEMU_MIPSEL=<qemu-mipsel>`) |
 
 The builder gives the same list as the vendor library word for word (25 000 random blocks, I and P pictures). It is not
@@ -40,6 +42,16 @@ linked into libimp yet.
 
 ## Still to do
 
-Parameter-block defaults (mode decision, CRP/SAS, ROI, RC fields that the vendor's eprc layer sets), the values the
-vendor derives from the channel attributes for VPS/SPS/PPS (profile/level, VUI timing, CTB sizes), the encoder object
-(buffers, channel, packs, rate control), the QEMU proof (the QEMU T30 machine has a Radix model) and a T30X device proof.
+The encoder object (buffers, channel, packs; rate control and parameter block from `EPRC30_*` with `codec = 1`, see
+docs/T23_EPRC.md "T30"), the QEMU proof (the QEMU T30 machine has a Radix model) and a T30X device proof.
+
+## Channel parameter sets
+
+`IMP_Encoder_CreateChn(PT_H265)` in the vendor library fills `i265e_param_t` from the channel attributes (size, frame rate
+reduced to lowest terms with 25/1 for 0, GOP, RC fields, HSkip type) and builds the `I265e`, whose `configure`,
+`enforceLevel`, `determineLevel` and `initVPS/SPS/PPS` set the parameter sets.  With the i265e defaults only size, frame
+rate and bit rate reach them: the size is clipped to 256..4096 x 16..2304 and padded to a multiple of 16 x 8 (the vendor
+codes the padded picture, there is no conformance window), the VUI timing is the frame rate, level and tier follow the x265
+level table with the bit rate in kbit/s (0 for FIXQP, the CBR target or VBR/SMART maximum otherwise, clipped by
+`configure`), high tier allowed.  The VPS carries `vps_extension_flag` 1 and 16 bits built from two `random()` values unless
+`/tmp/closeextvpflag` exists (`Entropy::codeVPS`).

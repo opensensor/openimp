@@ -8,8 +8,9 @@
  * codeSliceHeader 0x63f54, codeShortTermRefPicSet 0x6387c).  The writers
  * below give the same RBSP bits as those functions for the same values,
  * including the vendor's choices that differ from a full H.265 writer:
- *  - VPS: vps_max_layer_id 0, one layer set, no timing, no extension data
- *    (the vendor writes 16 random bits there only when a debug file exists);
+ *  - VPS: vps_max_layer_id 0, one layer set, no timing; vps_extension_flag
+ *    1 with 16 bits of vps_extension_data made from two random() values
+ *    (t30_hevc_vps_extension_bits), unless /tmp/closeextvpflag exists;
  *  - PTL: only the general profile/level; for two or more sub-layers the
  *    vendor writes one pair of sub-layer present flags (0, 0) and the
  *    reserved bits up to 8;
@@ -61,6 +62,8 @@ typedef struct {
     T30HevcPtl ptl;
     uint32_t max_sub_layers;
     uint32_t max_dec_pic_buffering, num_reorder_pics, max_latency_increase;
+    uint8_t extension;                        /* vps_extension_flag */
+    uint16_t extension_bits;                  /* the 16 vps_extension_data bits */
 } T30HevcVps;
 
 typedef struct {
@@ -145,12 +148,37 @@ typedef struct {
 } T30HevcSlice;
 
 void t30_hevc_write_vps(T30HevcBits *b, const T30HevcVps *vps);
+/* the vendor's vps_extension_data (Entropy::codeVPS) from two random()
+ * values */
+uint16_t t30_hevc_vps_extension_bits(uint32_t r1, uint32_t r2);
 void t30_hevc_write_sps(T30HevcBits *b, const T30HevcSps *sps);
 void t30_hevc_write_pps(T30HevcBits *b, const T30HevcPps *pps);
 /* -1 for what the writer does not support (weighted prediction, long-term
  * pictures, a random-access NAL type with used references) */
 int t30_hevc_write_slice_header(T30HevcBits *b, const T30HevcSlice *s,
                                 const T30HevcSps *sps, const T30HevcPps *pps);
+
+/* The parameter sets the vendor i265e announces for a channel
+ * (IMP_Encoder_CreateChn -> i265e_param_default, I265e::configure,
+ * enforceLevel, determineLevel, initVPS/SPS/PPS, libimp 1.0.5).  Only the
+ * picture size, the frame rate and the bit rate change them: the size is
+ * clipped to 256..4096 x 16..2304 and padded to 16 x 8 (the vendor codes
+ * the padded size, no conformance window), the VUI timing is the reduced
+ * frame rate (25/1 for 0), level and tier come from the x265 level table
+ * (the bit rate counts in kbit/s, 0 for FIXQP).  Everything else is the
+ * i265e default: Main profile, CTB 64, min CB 8, TB 4..32, SAO, no AMP,
+ * no TMVP, POC LSB 8 bits, DPB 3, no reordering, cu_qp_delta depth 2,
+ * chroma QP offsets -3.  The VPS extension is on, its bits are left 0
+ * for the caller (t30_hevc_vps_extension_bits). */
+typedef struct {
+    uint32_t width, height;
+    uint32_t fps_num, fps_den;
+    uint32_t rc_mode;                         /* 0 FIXQP, 1 CBR, 2 VBR, 3 SMART */
+    uint32_t bitrate;                         /* kbit/s: CBR target, VBR/SMART max */
+} T30HevcChannel;
+
+void t30_hevc_channel_params(const T30HevcChannel *c, T30HevcVps *vps,
+                             T30HevcSps *sps, T30HevcPps *pps);
 
 /* NAL unit like the vendor's NALList::serialize (0xa0520): start code
  * (00 00 00 01 when long_start - the vendor uses it for the first NAL of an
