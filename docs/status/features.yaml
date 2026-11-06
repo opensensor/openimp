@@ -901,8 +901,8 @@ features:
       sym: —
       text: '— no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]'
     T30:
-      sym: 🔧
-      text: 'in progress (#208, claude/t30-h265): Radix encoder (vendor rate control incl. run-time RC/fps/GOP changes, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; QEMU T30 machine: 3 RC modes x 60 pictures decode clean); T30X silicon (b40): Radix runs, VPS/SPS/PPS byte-equal to the vendor, IDR pictures correct, P pictures drifted (POC + reference chroma stride, both fixed after the run, re-run b41 pending); PT_H265 only with OPENIMP_T30_H265=1 until the T30X proof'
+      sym: ✅
+      text: '2026-11-06, T30X lab camera (b40/b41, no flash): the Radix encoder (src/t30/radix, vendor rate control incl. run-time RC/fps/GOP changes, parameter sets, command list, CABAC init, VPS/SPS/PPS and slice headers, all bit-exact against libimp 1.0.5 in the emulator) runs on silicon. b41: H.265 CBR 2000 1080p25 2035-2036 kbit/s (stock vendor 2034), 1080p15 1999-2047 (vendor 2046), 720p25 2030-2032 (vendor 2032), 2048x1536 25 fps 2037 and 15 fps 2057 (the vendor delivers no frames at 2048x1536), VBR 1080p25 1807 (vendor 1827); H.265 1080p25 + H.264 640x360 in one process both decode clean; three back-to-back channel restarts each decode clean from VPS/SPS/PPS+IDR; 300 frames per run, 0 ffmpeg errors, 0 GetStream errors, no oops. Not covered on the device: run-time bitrate/fps/GOP changes (host-tested only, 3520 vendor decisions), H.265 ROI and user data (not reachable by the streamers on T30).'
       issues: [208]
     T31:
       sym: ✅

@@ -86,6 +86,7 @@ Open items: milestones [RC3](https://github.com/Lu-Fi/openimp/milestones) and Re
 
 ## Summary
 
+- **Update 2026-11-06, T30 H.265 device proof (b41, T30X lab camera; T30 column of row 23 'H.265 / HEVC' moved ❌/🔧 -> ✅):** the Radix encoder runs on silicon: H.265 CBR 2000 within 0.1-2.4 % of the stock vendor at 1080p25/1080p15/720p25 (2035/1999-2047/2030-2032 vs 2034/2046/2032 kbit/s), 2048x1536 works where the vendor delivers nothing, VBR 1807 vs 1827, H.265 + H.264 in one process and three channel restarts decode clean, 0 errors. Run-time RC/fps/GOP changes are host-tested only.
 - **Update 2026-11-06, T30 lab camera batches b35-b39 (device proof, T30 column of four feature rows moved):** rotation 90/270 (row 21) ? -> ✅+ (OpenIMP software rotation, MXU2, both channels rotated at 25 fps / 34.5 % process CPU; timps rows R1-R6 pass), H.264 (row 22) 🔧 -> ✅ (2048x1536 / 1920x1080 / 1280x720 main with 0 GetStream errors; the #209 fix proven), sub-stream ch1 (row 25) 🔧 -> ✅ (640x360 next to 1280x720 and 1920x1080), RC parameters (row 27) ? -> 🔧; RC mode (row 26) stays 🔧 with the device proof of the ported vendor T30 rate controller (CBR 2000 steady 2040-2069 kbit/s, VBR 1.4 Mbit/s; FixQP/SMART not run). API cells already `dev`, only refs moved to the b39 run.
 - **Update 2026-11-05, T30 lab camera batch b30 (API evidence, no symbol moved; T30 API 284/350 -> 285/350 works):** `ISP_Tuning_GetAFMetrices` like the vendor (ret 0, 16-bit 0xffff, no driver call) on the T30X; the Iridix base strength equals the vendor stack under its streamer (0x43).
 - **Update 2026-11-05, T30 lab camera batch b29 (API evidence, no symbol moved; T30 API 262/350 -> 267/350 works):** with the vendor libsysutils 1.0.5 loaded from /tmp on the open stack, `SU_Base_GetVersion`, `GetModelNumber`, `SUTime2Raw` and `SU_Key_Open/CloseEvent` work (5 cells `qemu` -> `dev`); the silent codec case makes all AENC/ADEC lines pass (row for hand review).
@@ -298,7 +299,7 @@ Not adopted: OSD edge flush, reference sharing on T10/T20/T31 (not in that SoC's
 | 21 | [Rotation 90°/270°](#21-rotation-90270) | — | — | — | ✅ | ✅+ | ✅ | ? | 📋 | ✅ | ✅ |
 |  | **Video encoder and streams** |  |  |  |  |  |  |  |  |  |  |
 | 22 | [H.264](#22-h264) | ✅ | ✅ | ✅ | ✅+ | ✅ | ✅ | 🔧 | 📋 | ✅ | ✅ |
-| 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | 🔧 | ✅ | ? | 📋 | ✅ | ✅ |
+| 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | ✅ | ✅ | ? | 📋 | ✅ | ✅ |
 | 24 | [JPEG / MJPEG / snapshot](#24-jpeg--mjpeg--snapshot) | ✅ | ✅ | ✅+ | ✅ | 🔧 | ✅ | 🔧 | 📋 | ✅ | ✅ |
 | 25 | [Sub-stream / scaler (ch1 640×360)](#25-sub-stream--scaler-ch1-640360) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ? | 📋 | ✅ | ✅ |
 | 26 | [Rate-control mode (CBR/VBR/FixQP/Capped*/SMART)](#26-rate-control-mode-cbrvbrfixqpcappedsmart) | ✅+ | ✅ | ✅ | ✅ | 🔧 | ✅ | ? | 📋 | ✅ | ✅ |
@@ -668,7 +669,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T20:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T21:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T23:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
-- **T30:** 🔧 in progress (#208, claude/t30-h265): Radix encoder (vendor rate control incl. run-time RC/fps/GOP changes, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; QEMU T30 machine: 3 RC modes x 60 pictures decode clean); T30X silicon (b40): Radix runs, VPS/SPS/PPS byte-equal to the vendor, IDR pictures correct, P pictures drifted (POC + reference chroma stride, both fixed after the run, re-run b41 pending); PT_H265 only with OPENIMP_T30_H265=1 until the T30X proof
+- **T30:** ✅ 2026-11-06, T30X lab camera (b40/b41, no flash): the Radix encoder (src/t30/radix, vendor rate control incl. run-time RC/fps/GOP changes, parameter sets, command list, CABAC init, VPS/SPS/PPS and slice headers, all bit-exact against libimp 1.0.5 in the emulator) runs on silicon. b41: H.265 CBR 2000 1080p25 2035-2036 kbit/s (stock vendor 2034), 1080p15 1999-2047 (vendor 2046), 720p25 2030-2032 (vendor 2032), 2048x1536 25 fps 2037 and 15 fps 2057 (the vendor delivers no frames at 2048x1536), VBR 1080p25 1807 (vendor 1827); H.265 1080p25 + H.264 640x360 in one process both decode clean; three back-to-back channel restarts each decode clean from VPS/SPS/PPS+IDR; 300 frames per run, 0 ffmpeg errors, 0 GetStream errors, no oops. Not covered on the device: run-time bitrate/fps/GOP changes (host-tested only, 3520 vendor decisions), H.265 ROI and user data (not reachable by the streamers on T30).
 - **T31:** ✅ real HEVC on AVPU (VPS/SPS/PPS, CABAC); 2×900 frames, 0 errors
 - **T32:** ? not examined: no T32 hardware yet; the open driver only runs in QEMU and OpenIMP has no T32 build
 - **T33:** 📋 planned, not started: no T33 driver, OpenIMP build or hardware yet (T33L test module ordered)
