@@ -32,6 +32,7 @@
 #include "t30/h264enc/common.h"
 #include "t30/t30_annexb.h"
 #include "t30/t30_h264_level.h"
+#include "t30/t30_start_qp.h"
 #if defined(PLATFORM_T23)
 #include "t30/t23_helix_bs.h"
 #endif
@@ -2361,7 +2362,10 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
     p.min_qp = t30_eprc_clip(encoder->eprc30_min_qp, 0, (int32_t)p.max_qp);
     p.bitrate = hp->bitrate / 1000u;
     p.max_bitrate = hp->bitrate / 1000u < 128u ? 128u : hp->bitrate / 1000u;
-    p.init_qp = -1;
+    /* OpenIMP extra, default off (vendor start QP): OPENIMP_T30_START_QP */
+    p.init_qp = t30_start_qp(getenv("OPENIMP_T30_START_QP"), hp->width,
+                             hp->height, hp->fps_num, hp->fps_den,
+                             hp->bitrate / 1000u);
     if (app) {
         p.i_bias = (int32_t)t30_eprc_clip((uint32_t)hp->bias_level, -3, 3);
         p.frm_qp_step = t30_eprc_clip(hp->frm_qp_step, 2, 51);
@@ -2383,6 +2387,9 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
                      "controller");
         return;
     }
+    if (p.init_qp > 0)
+        IMP_LOG_INFO("Encoder", "T30 eprc: start QP %d (OPENIMP_T30_START_QP, "
+                     "OpenIMP extra)", p.init_qp);
     encoder->eprc30_on = 1;
     memset(encoder->eprc30_regs, 0, sizeof(encoder->eprc30_regs));
     env = getenv("OPENIMP_T30_EPRC_STATS");

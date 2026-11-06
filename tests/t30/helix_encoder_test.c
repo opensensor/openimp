@@ -31,11 +31,13 @@
 
 #include "dma_alloc.h"
 #include "t30/t30_helix_encoder.h"
+#include "t30/t30_start_qp.h"
 #include "t30/h264enc/common.h"
 #if defined(PLATFORM_T20)
 #include "rc_t20/rc_t20.h"
 #include "rc_t10/rc_t10.h"
 #include "t30/helix_bitstream.h"
+
 int IMP_Encoder_SetPoolSize(int size);
 #endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
@@ -2173,6 +2175,63 @@ static void test_t30_eprc(void)
     OpenIMP_T30_HelixDestroy(encoder);
     unsetenv("OPENIMP_T30_EPRC");
 }
+
+/* OPENIMP_T30_START_QP (#216, OpenIMP extra, default off). */
+static void test_t30_start_qp(void)
+{
+    T30HelixEncoder *encoder;
+    PictureInfo info;
+    int q2048_25, q2048_15, q1080, q720;
+
+    /* the pure mapping */
+    assert(t30_start_qp(NULL, 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("vendor", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("36", 1280, 720, 25, 1, 2000) == 36);
+    assert(t30_start_qp("10", 1280, 720, 25, 1, 2000) == 10);
+    assert(t30_start_qp("51", 1280, 720, 25, 1, 2000) == 51);
+    assert(t30_start_qp("9", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("52", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("abc", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("30x", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("auto", 0, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp("auto", 1280, 720, 25, 1, 0) == -1);
+    /* auto: b39 points (2000 kbit/s); vendor 26 where it is fine */
+    q720 = t30_start_qp("auto", 1280, 720, 25, 1, 2000);
+    q1080 = t30_start_qp("auto", 1920, 1080, 25, 1, 2000);
+    q2048_15 = t30_start_qp("auto", 2048, 1536, 15, 1, 2000);
+    q2048_25 = t30_start_qp("auto", 2048, 1536, 25, 1, 2000);
+    assert(q720 == 26);
+    assert(t30_start_qp("auto", 640, 360, 25, 1, 2000) == 26);
+    assert(q2048_25 == 41);                 /* b39: converged P QP 41-42 */
+    assert(q1080 >= 30 && q1080 <= 38);     /* b39: IDR 30, P 32 */
+    assert(q2048_15 >= 34 && q2048_15 <= 41);
+    assert(q720 <= q2048_15 && q2048_15 <= q1080 && q1080 <= q2048_25); /* monotone in bpp */
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 100) == 46);     /* clamp */
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 200000) == 26);
+
+    /* through the encoder: unset = vendor start (controller default 26),
+     * a fixed integer is the first IDR's QP, an invalid value is vendor */
+    unsetenv("OPENIMP_T30_EPRC");
+    unsetenv("OPENIMP_T30_START_QP");
+    encoder = create(1280, 720, 25, 10);
+    fill_payload(1500u, 30);
+    assert(encode(encoder, &info) == 0);
+    assert(info.idr && info.qp == 26);
+    OpenIMP_T30_HelixDestroy(encoder);
+    setenv("OPENIMP_T30_START_QP", "36", 1);
+    encoder = create(1280, 720, 25, 10);
+    assert(encode(encoder, &info) == 0);
+    assert(info.idr && info.qp == 36);
+    OpenIMP_T30_HelixDestroy(encoder);
+    setenv("OPENIMP_T30_START_QP", "99", 1);
+    encoder = create(1280, 720, 25, 10);
+    assert(encode(encoder, &info) == 0);
+    assert(info.idr && info.qp == 26);
+    OpenIMP_T30_HelixDestroy(encoder);
+    unsetenv("OPENIMP_T30_START_QP");
+    setenv("OPENIMP_T30_EPRC", "0", 1);
+}
 #endif
 
 int main(void)
@@ -2196,6 +2255,7 @@ int main(void)
     test_roi_chroma(0);
 #if defined(PLATFORM_T30)
     test_t30_eprc();
+    test_t30_start_qp();
 #endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     test_t21_pps_rewrite();

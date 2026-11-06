@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T30: opt-in start QP for the first IDR (#216, extra beyond vendor, device proof pending, default off)
+
+- `OPENIMP_T30_START_QP` (unset or `vendor` = exactly the vendor start QP 26, unchanged): `auto` derives the first IDR's QP from bits per pixel (`src/t30/t30_start_qp.h`, table from the b39 T30X steady-state QPs, 26 from 0.087 bpp upwards), an integer 10..51 is used as is, anything else falls back to vendor. Aim: the first 2 s window of a high-resolution CBR (2048x1536 25 fps, 2000 kbit/s: 6.6 Mbit/s with the vendor QP 26). Host tests in `helix_encoder_test`; no device run yet, the vendor A/B of the first window is planned (audit b41).
+
 ## 2026-11-06, T23: openimp_mxu2_select never probes on T23 (Opus review finding B1)
 
 - On T23 builds `openimp_mxu2_select()` now returns the C path before the SIGILL-guarded selftest: the T23 kernel does not raise SIGILL for a COP2 instruction, it oopses in `xburst_cop2_restore` and the watchdog resets the board (observed once on a T23N). Until now only `SetChnRotate` forced the C path (`nv12_rotate_set_impl(0)`); the guard is now compile-time inside the probe function, so no other caller can reach a COP2 instruction on the T23.
