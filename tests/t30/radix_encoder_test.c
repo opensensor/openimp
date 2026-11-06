@@ -206,6 +206,24 @@ static unsigned int nal_types(const uint8_t *p, uint32_t len, unsigned int *type
     return n;
 }
 
+/* the payload of the first NAL of a type (up to the next start code) */
+static const uint8_t *nal_find(const uint8_t *p, uint32_t len, unsigned int type,
+                               uint32_t *out_len)
+{
+    uint32_t i, j;
+
+    for (i = 0; i + 3u < len; i++) {
+        if (!(p[i] == 0 && p[i + 1] == 0 && p[i + 2] == 1) ||
+            ((p[i + 3] >> 1) & 0x3fu) != type)
+            continue;
+        for (j = i + 3u; j + 3u <= len && !(p[j] == 0 && p[j + 1] == 0 && p[j + 2] <= 1u); j++)
+            ;
+        *out_len = (j + 3u <= len ? j : len) - (i + 3u);
+        return p + i + 3u;
+    }
+    return NULL;
+}
+
 /* no 00 00 0x (x <= 3) left unescaped inside a NAL */
 static int escaped(const uint8_t *p, uint32_t len)
 {
@@ -224,6 +242,8 @@ int main(void)
     T30RadixEncoder *e;
     IMPFrameInfo frame;
     unsigned int f, idrs = 0;
+    static uint8_t hdr0[512];
+    uint32_t hdr0_len = 0;
 
     mallopt(M_MMAP_MAX, 0);     /* stream buffers stay in the low heap */
     memset(&hp, 0, sizeof(hp));
@@ -259,6 +279,13 @@ int main(void)
             assert(n == 4u && types[0] == 32u && types[1] == 33u &&
                    types[2] == 34u && types[3] == 19u);
             assert(s->frame_type == HW_FRAME_TYPE_I);
+            if (!idrs) {
+                /* the SPS (the VPS carries random extension bits) */
+                const uint8_t *sps = nal_find(au, s->length, 33u, &hdr0_len);
+
+                assert(sps && hdr0_len <= sizeof(hdr0));
+                memcpy(hdr0, sps, hdr0_len);
+            }
             idrs++;
         } else {
             assert(n == 1u && types[0] == 1u && s->frame_type == HW_FRAME_TYPE_P);
@@ -284,6 +311,61 @@ int main(void)
         free(s);
     }
     assert(idrs == 3u && runs >= 25u && reg_reads >= 25u * 19u);
+
+    /* run-time changes (I265eReconfig): a new bit rate waits for the next
+     * IDR (picture 30) and then gives new parameter sets (level from the
+     * bit rate); a new frame rate requests an IDR at once */
+    {
+        HWEncoderParams up = hp;
+        int saw_new_headers = 0;
+
+        up.bitrate = 40000000;
+        assert(OpenIMP_T30_RadixUpdateParams(e, &up) == 0);
+        for (f = 25; f < 31u; f++) {
+            HWStreamBuffer *s = NULL;
+            unsigned int types[8], n;
+            const uint8_t *slice = NULL, *au;
+            uint32_t slice_len = 0;
+
+            frame.timeStamp = f;
+            assert(OpenIMP_T30_RadixEncode(e, &frame, &s) == 0 && s);
+            au = (const uint8_t *)(uintptr_t)s->virt_addr;
+            n = nal_types(au, s->length, types, &slice, &slice_len);
+            assert((s->frame_type == HW_FRAME_TYPE_I) == (f == 30u));
+            if (f == 30u) {
+                const uint8_t *sps;
+                uint32_t sps_len = 0;
+
+                assert(n == 4u && types[0] == 32u);
+                sps = nal_find(au, s->length, 33u, &sps_len);
+                assert(sps);
+                saw_new_headers = sps_len != hdr0_len || memcmp(sps, hdr0, hdr0_len) != 0;
+            }
+            free((void *)(uintptr_t)s->virt_addr);
+            free(s);
+        }
+        assert(saw_new_headers);
+        /* the same values again: nothing pending, no IDR */
+        assert(OpenIMP_T30_RadixUpdateParams(e, &up) == 0);
+        {
+            HWStreamBuffer *s = NULL;
+
+            assert(OpenIMP_T30_RadixEncode(e, &frame, &s) == 0 && s);
+            assert(s->frame_type == HW_FRAME_TYPE_P);
+            free((void *)(uintptr_t)s->virt_addr);
+            free(s);
+        }
+        up.fps_num = 15;
+        assert(OpenIMP_T30_RadixUpdateParams(e, &up) == 0);
+        {
+            HWStreamBuffer *s = NULL;
+
+            assert(OpenIMP_T30_RadixEncode(e, &frame, &s) == 0 && s);
+            assert(s->frame_type == HW_FRAME_TYPE_I);
+            free((void *)(uintptr_t)s->virt_addr);
+            free(s);
+        }
+    }
 
     /* a failed RUN: no stream, counted, the next picture works again */
     {

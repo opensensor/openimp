@@ -212,6 +212,9 @@ typedef struct Eprc30 {
 extern const uint32_t EPRC30_StatRegs[EPRC30_STAT_REGS];
 
 int EPRC30_Init(Eprc30 *rc, const EprcParams *params, uint8_t *slice);
+/* A run-time parameter change on the live controller (same size; the
+ * vendor's I265e::reset / i264e_ratecontrol_init path), see eprc_t30.c. */
+int EPRC30_Reinit(Eprc30 *rc, const EprcParams *params);
 void EPRC30_Free(Eprc30 *rc);
 /* idr: the picture is an IDR (the T30 i264e codes one every GOP). */
 int EPRC30_FrameStart(Eprc30 *rc, int idr, EprcPicture *pic);

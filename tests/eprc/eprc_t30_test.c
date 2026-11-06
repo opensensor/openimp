@@ -5,7 +5,8 @@
  * "real" statistics (counts in the ranges of a real picture and a non-zero
  * channel cmpx).  H / G lines are H.265 (tools/eprc_t30_oracle.py --h265):
  * per picture the QPs and the CRC-32 of the parameter block and the CU QP
- * map. */
+ * map.  An R line (--h265-reconf) changes the rate-control fields of the
+ * running H.265 controller before the next picture (EPRC30_Reinit). */
 #include "eprc/eprc.h"
 
 #include <stdint.h>
@@ -134,13 +135,13 @@ int main(int argc, char **argv)
             active = 1;
             scenario++;
             frame = 0;
-        } else if (line[0] == 'H') {
-            int v[16], i;
+        } else if (line[0] == 'H' || (line[0] == 'R' && active)) {
+            int v[16], i, reinit = line[0] == 'R';
             char *t = line + 1;
 
             for (i = 0; i < 16; i++)
                 v[i] = (int)strtol(t, &t, 10);
-            if (active)
+            if (active && !reinit)
                 EPRC30_Free(&rc);
             memset(&p, 0, sizeof(p));
             p.codec = 1;
@@ -162,6 +163,12 @@ int main(int argc, char **argv)
             p.init_qp = p.cqp = v[14];
             p.fluct_lvl = (uint32_t)v[15];
             p.ip_ratio = 1.399999976158142;
+            if (reinit) {
+                /* R: a run-time change at this IDR (I265e::reset) */
+                if (EPRC30_Reinit(&rc, &p) != 0)
+                    return 2;
+                continue;
+            }
             memset(slice, 0, sizeof(slice));
             if (EPRC30_Init(&rc, &p, slice) != 0 || EPRC30_QpMapSize(&rc) > sizeof(qpmap))
                 return 2;

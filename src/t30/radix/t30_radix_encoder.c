@@ -95,6 +95,10 @@ struct T30RadixEncoder {
     T30HevcPps pps;
     uint32_t frames_since_idr;
     int force_idr;
+    /* run-time changes (OpenIMP_T30_RadixUpdateParams), latched until the
+     * next IDR as I265eReconfig does */
+    HWEncoderParams pending;
+    int pending_set;
     uint32_t failures;
     uint32_t reg_errors;
 };
@@ -196,6 +200,21 @@ static void radix_eprc_params(const HWEncoderParams *hp, uint32_t w,
     }
 }
 
+/* the IMP channel attributes that reach i265e_param_t (IMP_Encoder_CreateChn,
+ * I265eReconfig::ReconfigIdrFrame) */
+static void radix_channel(const HWEncoderParams *hp, T30HevcChannel *ch)
+{
+    memset(ch, 0, sizeof(*ch));
+    ch->width = hp->width;
+    ch->height = hp->height;
+    ch->fps_num = hp->fps_num;
+    ch->fps_den = hp->fps_den;
+    ch->rc_mode = hp->rc_mode == HW_RC_MODE_CBR ? 1u :
+                  hp->rc_mode == HW_RC_MODE_VBR
+                      ? ((hp->rc_flags & HW_RC_FLAG_SMART) ? 3u : 2u) : 0u;
+    ch->bitrate = hp->bitrate / 1000u;
+}
+
 int OpenIMP_T30_RadixCreate(T30RadixEncoder **encoder_out,
                             const HWEncoderParams *params)
 {
@@ -219,15 +238,7 @@ int OpenIMP_T30_RadixCreate(T30RadixEncoder **encoder_out,
     if (!e->params.gop_length)
         e->params.gop_length = 25u;
 
-    memset(&ch, 0, sizeof(ch));
-    ch.width = params->width;
-    ch.height = params->height;
-    ch.fps_num = e->params.fps_num;
-    ch.fps_den = e->params.fps_den;
-    ch.rc_mode = e->params.rc_mode == HW_RC_MODE_CBR ? 1u :
-                 e->params.rc_mode == HW_RC_MODE_VBR
-                     ? ((e->params.rc_flags & HW_RC_FLAG_SMART) ? 3u : 2u) : 0u;
-    ch.bitrate = e->params.bitrate / 1000u;
+    radix_channel(&e->params, &ch);
     t30_hevc_channel_params(&ch, &e->vps, &e->sps, &e->pps);
     e->width = e->sps.width;
     e->height = e->sps.height;
@@ -306,6 +317,90 @@ int OpenIMP_T30_RadixRequestIDR(T30RadixEncoder *e)
         return -1;
     e->force_idr = 1;
     return 0;
+}
+
+/* The rate-control fields of a run-time change: frame rate, GOP, RC mode,
+ * bit rate, QPs and the IMPEncoderAttrRcMode extras.  Size, profile and
+ * the rest stay as created. */
+static void radix_rc_fields(HWEncoderParams *dst, const HWEncoderParams *src)
+{
+    dst->fps_num = src->fps_num;
+    dst->fps_den = src->fps_den;
+    dst->gop_length = src->gop_length;
+    dst->rc_mode = src->rc_mode;
+    dst->rc_flags = src->rc_flags;
+    dst->bitrate = src->bitrate;
+    dst->qp = src->qp;
+    dst->min_qp = src->min_qp;
+    dst->max_qp = src->max_qp;
+    dst->static_time = src->static_time;
+    dst->change_pos = src->change_pos;
+    dst->quality_level = src->quality_level;
+    dst->frm_qp_step = src->frm_qp_step;
+    dst->gop_qp_step = src->gop_qp_step;
+    dst->bias_level = src->bias_level;
+}
+
+int OpenIMP_T30_RadixUpdateParams(T30RadixEncoder *e,
+                                  const HWEncoderParams *requested)
+{
+    const HWEncoderParams *cur;
+    HWEncoderParams next;
+
+    if (!e || !requested)
+        return -1;
+    cur = e->pending_set ? &e->pending : &e->params;
+    next = *cur;
+    radix_rc_fields(&next, requested);
+    if (!next.fps_num || !next.fps_den) {
+        next.fps_num = cur->fps_num;
+        next.fps_den = cur->fps_den;
+    }
+    if (!next.gop_length)
+        next.gop_length = cur->gop_length;
+    if (!memcmp(&next, cur, sizeof(next)))
+        return 0;
+    /* encoder_get_fps_mask: a new frame rate or GOP goes to i265e
+     * (set_param 5 / 7) together with an IDR request; an RC change
+     * (SetChnAttrRcMode, set_param 3) waits for the next IDR */
+    if (next.fps_num != cur->fps_num || next.fps_den != cur->fps_den ||
+        next.gop_length != cur->gop_length)
+        e->force_idr = 1;
+    e->pending = next;
+    e->pending_set = 1;
+    return 0;
+}
+
+/* I265eReconfig::ReconfigIdrFrame + I265e::reset at an IDR: the parameter
+ * sets for the new values (configure, levels, initVPS/SPS/PPS) and rcInit on
+ * the running controller (EPRC30_Reinit). */
+static void radix_apply_pending(T30RadixEncoder *e)
+{
+    T30HevcChannel ch;
+    T30HevcVps vps;
+    T30HevcSps sps;
+    T30HevcPps pps;
+    EprcParams ep;
+    HWEncoderParams next = e->params;
+
+    e->pending_set = 0;
+    radix_rc_fields(&next, &e->pending);
+    radix_channel(&next, &ch);
+    t30_hevc_channel_params(&ch, &vps, &sps, &pps);
+    radix_eprc_params(&next, e->width, e->height, &ep);
+    if (sps.width != e->width || sps.height != e->height ||
+        EPRC30_Reinit(&e->rc, &ep) != 0) {
+        LOG_CODEC("T30 Radix: run-time change refused (fps %u/%u gop %u rc %u)",
+                  next.fps_num, next.fps_den, next.gop_length, next.rc_mode);
+        return;
+    }
+    e->params = next;
+    e->vps = vps;
+    e->sps = sps;
+    e->pps = pps;
+    LOG_CODEC("T30 Radix: params fps=%u/%u gop=%u rc=%u bitrate=%u qp=%u [%u,%u]",
+              next.fps_num, next.fps_den, next.gop_length, next.rc_mode,
+              next.bitrate, next.qp, next.min_qp, next.max_qp);
 }
 
 uint32_t OpenIMP_T30_RadixFailures(const T30RadixEncoder *e)
@@ -481,6 +576,9 @@ int OpenIMP_T30_RadixEncode(T30RadixEncoder *e, const IMPFrameInfo *frame,
     /* decTypeAndRef: an IDR every GOP, or on request */
     idr = e->force_idr || !e->have_reference ||
           e->frames_since_idr + 1u >= e->params.gop_length;
+    /* I265e::reconfig: latched changes apply on an IDR only */
+    if (idr && e->pending_set)
+        radix_apply_pending(e);
     if (EPRC30_FrameStart(&e->rc, idr, &pic) != 0) {
         e->failures++;
         return -1;

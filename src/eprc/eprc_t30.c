@@ -723,6 +723,24 @@ int EPRC30_Init(Eprc30 *rc, const EprcParams *params, uint8_t *slice)
     return e30_video_cfg(rc);
 }
 
+/* A run-time parameter change (I265e::reset -> I265eRatectrl::rcInit, the
+ * T30 i264e re-runs i264e_ratecontrol_init likewise): the setup and
+ * VIDEO_CFG run again on the live controller, without clearing E first and
+ * on the block that is already there (VIDEO_CFG allocates it only once and
+ * clears A and S itself).  The picture size must not change. */
+int EPRC30_Reinit(Eprc30 *rc, const EprcParams *params)
+{
+    if (!rc || !rc->blk || !params->gop || !params->fps_num || !params->fps_den ||
+        EU16(rc->e, 0) != (uint16_t)params->width ||
+        EU16(rc->e, 2) != (uint16_t)params->height)
+        return -1;
+    if (params->codec)
+        e30_setup_e_h265(rc->e, params);
+    else
+        e30_setup_e(rc->e, params);
+    return e30_video_cfg(rc);
+}
+
 void EPRC30_Free(Eprc30 *rc)
 {
     free(rc->blk);

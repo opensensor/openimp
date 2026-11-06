@@ -11837,6 +11837,13 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
             enc->t30_radix_height = height;
             enc->use_hardware = 3;
         }
+        {
+            /* setters write hw_params on the API thread: a snapshot, as
+             * for Helix */
+            HWEncoderParams current = enc->hw_params;
+
+            (void)OpenIMP_T30_RadixUpdateParams(enc->t30_radix, &current);
+        }
         if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
             OpenIMP_T30_RadixRequestIDR(enc->t30_radix);
         if (OpenIMP_T30_RadixEncode(enc->t30_radix,

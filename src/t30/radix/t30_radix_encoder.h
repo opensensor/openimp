@@ -30,6 +30,12 @@ int OpenIMP_T30_RadixEncode(T30RadixEncoder *encoder,
                             const IMPFrameInfo *frame,
                             HWStreamBuffer **stream);
 int OpenIMP_T30_RadixRequestIDR(T30RadixEncoder *encoder);
+/* Run-time change of frame rate, GOP, RC mode, bit rate and QPs
+ * (IMP_Encoder_SetChnAttrRcMode / SetChnFrmRate / SetGOPSize): latched and
+ * applied at the next IDR as the vendor i265e (I265eReconfig, I265e::reset);
+ * a new frame rate or GOP requests that IDR.  Call between pictures. */
+int OpenIMP_T30_RadixUpdateParams(T30RadixEncoder *encoder,
+                                  const HWEncoderParams *params);
 /* Consecutive failed pictures since the last good one. */
 uint32_t OpenIMP_T30_RadixFailures(const T30RadixEncoder *encoder);
 void OpenIMP_T30_RadixDestroy(T30RadixEncoder *encoder);

@@ -15,6 +15,7 @@ picture-size and statistics models are those of tools/eprc_oracle.py.
     tools/eprc_t30_oracle.py T30/lib/1.0.5/uclibc/4.7.2/libimp.so > tests/eprc/eprc_t30_vectors.txt
     tools/eprc_t30_oracle.py LIB --real [--random SEED N [FRAMES]]
     tools/eprc_t30_oracle.py LIB --h265 [--random SEED N [FRAMES]]  (H.265, I265eRatectrl)
+    tools/eprc_t30_oracle.py LIB --h265-reconf [SEED N]  (H.265 run-time change: I265e::reset)
 
 The OEM T30 i264e codes an IDR whenever the picture count since the last
 IDR is a multiple of the GOP (i264e_ratecontrol_start: [0] % gop).  '--real'
@@ -145,6 +146,9 @@ def real_statistics(frame, w, h):
 def main():
     lib = sys.argv[1]
     args = sys.argv[2:]
+    if '--h265-reconf' in args:
+        args.remove('--h265-reconf')
+        return main_h265_reconf(lib, args)
     if '--h265' in args:
         args.remove('--h265')
         return main_h265(lib, args)
@@ -245,6 +249,19 @@ class SimT30H265:
     def qp(self):
         return self.L.r32(self.F + 0x77c) & 0xff
 
+    def reconf(self, mode, gop, fps, minqp, maxqp, bitrate, frm_step, gop_step, bias,
+               static_time, change_pos, quality, qp, fluct):
+        """I265eReconfig::ReconfigIdrFrame writes the latched fields into the
+        i265e parameters, I265e::reset (0x5bea4 in the 5.4.0 build) ends with
+        rcInit on the same I265eRatectrl"""
+        L, P = self.L, self.P
+        for o, v in ((0x14, fps[0]), (0x18, fps[1]), (0x1c, gop), (0x48, mode), (0x4c, qp),
+                     (0x50, bitrate), (0x70, frm_step), (0x74, gop_step), (0x9c, maxqp),
+                     (0xa0, minqp), (0xa4, bias), (0xa8, static_time), (0xac, fluct),
+                     (0xb4, change_pos), (0xb8, quality)):
+            L.w32(P + o, v)
+        L.call(RC265['init'], self.TH, P)
+
     def start(self, idr):
         self.L.w32(self.F + 0x778, 2 if idr else 1)
         self.L.call(RC265['start'], self.TH, self.C)
@@ -314,6 +331,53 @@ def main_h265(lib, args):
             qp = s.start(idr)
             out = [qp]
             size = picture_bytes(f, qp, idr, w * h, n % 2)
+            regs = list(statistics(f)[:19])
+            while s.end(size, regs) == 1:
+                out.append(s.qp())
+                size = max(size // 2, 20)
+            blk = bytearray(L.rd(s.BLK, 0x1204))
+            blk[0xb4:0xb8] = bytes(4)
+            mi = L.rd(s.MI, L.r32(s.E + 0x90))
+            print('G', int(idr), '%08x' % zlib.crc32(bytes(blk)), '%08x' % zlib.crc32(mi),
+                  ' '.join(str(v) for v in out))
+
+
+def main_h265_reconf(lib, args):
+    """Run-time parameter changes (IMP_Encoder_SetChnAttrRcMode,
+    SetChnFrmRate, SetGOPSize on an H.265 channel): scenario A for some GOPs,
+    then at an IDR the rate-control fields of scenario B (the size stays A's)
+    through rcInit on the same controller, as I265e::reset does.  Prints the
+    H line of A, 'R' + B's 16 fields (size of A) before the IDR picture where
+    the change applies, then G lines as --h265."""
+    import random
+    import zlib
+    seed, n = (int(args[0]), int(args[1])) if len(args) > 1 else (0x208, 12)
+    rnd = random.Random(seed)
+    pool = SCENARIOS_265 + random_scenarios_265(seed, n)
+    for k in range(n):
+        a, b = rnd.choice(pool), list(rnd.choice(pool))
+        b[1], b[2] = a[1], a[2]
+        (mode, w, h, gop, fps, minqp, maxqp, br, fstep, gstep, bias, static, cpos,
+         qual, qp0, fluct) = a
+        s = SimT30H265(lib, mode=mode, w=w, h=h, gop=gop, fps=(fps, 1), minqp=minqp,
+                       maxqp=maxqp, bitrate=br, frm_step=fstep, gop_step=gstep, bias=bias,
+                       static_time=static, change_pos=cpos, quality=qual, qp=qp0,
+                       fluct=fluct)
+        L = s.L
+        print('H', ' '.join(str(v) for v in a))
+        change = gop * rnd.randint(1, 3)
+        frames = change + 2 * b[3] + rnd.randint(1, b[3])
+        g, f0 = gop, 0
+        for f in range(frames):
+            if f == change:
+                print('R', ' '.join(str(v) for v in b))
+                s.reconf(b[0], b[3], (b[4], 1), b[5], b[6], b[7], b[8], b[9], b[10], b[11],
+                         b[12], b[13], b[14], b[15])
+                g, f0 = b[3], f
+            idr = (f - f0) % g == 0
+            qp = s.start(idr)
+            out = [qp]
+            size = picture_bytes(f, qp, idr, w * h, k % 2)
             regs = list(statistics(f)[:19])
             while s.end(size, regs) == 1:
                 out.append(s.qp())
