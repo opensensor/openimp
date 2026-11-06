@@ -396,3 +396,5 @@ on the T30X).
   1280x720 -> 720x1280 and sub 640x352 -> 352x640, modes 1 and 2: 25.0 fps
   each at 34.5 % CPU for the whole process (rotation + encoders), 14.9 fps
   at 15 fps with 20-23.5 %. Valid H.264 for both streams.
+
+Running channel: `SetChnRotate` may switch 90 <-> 270 and back to 0 while frames flow; a switch to or from 180 changes the output size and is refused (-1) once a rotated frame has gone out (#219 B2).

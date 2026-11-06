@@ -3720,9 +3720,20 @@ void openimp_fs_rotate_capture(int chn, void *frame)
  * 1088x1920 portrait main about 45 %, so the cap is 1280x720 pixels. */
 #define FS_ROT_T30_MAX_W 1280u
 #define FS_ROT_T30_MAX_H 720u
+/* T23 (XBurst1 without MXU, C kernel, T23N lab cameras 2026-11-06): the
+ * banded C kernel costs 10.3-11.5 ms per 1280x720 frame (whole hook) and
+ * 15.3 % process CPU at 15 fps with 15/15 fps delivered, so the cap is
+ * 1280x720 like the T30.  Memory is the other limit: a rotated 720p channel
+ * next to a 1080p main stream does not fit the rmem of a 1080p sensor
+ * camera, the encoder channel creation then fails visibly. */
+#define FS_ROT_T23_MAX_W 1280u
+#define FS_ROT_T23_MAX_H 720u
 #if defined(PLATFORM_T30)
 #define FS_ROT_MAX_W FS_ROT_T30_MAX_W
 #define FS_ROT_MAX_H FS_ROT_T30_MAX_H
+#elif defined(PLATFORM_T23)
+#define FS_ROT_MAX_W FS_ROT_T23_MAX_W
+#define FS_ROT_MAX_H FS_ROT_T23_MAX_H
 #else
 #define FS_ROT_MAX_W FS_ROT_T21_MAX_W
 #define FS_ROT_MAX_H FS_ROT_T21_MAX_H
@@ -3788,6 +3799,24 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
      * run here: fix the C path before the first rotated frame. */
     nv12_rotate_set_impl(0);
 #endif
+    {
+        /* On a running channel (a rotated frame went out) the frame record
+         * and the encoder carry the rotated size: 90 <-> 270 keeps it, a
+         * change to or from 180 does not (0 is the documented way back). */
+        uint32_t cur = __atomic_load_n(&r->cfg, __ATOMIC_ACQUIRE);
+        int cmode = FS_ROT_CFG_MODE(cur);
+        uint32_t cw, ch;
+
+        if (r->announced && cmode != NV12_ROT_NONE &&
+            nv12_rotate_out_dims(cmode, 1, 2, &cw, &ch) == 0 &&
+            nv12_rotate_out_dims(mode, 1, 2, &ow, &oh) == 0 &&
+            (cw != ow || ch != oh)) {
+            fprintf(stderr, "[FS] SetChnRotate ch%d: rotTo90 %d -> %d changes "
+                    "the output size of a running channel; disable the "
+                    "channel (or set 0) first\n", chnNum, cmode, mode);
+            return -1;
+        }
+    }
     __atomic_store_n(&r->cfg, FS_ROT_CFG(mode, width, height),
                      __ATOMIC_RELEASE);
     return 0;

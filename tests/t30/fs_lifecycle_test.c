@@ -1279,8 +1279,8 @@ static void test_rotate(void)
           "640x360 (height not 16-aligned) must be refused");
     CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1920, 1080) == -1,
           "1080p main stream must be refused");
-#if defined(PLATFORM_T30)
-    /* T30: cap 1280x720 pixels (T30X measurement, #212) */
+#if defined(PLATFORM_T30) || defined(PLATFORM_T23)
+    /* T30: cap 1280x720 pixels (T30X measurement, #212); T23 the same (T23N measurement, 2026-11-06) */
     CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1280, 736) == -1,
           "above 1280x720 pixels must be refused");
     {
@@ -1407,6 +1407,10 @@ static void test_rotate(void)
         free(orig);
         free(want);
     }
+    /* a running channel (rotated frames went out) keeps its output size:
+     * 90/270 -> 180 is refused (Opus review B2), 0 is the way back */
+    CHECK(IMP_FrameSource_SetChnRotate(2, 3, 64, 32) == -1,
+          "90/270 -> 180 accepted on a running channel");
     /* no rmem for a spare: copy back, and no new attempt per frame */
     {
         uint32_t w = 64, h = 32, size = w * h * 3 / 2, fourcc = 0x3231564eu;

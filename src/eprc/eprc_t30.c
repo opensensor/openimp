@@ -13,6 +13,13 @@
  * the OEM layout are not written: the module keeps its pointers in Eprc30.
  * Only the H.264 path (E+12 == 0) is reproduced.
  */
+/* The OEM multiplies in 32-bit registers (mul wraps); several budget
+ * products overflow with large bit rates (smart-P S+1052 * A+252).  Signed
+ * overflow must wrap here as on the camera: GCC builds this file with
+ * -fwrapv (pragma below; build-t30.sh and tests/eprc pass the flag too). */
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize("wrapv")
+#endif
 #include "eprc.h"
 #include "eprc_internal.h"
 
@@ -818,6 +825,11 @@ static void e30_gop_init(uint8_t *A, uint8_t *S)
 
         S32(68) = pos;
         S32(1060) = S32(1044);
+        /* n (S+932) counts the GOPs of the static-time window: at most
+         * A+0 / A+4 <= 60 (VIDEO_CFG clamps the static time to 60 s and
+         * makes it a multiple of the GOP seconds), so the write stays in
+         * S+1064..S+1304; n == 60 overwrites S+1064 as the OEM does
+         * (tests/eprc/eprc_t30_static_vectors.txt). */
         S32(1304 - 4 * n) = S32(1048);
         S32(12) = S32(12) + S32(1048);
         if (pos < gop / 2) {
@@ -1899,7 +1911,7 @@ static void e30_frame_end(Eprc30 *rc)
 
         S8(82) = (uint8_t)q;
         S32(208) = bits;
-        S32(860 - 4 * n) = bits;
+        S32(860 - 4 * n) = bits;        /* n <= 60: S+620..S+860, see gop_init */
         S32(192) = 0;
         if (A8(228) != 0 && (uint32_t)mode - 2u < 2u)
             S8(7) = 0;

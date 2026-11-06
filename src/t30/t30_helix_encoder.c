@@ -362,7 +362,11 @@ struct T30HelixEncoder {
     uint8_t eprc30_slice[EPRC30_SLICE_SIZE];
     int eprc30_on;
     uint32_t eprc30_min_qp, eprc30_max_qp;  /* the application's QP range */
-    uint32_t eprc30_reencodes, eprc30_stat_errors;
+    uint32_t eprc30_reencodes, eprc30_stat_errors, eprc30_dropped;
+    /* the statistics table of the OEM encoder: a failed read keeps the
+     * previous picture's values of the registers not read (as the OEM
+     * hwicodec_pf_h264e_t30_enc loop, which stops at the failure) */
+    uint32_t eprc30_regs[EPRC30_STAT_REGS];
     uint32_t eprc30_stats_seconds;          /* OPENIMP_T30_EPRC_STATS */
     uint32_t eprc30_frames, eprc30_idrs;
     uint64_t eprc30_bytes, eprc30_qp_sum[2];
@@ -2380,6 +2384,7 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
         return;
     }
     encoder->eprc30_on = 1;
+    memset(encoder->eprc30_regs, 0, sizeof(encoder->eprc30_regs));
     env = getenv("OPENIMP_T30_EPRC_STATS");
     encoder->eprc30_stats_seconds = env ? (uint32_t)strtoul(env, NULL, 0) : 0u;
     encoder->eprc30_frames = 0u;
@@ -2397,8 +2402,7 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
 /* The 25 registers the OEM T30 encoder reads after each picture
  * (hwicodec_pf_h264e_t30_enc: soc_vpu ioctl 0xc0386307, node word 0 the
  * address 0x13200000 + register, word 1 the value). */
-static void t30_eprc_statistics(T30HelixEncoder *encoder,
-                                uint32_t regs[EPRC30_STAT_REGS])
+static void t30_eprc_statistics(T30HelixEncoder *encoder)
 {
     unsigned int i;
 
@@ -2410,13 +2414,33 @@ static void t30_eprc_statistics(T30HelixEncoder *encoder,
         if (ioctl(encoder->fd, 0xc0386307u, node) != 0) {
             if (encoder->eprc30_stat_errors++ == 0)
                 IMP_LOG_WARN("Encoder", "T30 eprc: reading 0x%08x failed "
-                             "(%s); the statistics are 0", node[0],
-                             strerror(errno));
-            memset(regs, 0, EPRC30_STAT_REGS * sizeof(regs[0]));
+                             "(%s); the rest keeps the previous values",
+                             node[0], strerror(errno));
             return;
         }
-        regs[i] = node[1];
+        encoder->eprc30_regs[i] = node[1];
     }
+}
+
+/* One Helix block serves every channel: the statistics registers belong to
+ * the last run, so RUN and their reads must not interleave with another
+ * channel's RUN (the OEM holds its global bsbufsem from before the RUN
+ * until the slice is written). */
+static pthread_mutex_t t30_run_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* A picture the controller started but that was not coded (failed RUN):
+ * finish it without a re-encode judge, as the T21/T23 path does. */
+static void t30_eprc_drop(T30HelixEncoder *encoder)
+{
+    EprcPicture pic;
+    uint32_t bytes = encoder->temporary.size > T30_SLICE_OFFSET
+        ? encoder->temporary.size - T30_SLICE_OFFSET : 0u;
+
+    if (!encoder->eprc30_on)
+        return;
+    (void)EPRC30_FrameEnd(&encoder->eprc30, bytes, encoder->eprc30_regs,
+                          encoder->channel.cmpx, &pic, 0);
+    encoder->eprc30_dropped++;
 }
 
 /* OPENIMP_T30_EPRC_STATS=<seconds>: one line per interval with the bit
@@ -3697,8 +3721,12 @@ again:
     h264e_slice_header_write(&bits, &encoder->slice_header,
                              idr ? NAL_PRIORITY_HIGHEST : NAL_PRIORITY_HIGH);
     bs_align_1(&bits);
-    if (bits.i_left != 32)
+    if (bits.i_left != 32) {
+#if defined(PLATFORM_T30)
+        t30_eprc_drop(encoder);
+#endif
         return -1;
+    }
     header_length = (uint32_t)(bits.p - bits.p_start);
     h264_cabac_context_init(&encoder->cabac,
                             encoder->slice_header.i_type,
@@ -3758,6 +3786,9 @@ again:
 #endif
         LOG_CODEC("T30 Helix: descriptor build failed: %s",
                   strerror(errno));
+#if defined(PLATFORM_T30)
+        t30_eprc_drop(encoder);
+#endif
         return -1;
     }
 #if defined(HELIX_T21_SYNTAX)
@@ -3785,6 +3816,9 @@ again:
 #endif
        ) {
         LOG_CODEC("T30 Helix: DMA prepare failed: %s", strerror(errno));
+#if defined(PLATFORM_T30)
+        t30_eprc_drop(encoder);
+#endif
         return -1;
     }
     encoder->channel.vpu_id = (int32_t)T30_HELIX_H264_CORE;
@@ -3945,6 +3979,10 @@ again:
         encoder->hs_black_pics++;
     } else
 #endif
+#if defined(PLATFORM_T30)
+    if (encoder->eprc30_on)
+        pthread_mutex_lock(&t30_run_lock);
+#endif
     if (ioctl(encoder->fd, T30_CHANNEL_RUN, &encoder->channel) != 0 ||
         !encoder->channel.output_len ||
         encoder->channel.output_len > encoder->temporary.size - T30_SLICE_OFFSET) {
@@ -3954,18 +3992,25 @@ again:
 #if defined(HELIX_T21_SYNTAX)
         helix_eprc_drop(encoder);
 #endif
+#if defined(PLATFORM_T30)
+        if (encoder->eprc30_on) {
+            pthread_mutex_unlock(&t30_run_lock);
+            t30_eprc_drop(encoder);
+        }
+#endif
         return -1;
     }
 #if defined(PLATFORM_T30)
     if (encoder->eprc30_on) {
-        uint32_t regs[EPRC30_STAT_REGS];
         EprcPicture pic;
 
-        t30_eprc_statistics(encoder, regs);
+        t30_eprc_statistics(encoder);
+        pthread_mutex_unlock(&t30_run_lock);
         /* the OEM counts the slice bytes (header and payload) */
         pic.qp = (uint8_t)qp;
         if (EPRC30_FrameEnd(&encoder->eprc30,
-                            header_length + encoder->channel.output_len, regs,
+                            header_length + encoder->channel.output_len,
+                            encoder->eprc30_regs,
                             encoder->channel.cmpx, &pic,
                             t30_reencodes < 4u) == 1) {
             /* OEM FRAME_REPEATE_JUDGE_T30: code the picture again at the
