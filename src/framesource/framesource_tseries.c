@@ -1861,9 +1861,10 @@ int IMP_FrameSource_CreateChn(int chnNum, IMPFSChnAttr *chn_attr)
 }
 
 /* Software 90/270 rotation of a FrameSource channel: T31 (vendor
- * SetChnRotate) and the T20/T21 userspace (T10, T20, T21; OpenIMP only,
- * the vendor T20/T21 libimp has no rotation). */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21)
+ * SetChnRotate), the T20/T21 userspace (T10, T20, T21), T23 and T30
+ * (OpenIMP only: the vendor T20/T21/T23/T30 libimp has no rotation, the
+ * T30 has no rotate hardware, audit of IPU/MSCA/Helix in #212). */
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 #define FS_SW_ROTATE 1
 #endif
 
@@ -3280,13 +3281,24 @@ int IMP_FrameSource_SetChnCallback(int chnNum, int (*cb)(int, void *))
  * consumer (OSD, IVS, encoder) sees it, and frame+0x28 (rotate_osdflag)
  * is set. The encoder channel is created with the rotated size.
  *
+ * With OPENIMP_FS_ROTATE_SPARES=1|2 (opt-in, one more frame of rmem per
+ * spare) OpenIMP skips the copy back (fs_rotate_take_spare): the
+ * frame is rotated straight into a spare rmem buffer and the frame record
+ * (+0x18 phys, +0x1c virt, T23 also +0x20) points the consumers there.
+ * When the record is released, before its QBUF, openimp_fs_rotate_release
+ * (kernel_interface.c vbm_release_frame and the ready-queue-full requeue)
+ * puts the capture buffer's addresses back, so the driver always gets the
+ * same buffer per index and a spare never goes to the ISP. Without a free
+ * spare (consumers hold FS_ROT_SPARES frames, or no rmem) the frame takes
+ * the scratch + copy back path.
+ *
  * Runs on the FrameSource dequeue thread through
  * openimp_fs_rotate_capture() (kernel_interface.c), which owns the scratch
  * buffer. The capture record keeps the landscape size in the vendor
  * library; here it is updated to the rotated size so consumers that read
  * the record (JPEG copy, OSD, IVS) see the geometry they get.
  *
- * T10/T20/T21 (OpenIMP extension, docs/T31_ROTATE.md "T10/T20/T21"): the
+ * T10/T20/T21/T23 (OpenIMP extension, docs/T31_ROTATE.md "T10/T20/T21"): the
  * same path. The Helix/NVPU encoder takes the picture size from the frame
  * record and reads NV12 with pitch = width and the chroma plane after
  * ALIGN16(height) luma lines, which is the nv12_rotate layout when both
@@ -3302,6 +3314,10 @@ int IMP_FrameSource_SetChnCallback(int chnNum, int (*cb)(int, void *))
 #define FS_FRAME_PIXFMT      0x10
 #define FS_FRAME_SIZE        0x14
 #define FS_FRAME_VIRT        0x1c
+#if defined(PLATFORM_T23)
+#define FS_FRAME_DIRECT_PHYS 0x20   /* T23 1.3.0 record: direct address */
+#endif
+#define FS_FRAME_PHYS        0x18
 #if defined(PLATFORM_T31)
 #define FS_FRAME_ROTATE_FLAG 0x28   /* IMPFrameInfo.rotate_osdflag */
 #endif
@@ -3316,13 +3332,32 @@ int IMP_FrameSource_SetChnCallback(int chnNum, int (*cb)(int, void *))
 #define FS_ROT_CFG_WIDTH(c)  (((c) >> 13) & 0x1fffu)
 #define FS_ROT_CFG_HEIGHT(c) ((c) & 0x1fffu)
 
+/* Spare rmem buffers per channel that a rotated frame can be written to
+ * instead of the scratch buffer (no copy back): one is in use from the
+ * rotation until the consumers release the frame. */
+#define FS_ROT_SPARES 2
+
+typedef struct {
+    uint32_t phys, virt, size;  /* rmem buffer, phys 0: none */
+    void *owner;                /* frame record that points at it, NULL: free */
+    uint32_t orig_phys, orig_virt; /* the record's capture buffer */
+} FsRotSpare;
+
 typedef struct {
     uint32_t cfg;           /* FS_ROT_CFG, written by SetChnRotate */
+    /* spares: under lock (dequeue thread, frame release, DestroyChn) */
+    pthread_mutex_t lock;
+    FsRotSpare spare[FS_ROT_SPARES];
+    int spares_out;         /* spares with an owner (read without lock) */
+    int spare_failed;       /* rmem allocation failed: copy back only */
+    uint32_t stats_direct;  /* frames rotated into a spare */
     /* dequeue thread only (and DestroyChn, once the thread has stopped) */
     uint8_t *scratch;
     size_t   scratch_size;
     uint32_t warned_cfg;    /* cfg the warning was printed for */
     int      warned;
+    uint32_t announced_cfg; /* cfg the start line was printed for */
+    int      announced;
     uint32_t stats_frames;
     uint64_t stats_us;
     uint64_t stats_rot_us;  /* nv12_rotate() alone, without flush + copy */
@@ -3330,7 +3365,169 @@ typedef struct {
     uint32_t stats_total;
 } FsRotate;
 
-static FsRotate g_fs_rotate[FS_MAX_CHANNELS];
+static FsRotate g_fs_rotate[FS_MAX_CHANNELS] = {
+    [0 ... FS_MAX_CHANNELS - 1] = { .lock = PTHREAD_MUTEX_INITIALIZER },
+};
+
+/* Spares a channel may use: OPENIMP_FS_ROTATE_SPARES=1 or 2, default 0
+ * (always copy back). Opt-in because a spare is one more frame of rmem,
+ * taken at the first rotated frame: on a T23N with a 1080p main stream
+ * (cam .23, 2026-11-06) a 960x544 spare left the main encoder's later
+ * 2 MB "t23-helix-emc" block without room and the main stream did not
+ * start. Where rmem has room it saves the copy back (T23N 704x576: 3.9 ->
+ * 3.0 ms per frame). */
+static int fs_rotate_spares(void)
+{
+    static int n = -1;
+
+    if (n < 0) {
+        const char *e = getenv("OPENIMP_FS_ROTATE_SPARES");
+
+        n = e && e[0] >= '0' && e[0] <= '9' ? e[0] - '0' : 0;
+        if (n > FS_ROT_SPARES)
+            n = FS_ROT_SPARES;
+    }
+    return n;
+}
+
+/* A spare is taken from rmem only while the largest free block stays at
+ * least this big afterwards: the spares come after the stream has started
+ * and must not take the room of a later OSD region or JPEG buffer. */
+#define FS_ROT_RMEM_HEADROOM (1024u * 1024u)
+
+/* Frees the spares nobody holds; under r->lock. */
+static void fs_rotate_free_spares_locked(FsRotate *r)
+{
+    int i;
+
+    for (i = 0; i < FS_ROT_SPARES; i++) {
+        FsRotSpare *sp = &r->spare[i];
+
+        if (sp->phys && !sp->owner) {
+            DMA_FreePhys(sp->phys);
+            memset(sp, 0, sizeof(*sp));
+        }
+    }
+}
+
+/* A free spare of at least size bytes for frame record f, marked as owned
+ * by it; allocates one when fewer than FS_ROT_SPARES exist. NULL: take
+ * the copy back path. Dequeue thread only. */
+static FsRotSpare *fs_rotate_take_spare(int chn, FsRotate *r, void *f,
+                                        uint32_t size)
+{
+    FsRotSpare *sp = NULL;
+    IMPDMABufferInfo info;
+    size_t largest = 0;
+    int i, slot = -1, n = fs_rotate_spares();
+
+    pthread_mutex_lock(&r->lock);
+    for (i = 0; i < n; i++) {
+        FsRotSpare *c = &r->spare[i];
+
+        if (c->owner)
+            continue;
+        if (c->phys && c->size < size) {    /* geometry changed */
+            DMA_FreePhys(c->phys);
+            memset(c, 0, sizeof(*c));
+        }
+        if (c->phys) {
+            sp = c;
+            break;
+        }
+        if (slot < 0)
+            slot = i;
+    }
+    if (sp) {
+        sp->owner = f;
+        r->spares_out++;
+    }
+    pthread_mutex_unlock(&r->lock);
+    if (sp || slot < 0 || r->spare_failed)
+        return sp;
+
+    /* No free spare: allocate one more (outside the lock; only this
+     * thread fills empty slots), if rmem keeps its headroom. */
+    if (DMA_RmemStats(NULL, NULL, &largest) == 0 &&
+        largest < (size_t)size + FS_ROT_RMEM_HEADROOM) {
+        r->spare_failed = 1;
+        fprintf(stderr, "[FS] rotate ch%d: rotate buffer %d not taken (%u "
+                "bytes, largest free rmem block %zu): copying back when it "
+                "is busy\n", chn, slot + 1, size, largest);
+        return NULL;
+    }
+    memset(&info, 0, sizeof(info));
+    if (DMA_AllocDescriptor(&info, (int)size, "fs_rotate") < 0 ||
+        !info.phys_addr || !info.virt_addr) {
+        r->spare_failed = 1;
+        fprintf(stderr, "[FS] rotate ch%d: no rmem for rotate buffer %d (%u "
+                "bytes): copying back when it is busy\n", chn, slot + 1, size);
+        return NULL;
+    }
+    pthread_mutex_lock(&r->lock);
+    sp = &r->spare[slot];
+    sp->phys = info.phys_addr;
+    sp->virt = info.virt_addr;
+    sp->size = size;
+    sp->owner = f;
+    r->spares_out++;
+    pthread_mutex_unlock(&r->lock);
+    return sp;
+}
+
+static void fs_rotate_point(uint8_t *f, uint32_t phys, uint32_t virt)
+{
+    memcpy(f + FS_FRAME_PHYS, &phys, 4);
+    memcpy(f + FS_FRAME_VIRT, &virt, 4);
+#if defined(FS_FRAME_DIRECT_PHYS)
+    memcpy(f + FS_FRAME_DIRECT_PHYS, &phys, 4);
+#endif
+}
+
+/* kernel_interface.c: frame record of channel chn released by the
+ * consumers, before it is queued to the driver again (and before a
+ * callback-backed pool hands it back). Puts the capture buffer back into
+ * a record that points at a spare. Any thread. */
+void openimp_fs_rotate_release(int chn, void *frame)
+{
+    FsRotate *r;
+    int i;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS || !frame)
+        return;
+    r = &g_fs_rotate[chn];
+    if (!__atomic_load_n(&r->spares_out, __ATOMIC_RELAXED))
+        return;
+    pthread_mutex_lock(&r->lock);
+    for (i = 0; i < FS_ROT_SPARES; i++) {
+        FsRotSpare *sp = &r->spare[i];
+
+        if (sp->owner == frame) {
+            fs_rotate_point(frame, sp->orig_phys, sp->orig_virt);
+            sp->owner = NULL;
+            r->spares_out--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&r->lock);
+}
+
+/* kernel_interface.c VBMDestroyPool: the channel's frame records are gone
+ * (a new pool writes fresh ones), so every spare is free again. */
+void openimp_fs_rotate_pool_gone(int chn)
+{
+    FsRotate *r;
+    int i;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS)
+        return;
+    r = &g_fs_rotate[chn];
+    pthread_mutex_lock(&r->lock);
+    for (i = 0; i < FS_ROT_SPARES; i++)
+        r->spare[i].owner = NULL;
+    r->spares_out = 0;
+    pthread_mutex_unlock(&r->lock);
+}
 
 static int fs_rotate_stats(void)
 {
@@ -3371,6 +3568,7 @@ void openimp_fs_rotate_capture(int chn, void *frame)
     int mode;
     uint32_t cfg, w, h, ow, oh, fw, fh, pixfmt, size, virt, need, flag = 1;
     uint64_t t0 = 0, t1 = 0;
+    FsRotSpare *spare;
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS || !f)
         return;
@@ -3380,6 +3578,7 @@ void openimp_fs_rotate_capture(int chn, void *frame)
     if (cfg != r->warned_cfg) {
         r->warned_cfg = cfg;
         r->warned = 0;
+        r->spare_failed = 0;    /* new geometry: try the spares again */
     }
     if (mode == NV12_ROT_NONE) {
         if (r->scratch) {
@@ -3387,12 +3586,19 @@ void openimp_fs_rotate_capture(int chn, void *frame)
             r->scratch = NULL;
             r->scratch_size = 0;
         }
+        pthread_mutex_lock(&r->lock);
+        fs_rotate_free_spares_locked(r);
+        pthread_mutex_unlock(&r->lock);
+        r->spare_failed = 0;
         return;
     }
     w = FS_ROT_CFG_WIDTH(cfg);
     h = FS_ROT_CFG_HEIGHT(cfg);
     if (nv12_rotate_out_dims(mode, w, h, &ow, &oh) != 0)
         return;
+    /* not expected (the record is released before its QBUF), but never
+     * rotate from a spare or lose the capture buffer's address */
+    openimp_fs_rotate_release(chn, f);
     memcpy(&fw, f + FS_FRAME_WIDTH, 4);
     memcpy(&fh, f + FS_FRAME_HEIGHT, 4);
     memcpy(&pixfmt, f + FS_FRAME_PIXFMT, 4);
@@ -3415,7 +3621,8 @@ void openimp_fs_rotate_capture(int chn, void *frame)
         fs_rotate_warn(chn, r, "capture buffer too small", size, need);
         return;
     }
-    if (r->scratch_size < need) {
+    spare = fs_rotate_take_spare(chn, r, f, size);
+    if (!spare && r->scratch_size < need) {
         void *p = NULL;
 
         free(r->scratch);
@@ -3427,9 +3634,14 @@ void openimp_fs_rotate_capture(int chn, void *frame)
         }
         r->scratch = p;
         r->scratch_size = need;
-        fprintf(stderr, "[FS] rotate ch%d: %ux%u -> %ux%u mode %d (software, %s)\n",
+    }
+    if (!r->announced || r->announced_cfg != cfg) {
+        r->announced = 1;
+        r->announced_cfg = cfg;
+        fprintf(stderr, "[FS] rotate ch%d: %ux%u -> %ux%u mode %d (software, %s, %s)\n",
                 chn, w, h, ow, oh, mode,
-                nv12_rotate_get_impl() == 1 ? "MXU2" : "C");
+                nv12_rotate_get_impl() == 1 ? "MXU2" : "C",
+                spare ? "into a spare buffer" : "copy back");
     }
     if (fs_rotate_stats())
         t0 = fs_rotate_now_us();
@@ -3437,18 +3649,33 @@ void openimp_fs_rotate_capture(int chn, void *frame)
     /* ISP DMA wrote the buffer: drop stale cached lines before reading;
      * write the rotated picture back before OSD (IPU) / AVPU DMA read it. */
     (void)DMA_RmemFlushCache((void *)(uintptr_t)virt, need, 2);
-    nv12_rotate((const uint8_t *)(uintptr_t)virt, r->scratch, w, h, mode);
-    if (t0)
-        t1 = fs_rotate_now_us();
-    memcpy((void *)(uintptr_t)virt, r->scratch, need);
-    (void)DMA_RmemFlushCache((void *)(uintptr_t)virt, need, 1);
+    if (spare) {
+        /* straight into the spare; the record points there until the
+         * consumers release it (openimp_fs_rotate_release) */
+        nv12_rotate((const uint8_t *)(uintptr_t)virt,
+                    (uint8_t *)(uintptr_t)spare->virt, w, h, mode);
+        if (t0)
+            t1 = fs_rotate_now_us();
+        (void)DMA_RmemFlushCache((void *)(uintptr_t)spare->virt, need, 1);
+        memcpy(&spare->orig_phys, f + FS_FRAME_PHYS, 4);
+        spare->orig_virt = virt;
+        fs_rotate_point(f, spare->phys, spare->virt);
+        if (t0)
+            r->stats_direct++;
+    } else {
+        nv12_rotate((const uint8_t *)(uintptr_t)virt, r->scratch, w, h, mode);
+        if (t0)
+            t1 = fs_rotate_now_us();
+        memcpy((void *)(uintptr_t)virt, r->scratch, need);
+        (void)DMA_RmemFlushCache((void *)(uintptr_t)virt, need, 1);
+    }
 
     memcpy(f + FS_FRAME_WIDTH, &ow, 4);
     memcpy(f + FS_FRAME_HEIGHT, &oh, 4);
 #if defined(FS_FRAME_ROTATE_FLAG)
     memcpy(f + FS_FRAME_ROTATE_FLAG, &flag, 4);
 #else
-    (void)flag;   /* the T21 record has no rotate_osdflag */
+    (void)flag;   /* the T21/T23 records have no rotate_osdflag */
 #endif
 
     if (t0) {
@@ -3461,10 +3688,12 @@ void openimp_fs_rotate_capture(int chn, void *frame)
         /* first frame at once, then every 100 frames */
         if (++r->stats_frames == 100u || r->stats_total++ == 0u) {
             fprintf(stderr, "[FS] rotate ch%d %ux%u mode %d: avg %u us (rotate %u us, %s) "
-                    "max %u us /frame\n",
+                    "max %u us /frame, %u/%u into a spare\n",
                     chn, w, h, mode, (uint32_t)(r->stats_us / r->stats_frames),
                     (uint32_t)(r->stats_rot_us / r->stats_frames),
-                    nv12_rotate_get_impl() == 1 ? "MXU2" : "C", r->stats_max_us);
+                    nv12_rotate_get_impl() == 1 ? "MXU2" : "C", r->stats_max_us,
+                    r->stats_direct, r->stats_frames);
+            r->stats_direct = 0;
             r->stats_frames = 0;
             r->stats_us = 0;
             r->stats_rot_us = 0;
@@ -3477,13 +3706,28 @@ void openimp_fs_rotate_capture(int chn, void *frame)
  * called before the channel is created, with the encoder channel set to
  * the rotated size. Here it also takes effect on a running channel from
  * its next frame. */
-#if defined(PLATFORM_T21)
-/* Largest rotated picture on T10/T20/T21: 704x576 (D1). T31 rotates
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+/* Largest rotated picture on T10/T20/T21/T23/T30: 704x576 (D1). T31 rotates
  * 1280x704 in ~9 ms on 1.5 GHz; the ~1 GHz T10/T20/T21 cores with slower
  * DDR need about 15-20 ms per megapixel, so a 720p main stream would cost
  * ~25 % CPU at 15 fps and 1080p ~50-60 %. OPENIMP_FS_ROTATE_MAX_PIXELS
  * overrides the cap (tests only). */
-#define FS_ROT_T21_MAX_PIXELS (704u * 576u)
+#define FS_ROT_T21_MAX_W 704u
+#define FS_ROT_T21_MAX_H 576u
+/* T30 (XBurst1 with MXU2, T30X lab camera 2026-11-05, idle, MXU2 path):
+ * rot90 1280x720 8.6-10.6 ms, 1920x1080 22-24 ms per frame, plus the copy
+ * back over the capture buffer.  At 15 fps 720p costs about 20 % CPU, a
+ * 1088x1920 portrait main about 45 %, so the cap is 1280x720 pixels. */
+#define FS_ROT_T30_MAX_W 1280u
+#define FS_ROT_T30_MAX_H 720u
+#if defined(PLATFORM_T30)
+#define FS_ROT_MAX_W FS_ROT_T30_MAX_W
+#define FS_ROT_MAX_H FS_ROT_T30_MAX_H
+#else
+#define FS_ROT_MAX_W FS_ROT_T21_MAX_W
+#define FS_ROT_MAX_H FS_ROT_T21_MAX_H
+#endif
+#define FS_ROT_MAX_PIXELS (FS_ROT_MAX_W * FS_ROT_MAX_H)
 
 static uint32_t fs_rotate_max_pixels(void)
 {
@@ -3494,7 +3738,7 @@ static uint32_t fs_rotate_max_pixels(void)
         unsigned long v = e && e[0] ? strtoul(e, NULL, 0) : 0;
 
         max_pixels = v && v <= 4096ul * 4096ul ? (uint32_t)v
-                                               : FS_ROT_T21_MAX_PIXELS;
+                                               : FS_ROT_MAX_PIXELS;
     }
     return max_pixels;
 }
@@ -3520,7 +3764,7 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
                 chnNum, mode, width, height);
         return -1;
     }
-#if defined(PLATFORM_T21)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
     if ((width | height) & 15) {
         fprintf(stderr, "[FS] SetChnRotate ch%d: %dx%d not rotated: width "
                 "and height must be multiples of 16 on this SoC\n",
@@ -3535,8 +3779,49 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
         return -1;
     }
 #endif
+#if defined(PLATFORM_T23)
+    /* The T23 core has no COP2 (no MXU), and the T23 kernel does not
+     * answer a COP2 instruction with SIGILL: its CU2 handler restores the
+     * MXU context and oopses, and the watchdog resets the board (device
+     * 2026-11-05: one lu1q from user space, sled kernel_oops in
+     * xburst_cop2_restore). The SIGILL-guarded MXU2 selftest must never
+     * run here: fix the C path before the first rotated frame. */
+    nv12_rotate_set_impl(0);
+#endif
     __atomic_store_n(&r->cfg, FS_ROT_CFG(mode, width, height),
                      __ATOMIC_RELEASE);
+    return 0;
+}
+
+/*
+ * OpenIMP extras (docs/OPENIMP_BEYOND_VENDOR.md, #212): a streamer binds
+ * these weakly to learn whether SetChnRotate really rotates in this libimp
+ * and within which envelope.  OpenIMP_Cap_FsRotate is defined only in builds
+ * with the software rotation (T31, T10/T20/T21, T23, T30); I2D SoCs have
+ * OpenIMP_Cap_I2dRotate.
+ *
+ * OpenIMP_FS_RotateLimits: 0 and the envelope SetChnRotate accepts for the
+ * channel (pre-rotation pixels at most *max_w x *max_h, both sides multiples
+ * of *align, *max_fps 0 = no frame-rate cap), -1 for an invalid channel.
+ */
+const int OpenIMP_Cap_FsRotate = 1;
+
+int OpenIMP_FS_RotateLimits(int chn, int *max_w, int *max_h, int *max_fps,
+                            int *align)
+{
+    uint32_t w = 4096u, h = 4096u, a = 2u;
+
+    if (chn < 0 || chn >= FS_MAX_CHANNELS)
+        return -1;
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    w = FS_ROT_MAX_W;
+    h = fs_rotate_max_pixels() / w;
+    a = 16u;
+#endif
+    if (max_w) *max_w = (int)w;
+    if (max_h) *max_h = (int)h;
+    if (max_fps) *max_fps = 0;
+    if (align) *align = (int)a;
     return 0;
 }
 
@@ -3546,6 +3831,7 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
 static void fs_rotate_release(int chn)
 {
     FsRotate *r;
+    int i;
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS)
         return;
@@ -3553,6 +3839,16 @@ static void fs_rotate_release(int chn)
     free(r->scratch);
     r->scratch = NULL;
     r->scratch_size = 0;
+    /* DisableChn destroyed the pool (openimp_fs_rotate_pool_gone): no
+     * record points at a spare any more */
+    pthread_mutex_lock(&r->lock);
+    for (i = 0; i < FS_ROT_SPARES; i++)
+        r->spare[i].owner = NULL;
+    r->spares_out = 0;
+    fs_rotate_free_spares_locked(r);
+    r->spare_failed = 0;
+    r->announced = 0;
+    pthread_mutex_unlock(&r->lock);
 }
 #else
 /* No rotation path on this SoC: report failure for rotTo90 != 0 so callers

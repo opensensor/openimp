@@ -128,7 +128,8 @@ Limits:
 - Which parts grant MXU2 to a user process (device-checked): T31X, T20X,
   T10L yes. T31L no: the kernel answers the first MXU2 instruction of a
   task with SIGILL, so the library stays on C. T21 (MXU2 opcodes reserved)
-  and T23 (no MXU) do not have it.
+  and T23 (no MXU) do not have it. On T23 the probe itself is unsafe (see
+  "T23" below): the T23 build never runs it.
 - 90/270: 16x16 luma / 8x8 CbCr-pair blocks, four (three) rounds of the
   same perfect shuffle, one SHUFV per output register (64 SHUFV, 16 loads,
   16 stores per 256 luma pixels). `tools/gen_nv12_rotate_mxu2.py` writes
@@ -221,3 +222,177 @@ CPU estimate, scaled from the T31 device number (1280x704 in 9 ms at
 
 The rotation runs on the FrameSource dequeue thread, so it adds that much
 latency to the rotated channel's frames.
+
+## T23 (OpenIMP extension, device-tested 2026-11-05)
+
+The vendor T23 libimp (1.3.0) has no `IMP_FrameSource_SetChnRotate`.
+OpenIMP builds the T10/T20/T21 path above for T23 too (`FS_SW_ROTATE` in
+`framesource_tseries.c`, the capture hook in `kernel_interface.c`,
+`nv12_rotate.o` in `build-t23.sh`), with the same rules: width and height
+multiples of 16, at most 704x576 pixels (`OPENIMP_FS_ROTATE_MAX_PIXELS`
+for measurements), the encoder channel created with the rotated size, the
+frame record (`+0x08/+0x0c`) carries the rotated size. The T23 record has
+no `rotate_osdflag` (+0x28 is the capture timestamp there).
+
+- Encoder: the T23 native Helix encoder (`src/t30/t30_helix_encoder.c`)
+  reads NV12 with stride = width and chroma at `mb_width*16 * mb_height*16`,
+  the T21 layout, so a rotated 16-aligned frame needs no change there.
+- No MXU on T23 (BSP guide V1.1: "The MXU is not supported by the T23";
+  `/proc/cpuinfo` ASEs empty). Worse, the T23 kernel does not answer a COP2
+  instruction with SIGILL: one `lu1q` from user space oopsed the kernel in
+  `xburst_cop2_restore` and the watchdog reset the board (device
+  2026-11-05, T23N sc1a4t, sled `kernel_oops` at 0x80011c38). The T23
+  `SetChnRotate` therefore fixes the C path (`nv12_rotate_set_impl(0)`)
+  before the first frame, so the SIGILL-guarded selftest never runs.
+- Device numbers (two T23N, sensor 15 fps, test client: ch0 at the sensor
+  size, ch1 rotated, H.264 + JPEG on ch1, `OPENIMP_FS_ROTATE_STATS=1`,
+  15 s per case; every stream decodes with 0 errors, 15.0 fps out):
+
+| size (before rotation) | hook per frame (rotate alone) | CPU at 15 fps |
+|---|---|---|
+| 640x352 | 2.9-3.9 ms (2.3-3.2 ms) | ~5 % |
+| 704x576 | 6.5-6.7 ms (5.5-5.6 ms) | ~10 % |
+| 960x544 (cap raised) | 9.1 ms (7.9 ms) | ~14 % |
+| 1280x720 (cap raised, no main stream) | 14.7-15.0 ms (13.0-13.4 ms) | ~22 % |
+
+  These are the numbers of the first T23 build (32x32-tile C kernel). The
+  banded C kernel of 2026-11-06 roughly halves them, see "Cost per frame"
+  below.
+
+  The 704x576 cap stays: a rotated 720p main stream keeps 15 fps but costs
+  about a fifth of the single core, and 1080 is not a multiple of 16. On the
+  sc2336p board a 1280x720 rotated sub stream next to the 1080p main
+  encoder did not fit in rmem (the main encoder failed; rotation itself
+  takes no rmem).
+- Orientation checked on the pictures (mode 1 CCW, mode 2 CW) at night
+  (grey); the chroma rotation is proven bit-exact on the host only
+  (`fs_lifecycle_test_t23`).
+
+## Cost per frame: C kernel and copy back (2026-11-06)
+
+Where the time went (T23N, no MXU, `nv12_rotate_bench` and a luma micro
+benchmark, 704x576, cached buffers, streamer stopped):
+
+- The whole capture hook was ~85 % rotation and ~15 % copy back plus cache
+  flushes (stats line: 6.5 ms hook, 5.5 ms rotate).
+- Rotation itself, luma plane of the 32x32-tile kernel: 2.4 ms, of which
+  ~1.0 ms are the transposes alone (data in L1), ~0.7 ms the tile loads and
+  ~1.1 ms the scattered 4-byte stores (each tile touches 32 destination
+  lines 8 times). A memcpy of the same bytes takes 0.47 ms; sequential
+  stores run 1.9x faster with `PREF 30`; `PREF 0` on the source made the
+  rotation slower.
+
+The C kernel (`rot90_words_banded`, used for the whole plane when it is
+word-aligned in whole 4x4 / 2x2 blocks):
+
+- A band is the source rows that fill one destination cache line (32 luma
+  rows, 16 CbCr pair rows). For CW with destination rows that are not
+  line-aligned (pitch 368, 720) a band fills two lines (measured 2-10 %
+  faster there; CCW is faster with one). Bands are anchored at destination column 0, the remainder
+  band at the far end, as in the MXU2 path.
+- The walk goes along x in 4-column steps and down the band, so each
+  destination line is allocated with `PREF 30` and written front to back
+  in one go; the band's source lines stay in L1 across the 8 steps that
+  read them.
+- The 4x4 byte transpose takes 18 operations instead of 28 (16-bit 2x2 with
+  `INS`, then a byte delta swap). The compiler must not hoist one pointer
+  per source row out of the unrolled loop (it spilled 32 of them to the
+  stack): `NV12_ROT_OPAQUE`.
+
+T23N .30 (sc1a4t), `nv12_rotate_bench`, ms per frame, CW (CCW is similar):
+
+| size | 32x32 tiles | banded | memcpy |
+|---|---|---|---|
+| 640x352 | 2.44 | 1.28 | 0.41 |
+| 640x368 | 2.71 | 1.74 | 0.42 |
+| 704x576 | 4.43 | 2.36 | 0.71 |
+| 960x544 | 5.76 | 3.13 | 0.92 |
+| 1280x720 | 12.2 | 8.6 | 1.6 |
+
+Sizes with a source stride of 1024 or 1280 bytes cost more per byte in
+both kernels, and the numbers vary with the buffer placement, so the cause
+is probably cache or DRAM aliasing (UNVERIFIED). Staging the band through
+an L1 buffer and 64/128-row bands did not help.
+
+Whole capture hook on the device (rottest client, ch0 at the sensor size
+plus ch1 rotated with H.264 + JPEG, `OPENIMP_FS_ROTATE_STATS=1`, 15/15 fps,
+0 decode errors, pictures checked against the old build):
+
+| T23N | size | before | after | client CPU before -> after |
+|---|---|---|---|---|
+| .30 sc1a4t | 640x352 CW | 3.4-3.6 ms | 1.5-1.7 ms (spare) | 8.7 -> 5.3 % |
+| .30 sc1a4t | 704x576 CW | 6.4-7.0 ms | 3.9 ms, 3.0 ms (spare) | 11.3 -> 9.0 / 7.4 % |
+| .30 sc1a4t | 960x544 CW (cap raised) | 8.2-8.3 ms | 4.3-4.6 ms (spare) | 14.4 -> 8.0 % |
+| .30 sc1a4t | 1280x720 CW (cap raised, no main) | 14.9-16.5 ms | 8.8-9.7 ms (spare) | 23.7 -> 15.3 % |
+| .23 sc2336p | 640x352 CW | 3.7-4.3 ms | 2.2 ms | 8.2 -> 6.4 % |
+| .23 sc2336p | 704x576 CW | 6.3-6.6 ms | 4.0 ms, 3.05 ms (spare) | 13.2 -> 8.8 / 7.8 % |
+| .23 sc2336p | 960x544 CW (cap raised) | 8.5-8.6 ms | 5.2-5.3 ms | 15.9 -> 10.8 % |
+
+Copy back or spare (`OPENIMP_FS_ROTATE_SPARES`, default 0):
+
+- The vendor rotates into a scratch buffer and copies it back over the
+  capture buffer. The copy cannot be avoided in place: every destination
+  row takes bytes from every source row.
+- With `OPENIMP_FS_ROTATE_SPARES=1` or `2`, the frame is rotated into a
+  spare rmem buffer and the frame record (+0x18 phys, +0x1c virt, T23 also
+  +0x20) points there. OSD, IVS, JPEG and the encoders read those fields
+  of the record. The address goes back to the capture buffer when the
+  record is released (`openimp_fs_rotate_release`), before the QBUF in
+  `vbm_release_frame` and in the ready-queue-full requeue. So the driver
+  gets the same buffer per index, and a spare is never written by the ISP.
+  A destroyed pool frees every spare (`openimp_fs_rotate_pool_gone`).
+- Without a free spare the frame is copied back. That happens when the
+  consumers hold all spares, when the largest free rmem block would drop
+  below 1 MiB, or when the allocation fails.
+- It saves the memcpy, 0.25-1.0 ms per 704x576 frame. One spare was enough
+  for the test client (100/100 frames).
+- It is off by default because a spare costs one more frame of rmem. It is
+  taken at the first rotated frame, so it can take the room of a block
+  allocated later. On the .23 board (1080p main) a 960x544 spare left the
+  main encoder's 2 MB `t23-helix-emc` without room, and the main stream did
+  not start. Without spares it runs.
+- Host tests (`fs_lifecycle_test`): the record points at the spare, release
+  restores it (T23: +0x20 too), a second release does nothing, the copy
+  back is used when the spares are busy, a failed allocation is not
+  retried while an existing spare is still used, and a running channel
+  never queues an index with another address (`fake_qbuf_moved`).
+- Not tested: ASan/TSan (libasan is missing on the build host) and timps.
+
+MXU2 (T10/T20/T30/T31): unchanged. The T30X MXU2 numbers (1280x720 8.6-10.6
+ms) are close to the new C kernel on the T23N (8.6 ms). `nv12_rotate_bench
+--mxu` (static build: tiles, banded, MXU2 and memcpy in one run) shows on
+a T30/T31 whether the banded C kernel should be preferred there (open).
+
+## T30 (OpenIMP extension, device-tested 2026-11-05/06, #212)
+
+The vendor T30 libimp (1.0.5) has no `IMP_FrameSource_SetChnRotate`, and the
+T30 has no rotate hardware: the IPU v13 (formats, strides, OSD, CSC,
+resize), the ISP multi-scaler and the Helix/Radix encoder inputs (separate
+Y/C pointers and strides, no transpose bit) have none. OpenIMP builds the
+T10/T20/T21 path for T30 (`FS_SW_ROTATE`, capture hook, `nv12_rotate.o` +
+`core_mxu2.o` in `build-t30.sh`) with the MXU2 kernels after the bit-exact
+selftest (the T30 kernel context-switches COP2; the selftest selected MXU2
+on the T30X).
+
+- Rules: vendor enum (1 = 90 CCW, 2 = 90 CW, OpenIMP 3 = 180), call before
+  CreateChn with the landscape size, width and height multiples of 16, at
+  most 1280x720 pixels (`FS_ROT_T30_MAX_W/H`; `OPENIMP_FS_ROTATE_MAX_PIXELS`
+  for measurements). Larger main streams (a 1088x1920 portrait main) stay
+  refused. `OpenIMP_FS_RotateLimits` reports 1280x720, align 16, no fps cap.
+- Layout: `nv12_rotate` works in the capture layout (pitch and lines
+  aligned to 16), which the T30 Helix reads; the compact NV12 copy of
+  `IMP_FrameSource_GetFrame` is made after the rotation.
+- Device numbers (T30X SC4236, `audit/t30/rotbench`, idle, ms per frame,
+  MXU2 == C bit-exact):
+
+| size (before rotation) | rot90 C | rot90 MXU2 | rot180 MXU2 |
+|---|---|---|---|
+| 640x360 | 2.3-3.9 | 1.6-2.5 | 1.2 |
+| 1280x720 | 10.7-15.5 | 8.6-10.6 | 4.8 |
+| 1920x1080 | 28.5-30.6 | 22.0-24.2 | 11.2 |
+| 2048x1536 | 48-67 | 40-41 | 15.0 |
+
+- Both streams rotated at once (own sample, H.264 CBR, b37): main
+  1280x720 -> 720x1280 and sub 640x352 -> 352x640, modes 1 and 2: 25.0 fps
+  each at 34.5 % CPU for the whole process (rotation + encoders), 14.9 fps
+  at 15 fps with 20-23.5 %. Valid H.264 for both streams.

@@ -156,6 +156,12 @@ int main(void)
         { 2560, 1440 }, { 96, 36 }, { 36, 96 }, { 48, 30 }, { 6, 10 },
         { 2, 2 }, { 34, 18 },
     };
+    static const uint32_t env_dims[][2] = {
+        { 640, 352 }, { 352, 640 }, { 704, 576 }, { 576, 704 },
+        { 960, 544 }, { 1280, 720 }, { 720, 1280 }, { 640, 368 },
+        { 16, 16 }, { 48, 80 }, { 112, 48 }, { 208, 368 }, { 32, 32 },
+        { 40, 24 }, { 12, 20 }, { 36, 100 },
+    };
     static const int modes[] = { NV12_ROT_NONE, NV12_ROT_90_CCW,
                                  NV12_ROT_90_CW, NV12_ROT_180 };
     size_t i, m;
@@ -163,9 +169,12 @@ int main(void)
     int impl;
 
     test_select();
-    /* every case on the C path and on the MXU2 path (lane model) */
-    for (impl = 0; impl < 2; impl++) {
-        nv12_rotate_set_impl(impl);
+    /* every case on the C path (banded and plain tiles) and on the MXU2
+     * path (lane model) */
+    for (impl = 0; impl < 4; impl++) {
+        /* 0 banded, 1 tiles, 2 MXU2, 3 banded with one-line bands */
+        nv12_rotate_set_impl(impl == 2);
+        nv12_rotate_set_c_kernel(impl == 1 ? 0 : impl == 3 ? 2 : 1);
         for (i = 0; i < sizeof(dims) / sizeof(dims[0]); i++)
             for (m = 0; m < 4; m++)
                 test_case(dims[i][0], dims[i][1], modes[m], 0);
@@ -175,7 +184,18 @@ int main(void)
         test_case(80, 48, NV12_ROT_90_CCW, 3);
         test_round_trip(640, 360);
         test_round_trip(96, 64);
+        /* the SetChnRotate envelopes (16-aligned, T23/T21 <= 704x576, T30
+         * <= 1280x720) and partial bands (sides not multiples of 32) */
+        for (i = 0; i < sizeof(env_dims) / sizeof(env_dims[0]); i++) {
+            test_case(env_dims[i][0], env_dims[i][1], NV12_ROT_90_CW, 0);
+            test_case(env_dims[i][0], env_dims[i][1], NV12_ROT_90_CCW, 0);
+        }
+        /* word-aligned but not line-aligned buffers */
+        test_case(640, 352, NV12_ROT_90_CW, 4);
+        test_case(704, 576, NV12_ROT_90_CCW, 4);
+        test_case(368, 208, NV12_ROT_90_CW, 8);
     }
+    nv12_rotate_set_c_kernel(1);
 
     CHECK(nv12_rotate_out_dims(NV12_ROT_90_CW, 1920, 1080, &ow, &oh) == 0 &&
           ow == 1080 && oh == 1920, "CW dims");
