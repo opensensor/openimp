@@ -2196,17 +2196,22 @@ static void test_t30_start_qp(void)
     assert(t30_start_qp("30x", 1280, 720, 25, 1, 2000) == -1);
     assert(t30_start_qp("auto", 0, 720, 25, 1, 2000) == -1);
     assert(t30_start_qp("auto", 1280, 720, 25, 1, 0) == -1);
-    /* auto: b39 points (2000 kbit/s); vendor 26 where it is fine */
+    /* auto: the measured knots (T30X b39/b42/b43, 2000 kbit/s) */
     q720 = t30_start_qp("auto", 1280, 720, 25, 1, 2000);
     q1080 = t30_start_qp("auto", 1920, 1080, 25, 1, 2000);
     q2048_15 = t30_start_qp("auto", 2048, 1536, 15, 1, 2000);
     q2048_25 = t30_start_qp("auto", 2048, 1536, 25, 1, 2000);
     assert(q720 == 26);
     assert(t30_start_qp("auto", 640, 360, 25, 1, 2000) == 26);
-    assert(q2048_25 == 41);                 /* b39: converged P QP 41-42 */
-    assert(q1080 >= 30 && q1080 <= 38);     /* b39: IDR 30, P 32 */
-    assert(q2048_15 >= 34 && q2048_15 <= 41);
-    assert(q720 <= q2048_15 && q2048_15 <= q1080 && q1080 <= q2048_25); /* monotone in bpp */
+    assert(q2048_25 == 41);                 /* b39: IDR 41 */
+    assert(q2048_15 == 38);                 /* b39/b42: IDR 38 */
+    assert(q1080 == 32);                    /* b43: IDR 32 */
+    assert(t30_start_qp("auto", 1920, 1080, 15, 1, 2000) == 28);    /* b43 */
+    /* monotone in bpp within a class, the large class above the small */
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 1000) == 38);
+    assert(t30_start_qp("auto", 1920, 1080, 25, 1, 1500) > q1080);
+    assert(t30_start_qp("auto", 2048, 1536, 25, 1, 1500) > q2048_25);
+    assert(q2048_15 > t30_start_qp("auto", 1920, 1080, 15, 1, 2000));
     assert(t30_start_qp("auto", 2048, 1536, 25, 1, 100) == 46);     /* clamp */
     assert(t30_start_qp("auto", 2048, 1536, 25, 1, 200000) == 26);
 
