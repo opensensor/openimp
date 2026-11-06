@@ -8,6 +8,13 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T30: OEM picture rate control (eprc T30 revision, #210)
+
+- T30 CBR/VBR/SMART now run the vendor's own T30 rate controller, reimplemented in `src/eprc/eprc_t30.c` (`JZ_VPU_RC_*_T30` of the T30 1.0.5 libimp), instead of OpenIMP's GOP controller. The GOP controller changes QP only at GOP boundaries: on the T30X at 2048x1536 / 2000 kbit/s CBR the first GOP ran at QP 30 (about 82 Mbit/s), then QP sat at the maximum 45 (about 0.5 Mbit/s), 7.5 Mbit/s average over 12 s at 25 fps. The vendor CBR held 2018 kbit/s.
+- Bit-exact with the OEM code under the emulator: state after every call equal for 7 + 150 scenarios; `tests/eprc/eprc_t30_test.c` replays 6966 OEM decisions of the T30X stock library build (uclibc 4.7.2, md5 abd61e9a); a mipsel build of the module gives the same.
+- Encoder: QP per picture from the controller, the 25 Helix statistics registers read after each run (soc_vpu ioctl 0xc0386307), slice bytes and cmpx to FRAME_END, re-encode on request. `OPENIMP_T30_EPRC=0` keeps the GOP controller; `OPENIMP_T30_EPRC_STATS=<s>` logs rate and QPs. Details: docs/T23_EPRC.md "T30".
+- Not yet: the macroblock-level fields of `h264_get_mb_qp` (the T30 command list has no macroblock rate control). Device test pending.
+
 ## 2026-11-06, all SoCs: FrameSource rotation costs less per frame (C kernel, optional no copy back)
 
 - New C kernel for the 90/270 rotation (`src/framesource/nv12_rotate.c`, used where there is no MXU2: T23, `OPENIMP_MXU=0`, and the strips of the MXU2 path are unchanged). Cache-line bands anchored at destination column 0, each destination line allocated with `PREF 30` and written front to back in one go, a 4x4 transpose in 18 instead of 28 operations (`INS`). Bit-exact against the reference and the old kernel on the host and under QEMU (mipsel), every mode, envelope sizes and odd sizes.

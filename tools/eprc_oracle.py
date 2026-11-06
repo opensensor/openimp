@@ -48,7 +48,7 @@ STUB, STACK, END, HEAP = 0x70000000, 0x60000000, 0x7ff00000, 0x50000000
 A = [UC_MIPS_REG_A0, UC_MIPS_REG_A1, UC_MIPS_REG_A2, UC_MIPS_REG_A3]
 
 class Lib:
-    def __init__(self, path):
+    def __init__(self, path, generic=False):
         uc = self.uc = Uc(UC_ARCH_MIPS, UC_MODE_MIPS32 + UC_MODE_LITTLE_ENDIAN)
         self.syms = {}
         with open(path, 'rb') as f:
@@ -83,7 +83,11 @@ class Lib:
         self.unaligned_count = 0
         # T23 1.3.0 has h264_api_enc as a function, T21 1.0.33 inlines it
         self.lay = LAYOUT_T23 if 'h264_api_enc' in self.syms else LAYOUT_T21
-        if 'JZ_VPU_RC_VIDEO_CFG_T30' in self.syms:
+        if generic:
+            # any other library (a mipsel build of OpenIMP code): no
+            # unaligned-access tracking
+            self.lay = dict(name='generic', code=(0, 0))
+        elif 'JZ_VPU_RC_VIDEO_CFG_T30' in self.syms:
             # T30 1.0.5 (tools/eprc_t30_oracle.py): the eprc helpers from
             # eprc_min up to JZ_VPU_RC_FREE_T30, wherever this build has them
             self.lay = dict(LAYOUT_T30, code=(self.syms['eprc_min'] & ~3,
@@ -193,7 +197,7 @@ class Lib:
         ret = 0
         if name == 'memset':
             uc.mem_write(a[0], bytes([a[1] & 0xff]) * a[2]); ret = a[0]
-        elif name == 'memcpy':
+        elif name in ('memcpy', 'memmove'):
             uc.mem_write(a[0], bytes(uc.mem_read(a[1], a[2]))); ret = a[0]
         elif name in ('malloc', 'calloc', 'realloc'):
             n = a[0] if name == 'malloc' else (a[0] * a[1] if name == 'calloc' else a[1])

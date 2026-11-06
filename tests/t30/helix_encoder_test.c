@@ -86,6 +86,10 @@ static unsigned int runs;
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
 static unsigned int reg_reads;
 #endif
+#if defined(PLATFORM_T30)
+#include "eprc/eprc.h"
+static unsigned int reg_reads;
+#endif
 #if defined(PLATFORM_T20)
 static unsigned int reg_reads;
 /* the command list of the last RUN: 0x4006c, the QP table writes, 0x80034 */
@@ -332,6 +336,18 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         assert(node[0] == 0x132800e4u || node[0] == 0x132800e8u ||
                node[0] == 0x132800ecu);
         node[1] = node[0] == 0x132800e4u ? t20_moving(runs) : 0x1000u;
+        reg_reads++;
+        return 0;
+    }
+#endif
+#if defined(PLATFORM_T30)
+    if (request == 0xc0386307u) {
+        /* register read of the T30 eprc statistics: node word 0 the
+         * address, word 1 the value */
+        uint32_t *node = (uint32_t *)channel;
+
+        assert(node[0] >= 0x13240000u && node[0] < 0x13290000u && !(node[0] & 3u));
+        node[1] = (node[0] * 2654435761u) >> 9;
         reg_reads++;
         return 0;
     }
@@ -2075,12 +2091,79 @@ static void test_t21_pps_rewrite(void)
 }
 #endif
 
+#if defined(PLATFORM_T30)
+/* OEM T30 picture rate control (src/eprc/eprc_t30.c, the default for CBR,
+ * VBR and SMART): every picture's QP is the one a second controller chooses
+ * when it is fed the slice sizes, the 25 statistics registers and the
+ * channel's cmpx the encoder hands it; OPENIMP_T30_EPRC=0 (the GOP
+ * controller) reads no register. */
+static void test_t30_eprc(void)
+{
+    T30HelixEncoder *encoder;
+    Eprc30 rc;
+    EprcParams p;
+    PictureInfo info;
+    static uint8_t slice[EPRC30_SLICE_SIZE];
+    unsigned int i, j, reads;
+
+    unsetenv("OPENIMP_T30_EPRC");
+    encoder = create(1280, 720, 25, 10);
+    memset(&p, 0, sizeof(p));
+    p.rc_mode = EPRC_MODE_CBR;
+    p.width = 1280;
+    p.height = 720;
+    p.gop = 10;
+    p.fps_num = 25;
+    p.fps_den = 1;
+    p.min_qp = 20;
+    p.max_qp = 45;
+    p.bitrate = 2000;
+    p.max_bitrate = 2000;
+    p.frm_qp_step = 3;
+    p.gop_qp_step = 15;
+    p.static_time = 2;
+    p.change_pos = 80;
+    p.quality = 4;
+    p.init_qp = -1;
+    assert(EPRC30_Init(&rc, &p, slice) == 0);
+    for (i = 0; i < 45u; i++) {
+        EprcPicture pic;
+        uint32_t regs[EPRC30_STAT_REGS];
+
+        fill_payload(1500u + (i % 7u) * 2500u + (i > 25u ? 20000u : 0u), 30);
+        reads = reg_reads;
+        assert(encode(encoder, &info) == 0);
+        assert(EPRC30_FrameStart(&rc, info.idr, &pic) == 0);
+        assert(info.qp == pic.qp);
+        assert(reg_reads == reads + EPRC30_STAT_REGS);
+        for (j = 0; j < EPRC30_STAT_REGS; j++)
+            regs[j] = ((0x13200000u + EPRC30_StatRegs[j]) * 2654435761u) >> 9;
+        assert(EPRC30_FrameEnd(&rc, info.slice_bytes, regs,
+                               payload_length * 37u, &pic, 1) == 0);
+    }
+    OpenIMP_T30_HelixDestroy(encoder);
+    EPRC30_Free(&rc);
+
+    setenv("OPENIMP_T30_EPRC", "0", 1);
+    encoder = create(1280, 720, 25, 10);
+    reads = reg_reads;
+    for (i = 0; i < 5u; i++)
+        assert(encode(encoder, &info) == 0);
+    assert(reg_reads == reads);
+    OpenIMP_T30_HelixDestroy(encoder);
+    unsetenv("OPENIMP_T30_EPRC");
+}
+#endif
+
 int main(void)
 {
     unsigned int i;
 
     /* Keep every heap block below 4 GiB for the 32-bit address fields. */
     mallopt(M_MMAP_THRESHOLD, 1 << 30);
+#if defined(PLATFORM_T30)
+    setenv("OPENIMP_T30_EPRC", "0", 1);    /* the checks before test_t30_eprc are of the GOP controller */
+#endif
     fill_payload(5000, 30);
     test_gop_and_failures();
     test_failure_count_and_input_size();
@@ -2091,6 +2174,9 @@ int main(void)
     test_unaligned_width_rejected();
     test_color2grey();
     test_roi_chroma(0);
+#if defined(PLATFORM_T30)
+    test_t30_eprc();
+#endif
 #if defined(PLATFORM_T21) && !defined(PLATFORM_T20)
     test_t21_pps_rewrite();
     test_eprc();
