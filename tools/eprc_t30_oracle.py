@@ -149,6 +149,11 @@ def main():
         args.remove('--real')
     frames = 200 if real else 120
     scenarios = SCENARIOS
+    if len(args) > 1 and args[0] == '--sc':
+        # explicit scenarios: --sc "18 numbers;18 numbers" [FRAMES]
+        scenarios = [tuple(int(x) for x in t.split()) for t in args[1].split(';')]
+        frames = int(args[2]) if len(args) > 2 else frames
+        args = []
     if len(args) > 2 and args[0] == '--random':
         scenarios = random_scenarios(int(args[1]), int(args[2]))
         frames = int(args[3]) if len(args) > 3 else 150

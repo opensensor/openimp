@@ -2141,6 +2141,26 @@ static void test_t30_eprc(void)
         assert(EPRC30_FrameEnd(&rc, info.slice_bytes, regs,
                                payload_length * 37u, &pic, 1) == 0);
     }
+    /* a failed run finishes the started picture without a judge (the
+     * controller stays in step), the next picture codes */
+    run_result = -1;
+    assert(encode(encoder, &info) != 0);
+    run_result = 0;
+    {
+        EprcPicture pic;
+        uint32_t regs[EPRC30_STAT_REGS];
+
+        assert(EPRC30_FrameStart(&rc, 0, &pic) == 0);
+        for (j = 0; j < EPRC30_STAT_REGS; j++)
+            regs[j] = ((0x13200000u + EPRC30_StatRegs[j]) * 2654435761u) >> 9;
+        /* the encoder passes its bitstream window and the last table */
+        (void)EPRC30_FrameEnd(&rc, allocation(BS_TAG)->size - 256u,
+                              regs, payload_length * 37u, &pic, 0);
+        reads = reg_reads;
+        assert(encode(encoder, &info) == 0);
+        assert(EPRC30_FrameStart(&rc, info.idr, &pic) == 0);
+        assert(info.qp == pic.qp);
+    }
     OpenIMP_T30_HelixDestroy(encoder);
     EPRC30_Free(&rc);
 

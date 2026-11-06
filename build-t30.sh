@@ -124,7 +124,7 @@ compile t30_h264_slice src/t30/h264enc/slice.c -Werror
 compile t30_rate_control src/t40/t31_rate_control.c -Werror
 # OEM T30 picture rate control (docs/T23_EPRC.md "T30"); no contraction,
 # the emulator comparison models MIPS32r2 madd.fmt as unfused
-compile t30_eprc src/eprc/eprc_t30.c $hot_flags -Werror -ffp-contract=off
+compile t30_eprc src/eprc/eprc_t30.c $hot_flags -Werror -ffp-contract=off -fwrapv
 compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
 # Audio: the T21 path (src/t31/openimp_t31_audio.c without PLATFORM_T23).
 # The ingenic-sdk T21 and T30 oss2/oss3 audio drivers are byte-identical.

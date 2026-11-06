@@ -457,6 +457,14 @@ plumbing: every picture's QP against a second controller fed the same slice
 sizes, registers and cmpx, 25 register reads per picture, none with
 `OPENIMP_T30_EPRC=0`.
 
+Review fixes (#219): RUN and the statistics reads hold one process-wide
+lock (one Helix block serves every channel); a failed RUN finishes the
+started picture without a judge; a failed statistics read keeps the
+previous values of the remaining registers (OEM table); the module is
+built with wrapping signed arithmetic (`-fwrapv`, as the MIPS `mul`); the
+history writes S+1304-4n / S+860-4n stay in bounds (n <= 60,
+`eprc_t30_static_vectors.txt`).
+
 ## In the native T21/T23 encoder (M4, M5)
 
 `src/t30/t30_helix_encoder.c` (T21 and T23): `helix_eprc_start` (create,

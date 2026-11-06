@@ -18,6 +18,14 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - Device (T23N sc1a4t lab camera, timps test build `efa490e`, no flash, libimp from this branch): main 1280x720 rot 90 -> 720x1280 (rotate_path hw, rotation_state 0, ffprobe h264 720x1280, 15 s `-c copy` 0 errors), process CPU 19.5 %; main 1280x720 rot 270 plus sub 640x352 rot 90 at once -> 720x1280 and 352x640, process CPU 23.4 %.
 - Limit: a rotated 720p channel next to a 1080p main stream does not fit the rmem of the 1080p sensor camera (T23N sc2336p): the encoder channel creation then fails visibly (seen with the rottest client in #215); the timps test binary was built for the sc1a4t camera and did not start on the sc2336p one (not a rotation result), so that case is not re-run here.
 
+## 2026-11-06, T30: review fixes of the OEM rate control and rotation (#219 A1-A4, B2)
+
+- A1: the per-GOP history writes of the T30 controller (S+1304-4n, S+860-4n) are in bounds: n counts the GOPs of the static-time window, at most 60 (VIDEO_CFG clamps the static time to 60 s, a multiple of the GOP seconds); n = 60 overwrites S+1064 exactly as the OEM. New vectors with staticTime 60 and short GOPs (`tests/eprc/eprc_t30_static_vectors.txt`, 5093 OEM decisions, 0 differ).
+- A2: one Helix block serves all channels, so RUN and the 25 statistics reads now run under one process-wide lock when the OEM controller is on (the OEM holds its global `bsbufsem` from before RUN to the slice write).
+- A3: the controller's 32-bit budget products wrap as on MIPS (`-fwrapv`, also as a GCC pragma in the file); the host tests run clean under trapping UBSan. Decisions unchanged.
+- A4: a picture whose RUN (or slice header, descriptor, DMA prepare) fails is finished without a re-encode judge, so the controller stays in step; a failed statistics read keeps the previous values of the remaining registers, as the OEM table does. Test: `helix_encoder_test` injects a failed run.
+- B2: `SetChnRotate` refuses a change between 90/270 and 180 on a running channel (the record and encoder carry the rotated size); 0 stays the way back.
+
 ## 2026-11-06, T30: OEM picture rate control (eprc T30 revision, #210)
 
 - T30 CBR/VBR/SMART now run the vendor's own T30 rate controller, reimplemented in `src/eprc/eprc_t30.c` (`JZ_VPU_RC_*_T30` of the T30 1.0.5 libimp), instead of OpenIMP's GOP controller. The GOP controller changes QP only at GOP boundaries: on the T30X at 2048x1536 / 2000 kbit/s CBR the first GOP ran at QP 30 (about 82 Mbit/s), then QP sat at the maximum 45 (about 0.5 Mbit/s), 7.5 Mbit/s average over 12 s at 25 fps. The vendor CBR held 2018 kbit/s.

@@ -19,6 +19,7 @@ check: $(EPRC_TEST) $(EPRC30_TEST)
 	$(EPRC30_TEST) eprc_t30_vectors.txt
 	$(EPRC30_TEST) eprc_t30_real_vectors.txt
 	$(EPRC30_TEST) eprc_t30_random_vectors.txt
+	$(EPRC30_TEST) eprc_t30_static_vectors.txt
 
 $(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c $(PROJECT_DIR)/src/eprc/eprc_mbrc.c \
 		$(PROJECT_DIR)/src/eprc/eprc.h $(PROJECT_DIR)/src/eprc/eprc_internal.h
@@ -30,7 +31,7 @@ $(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc
 $(EPRC30_TEST): eprc_t30_test.c $(PROJECT_DIR)/src/eprc/eprc_t30.c \
 		$(PROJECT_DIR)/src/eprc/eprc.h $(PROJECT_DIR)/src/eprc/eprc_internal.h
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -I$(PROJECT_DIR)/src -o $@ eprc_t30_test.c \
+	$(CC) $(CFLAGS) -fwrapv -I$(PROJECT_DIR)/src -o $@ eprc_t30_test.c \
 		$(PROJECT_DIR)/src/eprc/eprc_t30.c -lm
 
 clean:
