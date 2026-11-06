@@ -90,7 +90,8 @@ int __wrap_close(int fd)
 
 /* what the last RUN's command list programmed */
 static uint32_t list_sde_cfg0, list_bs, list_rawy, list_rawc, list_recon_y,
-                list_ref_y;
+                list_ref_y, list_dst_stride, list_ref_stride;
+static int list_has_ref_stride;
 static int run_fail;
 static unsigned int runs, reg_reads;
 static uint32_t frame_phys;
@@ -143,7 +144,7 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         FakeChannel *c = arg;
         const uint32_t *list = (const uint32_t *)(uintptr_t)c->dma_addr;
         uint8_t *bs;
-        int f1, f2, f3, f4, f5, f6;
+        int f1, f2, f3, f4, f5, f6, f7;
         unsigned int i, n;
 
         runs++;
@@ -154,6 +155,9 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         list_rawc = list_value(list, 0x20010u, &f4);
         list_recon_y = list_value(list, 0x10014u, &f5);
         list_ref_y = list_value(list, 0x30800u, &f6);
+        list_dst_stride = list_value(list, 0x1001cu, &f7);
+        list_ref_stride = list_value(list, 0x30064u, &list_has_ref_stride);
+        assert(f7);
         assert(f1 && f2 && f3 && f4 && f5);
         assert(list_rawy == frame_phys);
         if (run_fail)
@@ -260,11 +264,19 @@ int main(void)
             assert(n == 1u && types[0] == 1u && s->frame_type == HW_FRAME_TYPE_P);
             /* P: the previous reconstruction is the reference */
             assert(list_ref_y == prev_recon && list_recon_y != prev_recon);
+            /* vendor codec_enc (libimp 1.0.5 uclibc 4.7.2, 0x5d900-0x5d90c):
+             * block 0x32/0x34 = reference +0x28/+0x2c as is, so MCE 0x30064
+             * = luma | chroma << 16 with the chroma stride NOT halved
+             * (the halved one drifted P pictures on the T30X, b40) */
+            assert(list_has_ref_stride && list_ref_stride == (640u | (640u << 16)));
             /* slice_pic_order_cnt_lsb after first_slice (1), pps id ue 0
              * ('1') and slice_type ue 1 ('010'): the count since the IDR */
             assert(((((uint32_t)slice[2] & 7u) << 5) | (slice[3] >> 3)) == f % 10u);
         }
         assert(((list_sde_cfg0 >> 2) & 3u) == (idr ? 2u : 1u));
+        /* codec_enc 0x5d87c-0x5d8a8: reconstruction 0x2e = +0x28, 0x30 =
+         * +0x2c >> 1; ODMA 0x1001c = luma << 16 | chroma */
+        assert(list_dst_stride == ((640u << 16) | 320u));
         assert(list_rawc == frame_phys + 640u * 368u);
         assert(escaped(slice, slice_len));
         assert(s->timestamp == f);
