@@ -181,4 +181,36 @@ int EPRC21_FrameEndEx(Eprc *rc, uint32_t bytes,
                       const uint32_t regs[EPRC_STAT_REGS], EprcPicture *pic,
                       int may_repeat);
 
+/* The T30 1.0.5 revision of the controller (eprc_t30.c, docs/T23_EPRC.md
+ * "T30"): its own state layout (E = i264e parameters + 0x9044c, A, S = A +
+ * 0x120 and the arrays from A + 0xd00); the picture type comes from the
+ * caller (IDR every GOP, as the OEM i264e decides it on the T30). */
+#define EPRC30_E_SIZE 0x280u
+#define EPRC30_SLICE_SIZE 0x200u
+typedef struct Eprc30 {
+    uint8_t e[EPRC30_E_SIZE];   /* OEM E */
+    uint8_t *blk;               /* OEM A (S = blk + 0x120, arrays from + 0xd00) */
+    uint32_t blk_size;
+    uint8_t *x, *y;             /* the arrays at E+572 (16 bytes per 64x64
+                                 * block) and E+576 (4 bytes per macroblock row) */
+    uint8_t *slice;             /* slice-parameter block (E+564), zeroed by
+                                 * the caller, EPRC30_SLICE_SIZE bytes */
+} Eprc30;
+
+/* The 25 Helix registers the OEM T30 encoder reads after each picture
+ * (soc_vpu ioctl 0xc0386307 at 0x13200000 + register), in this order. */
+#define EPRC30_STAT_REGS 25
+extern const uint32_t EPRC30_StatRegs[EPRC30_STAT_REGS];
+
+int EPRC30_Init(Eprc30 *rc, const EprcParams *params, uint8_t *slice);
+void EPRC30_Free(Eprc30 *rc);
+/* idr: the picture is an IDR (the T30 i264e codes one every GOP). */
+int EPRC30_FrameStart(Eprc30 *rc, int idr, EprcPicture *pic);
+/* The coded size in bytes, the 25 statistics registers and the channel's
+ * cmpx word.  Returns 1 when the picture is to be coded again with pic
+ * (FRAME_REPEATE_JUDGE_T30; may_repeat 0 skips it), else 0. */
+int EPRC30_FrameEnd(Eprc30 *rc, uint32_t bytes,
+                    const uint32_t regs[EPRC30_STAT_REGS], uint32_t cmpx,
+                    EprcPicture *pic, int may_repeat);
+
 #endif

@@ -29,6 +29,9 @@ at i264e parameters + 0x9044c):
                           (1 IDR), +0x2e4 QP, +0xb50 cmpx, +0x38c statistics
                           block, +0xba8 the (register, value) table of the 25
                           Helix statistics registers (EPRC30_StatRegs)
+  both                    handle +0xbb0 the slice-parameter block
+                          (H264E_T30_SliceInit input, E+0x234), +0xba4 the
+                          macroblock input block (E+0x8c)
 """
 import os
 import struct
@@ -58,8 +61,10 @@ class SimT30:
         self.D = HEAP + 0x14000             # statistics block (handle +0x38c)
         self.TB = HEAP + 0x15000            # register table (handle +0xba8)
         self.R = HEAP + 0x100000            # i264e parameters (E at +0x9044c)
+        self.SL = HEAP + 0x30000            # slice parameters (handle +0xbb0 -> E+0x234)
+        self.MI = HEAP + 0x40000            # handle +0xba4 -> E+0x8c (macroblock input)
         self.cmpx = cmpx
-        L.wr(HEAP, bytes(0x10000))
+        L.wr(HEAP, bytes(0x50000))
         L.wr(self.H, bytes(0x8000))
         L.wr(self.R, bytes(0x92000))
         R = self.R
@@ -77,6 +82,8 @@ class SimT30:
         L.w32(H + 0x1050, R)
         L.w32(H + 0x38c, self.D)
         L.w32(H + 0xba8, self.TB)
+        L.w32(H + 0xbb0, self.SL)
+        L.w32(H + 0xba4, self.MI)
         for i, o in enumerate(STAT_REGS):
             L.w32(self.TB + 8 * i, o)
         self.E = R + E_OFF
