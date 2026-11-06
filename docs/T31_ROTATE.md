@@ -263,3 +263,37 @@ no `rotate_osdflag` (+0x28 is the capture timestamp there).
 - Orientation checked on the pictures (mode 1 CCW, mode 2 CW) at night
   (grey); the chroma rotation is proven bit-exact on the host only
   (`fs_lifecycle_test_t23`).
+
+## T30 (OpenIMP extension, device-tested 2026-11-05/06, #212)
+
+The vendor T30 libimp (1.0.5) has no `IMP_FrameSource_SetChnRotate`, and the
+T30 has no rotate hardware: the IPU v13 (formats, strides, OSD, CSC,
+resize), the ISP multi-scaler and the Helix/Radix encoder inputs (separate
+Y/C pointers and strides, no transpose bit) have none. OpenIMP builds the
+T10/T20/T21 path for T30 (`FS_SW_ROTATE`, capture hook, `nv12_rotate.o` +
+`core_mxu2.o` in `build-t30.sh`) with the MXU2 kernels after the bit-exact
+selftest (the T30 kernel context-switches COP2; the selftest selected MXU2
+on the T30X).
+
+- Rules: vendor enum (1 = 90 CCW, 2 = 90 CW, OpenIMP 3 = 180), call before
+  CreateChn with the landscape size, width and height multiples of 16, at
+  most 1280x720 pixels (`FS_ROT_T30_MAX_W/H`; `OPENIMP_FS_ROTATE_MAX_PIXELS`
+  for measurements). Larger main streams (a 1088x1920 portrait main) stay
+  refused. `OpenIMP_FS_RotateLimits` reports 1280x720, align 16, no fps cap.
+- Layout: `nv12_rotate` works in the capture layout (pitch and lines
+  aligned to 16), which the T30 Helix reads; the compact NV12 copy of
+  `IMP_FrameSource_GetFrame` is made after the rotation.
+- Device numbers (T30X SC4236, `audit/t30/rotbench`, idle, ms per frame,
+  MXU2 == C bit-exact):
+
+| size (before rotation) | rot90 C | rot90 MXU2 | rot180 MXU2 |
+|---|---|---|---|
+| 640x360 | 2.3-3.9 | 1.6-2.5 | 1.2 |
+| 1280x720 | 10.7-15.5 | 8.6-10.6 | 4.8 |
+| 1920x1080 | 28.5-30.6 | 22.0-24.2 | 11.2 |
+| 2048x1536 | 48-67 | 40-41 | 15.0 |
+
+- Both streams rotated at once (own sample, H.264 CBR, b37): main
+  1280x720 -> 720x1280 and sub 640x352 -> 352x640, modes 1 and 2: 25.0 fps
+  each at 34.5 % CPU for the whole process (rotation + encoders), 14.9 fps
+  at 15 fps with 20-23.5 %. Valid H.264 for both streams.
