@@ -15,6 +15,13 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - Encoder: QP per picture from the controller, the 25 Helix statistics registers read after each run (soc_vpu ioctl 0xc0386307), slice bytes and cmpx to FRAME_END, re-encode on request. `OPENIMP_T30_EPRC=0` keeps the GOP controller; `OPENIMP_T30_EPRC_STATS=<s>` logs rate and QPs. Details: docs/T23_EPRC.md "T30".
 - Not yet: the macroblock-level fields of `h264_get_mb_qp` (the T30 command list has no macroblock rate control). Device test pending.
 
+## 2026-11-06, T30: encoder pulls the capture frame, heights that are not a multiple of 16 encode again (#209; QEMU, T30X proof pending)
+
+- The T30 encoder took its pictures through `IMP_FrameSource_GetFrame`. Since #202 that returns the compact NV12 copy in plain memory (`phyAddr` 0) for a height that is not a multiple of 16. Helix refused every such picture (`t30_helix_encoder.c`, frame check without a physical address), so a 640x360 sub and a 1920x1080 main gave "3 consecutive Helix failures" and no stream (timps b34/b35, enc2 b36).
+- The encoder now pulls the capture frame with `VBMGetFrame`, as on T20/T21/T23 (`openimp_p2_encoder.c`). Applications keep getting the compact copy from GetFrame.
+- QEMU T30 (enc2, instrumented library): before the fix, 9 refusals per 4 s with `phy=0x0 size=345600 640x360`; after it, the 640x360 sub encodes 98/98 frames next to a 1280x720 main.
+- The vendor stack on the T30X (b37) encodes 640x360 and 1920x1080.
+- make check / status-check rc 0.
 ## 2026-11-06, all SoCs: FrameSource rotation costs less per frame (C kernel, optional no copy back)
 
 - New C kernel for the 90/270 rotation (`src/framesource/nv12_rotate.c`, used where there is no MXU2: T23, `OPENIMP_MXU=0`, and the strips of the MXU2 path are unchanged). Cache-line bands anchored at destination column 0, each destination line allocated with `PREF 30` and written front to back in one go, a 4x4 transpose in 18 instead of 28 operations (`INS`). Bit-exact against the reference and the old kernel on the host and under QEMU (mipsel), every mode, envelope sizes and odd sizes.
