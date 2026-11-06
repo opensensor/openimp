@@ -1440,6 +1440,18 @@ extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
                                      const uint8_t tables[128]);
 #endif
 #endif
+#if defined(P2_T30_NATIVE)
+/* Capability marker for streamers (timps binds it weak): 1 = this libimp encodes H.265 on T30 (Radix). A plain int so
+ * the constructor can clear it when OPENIMP_T30_H265=0 disables the path at run time. */
+__attribute__((visibility("default"))) int OpenIMP_Cap_H265 = 1;
+static void __attribute__((constructor)) p2_t30_h265_cap_init(void)
+{
+    const char *e = getenv("OPENIMP_T30_H265");
+
+    if (e && e[0] == '0')
+        OpenIMP_Cap_H265 = 0;
+}
+#endif
 extern int IMP_FrameSource_GetFrame(int channel, void **frame);
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
 #if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || \
@@ -2392,9 +2404,9 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
     !defined(PLATFORM_T41)
     if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC
 #if defined(P2_T30_NATIVE)
-        /* T30: the Radix encoder (src/t30/radix) until its device proof
-         * only with OPENIMP_T30_H265=1 */
-        && !(getenv("OPENIMP_T30_H265") && getenv("OPENIMP_T30_H265")[0] == '1')
+        /* T30: the Radix encoder (src/t30/radix), device-proven in b41
+         * (2026-11-06): on by default, OPENIMP_T30_H265=0 turns it off */
+        && (getenv("OPENIMP_T30_H265") && getenv("OPENIMP_T30_H265")[0] == '0')
 #endif
         ) {
         /* Only the T31, T40 and T41 AVPU backends encode HEVC
