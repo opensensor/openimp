@@ -2176,7 +2176,7 @@ static void test_t30_eprc(void)
     unsetenv("OPENIMP_T30_EPRC");
 }
 
-/* OPENIMP_T30_START_QP (#216, OpenIMP extra, default off). */
+/* OPENIMP_T30_START_QP (#216, OpenIMP extra, default auto since b44). */
 static void test_t30_start_qp(void)
 {
     T30HelixEncoder *encoder;
@@ -2184,8 +2184,10 @@ static void test_t30_start_qp(void)
     int q2048_25, q2048_15, q1080, q720;
 
     /* the pure mapping */
-    assert(t30_start_qp(NULL, 1280, 720, 25, 1, 2000) == -1);
-    assert(t30_start_qp("", 1280, 720, 25, 1, 2000) == -1);
+    assert(t30_start_qp(NULL, 1280, 720, 25, 1, 2000) == 26);   /* auto: 720p = vendor 26 */
+    assert(t30_start_qp("", 1280, 720, 25, 1, 2000) == 26);
+    assert(t30_start_qp(NULL, 2048, 1536, 15, 1, 2000) == 38);   /* default is auto */
+    assert(t30_start_qp(NULL, 0, 720, 25, 1, 2000) == -1);
     assert(t30_start_qp("vendor", 1280, 720, 25, 1, 2000) == -1);
     assert(t30_start_qp("36", 1280, 720, 25, 1, 2000) == 36);
     assert(t30_start_qp("10", 1280, 720, 25, 1, 2000) == 10);
@@ -2215,12 +2217,17 @@ static void test_t30_start_qp(void)
     assert(t30_start_qp("auto", 2048, 1536, 25, 1, 100) == 46);     /* clamp */
     assert(t30_start_qp("auto", 2048, 1536, 25, 1, 200000) == 26);
 
-    /* through the encoder: unset = vendor start (controller default 26),
+    /* through the encoder: unset = auto (720p 25 fps 2000 kbit/s: 26), "vendor" = controller default,
      * a fixed integer is the first IDR's QP, an invalid value is vendor */
     unsetenv("OPENIMP_T30_EPRC");
     unsetenv("OPENIMP_T30_START_QP");
     encoder = create(1280, 720, 25, 10);
     fill_payload(1500u, 30);
+    assert(encode(encoder, &info) == 0);
+    assert(info.idr && info.qp == 26);
+    OpenIMP_T30_HelixDestroy(encoder);
+    setenv("OPENIMP_T30_START_QP", "vendor", 1);
+    encoder = create(1280, 720, 25, 10);
     assert(encode(encoder, &info) == 0);
     assert(info.idr && info.qp == 26);
     OpenIMP_T30_HelixDestroy(encoder);

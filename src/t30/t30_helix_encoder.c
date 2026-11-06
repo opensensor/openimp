@@ -2362,7 +2362,7 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
     p.min_qp = t30_eprc_clip(encoder->eprc30_min_qp, 0, (int32_t)p.max_qp);
     p.bitrate = hp->bitrate / 1000u;
     p.max_bitrate = hp->bitrate / 1000u < 128u ? 128u : hp->bitrate / 1000u;
-    /* OpenIMP extra, default off (vendor start QP): OPENIMP_T30_START_QP */
+    /* OpenIMP extra, default auto (OPENIMP_T30_START_QP=vendor: vendor start QP) */
     p.init_qp = t30_start_qp(getenv("OPENIMP_T30_START_QP"), hp->width,
                              hp->height, hp->fps_num, hp->fps_den,
                              hp->bitrate / 1000u);

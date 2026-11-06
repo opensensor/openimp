@@ -8,6 +8,11 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+
+## 2026-11-06: T30 start QP `auto` is the default (#216)
+
+- `OPENIMP_T30_START_QP` unset or `auto` now picks the first-IDR QP from bits per pixel (`src/t30/t30_start_qp.h`); `vendor` restores the vendor start QP 26. User decision 2026-11-06 after the T30X runs b42-b44.
+- Proof (T30X, CBR 2000 kbit/s, first 2 s, one run per case, b44): 2048x1536 15 fps 1958 kbit/s (0.98x; was 1.77x), 25 fps 1937 (0.97x); 1920x1080 15 fps 1994 (1.00x), 25 fps 1930 (0.97x). Documented in `docs/OPENIMP_BEYOND_VENDOR.md`; host test updated (`tests/t30/helix_encoder_test.c`).
 ## 2026-11-06, T30: opt-in start QP for the first IDR (#216, extra beyond vendor, device proof pending, default off)
 
 - `OPENIMP_T30_START_QP` (unset or `vendor` = exactly the vendor start QP 26, unchanged): `auto` derives the first IDR's QP from bits per pixel (`src/t30/t30_start_qp.h`, table from the b39 T30X steady-state QPs, 26 from 0.087 bpp upwards), an integer 10..51 is used as is, anything else falls back to vendor. Aim: the first 2 s window of a high-resolution CBR (2048x1536 25 fps, 2000 kbit/s: 6.6 Mbit/s with the vendor QP 26). Host tests in `helix_encoder_test`; no device run yet, the vendor A/B of the first window is planned (audit b41).

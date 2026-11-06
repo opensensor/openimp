@@ -7,11 +7,11 @@
 #include <string.h>
 
 /*
- * OPENIMP_T30_START_QP (OpenIMP extra, opt-in, NOT the default; #216):
+ * OPENIMP_T30_START_QP (OpenIMP extra, ON by default since #216 b44):
  * the QP the T30 OEM rate controller (eprc_t30.c) starts its first IDR with.
- *   unset, "vendor", anything else invalid -> -1 (the vendor default QP 26)
+ *   unset, "", "auto"                       -> from bits per pixel (default)
+ *   "vendor", anything else invalid         -> -1 (the vendor default QP 26)
  *   integer 10..51                          -> that QP
- *   "auto"                                  -> from bits per pixel
  *
  * auto: piecewise linear in log2(bpp), bpp = bitrate / (width * height * fps),
  * with one knot table per picture class, because the same bpp converges to
@@ -53,9 +53,9 @@ static inline int t30_start_qp(const char *env, uint32_t width,
     long v;
     int i;
 
-    if (!env || !env[0] || !strcmp(env, "vendor"))
+    if (env && !strcmp(env, "vendor"))
         return T30_START_QP_VENDOR;
-    if (!strcmp(env, "auto")) {
+    if (!env || !env[0] || !strcmp(env, "auto")) {
         if (!width || !height || !fps_num || !fps_den || !bitrate_kbps)
             return T30_START_QP_VENDOR;
         i = (uint64_t)width * height > T30_START_QP_LARGE_PIXELS;
