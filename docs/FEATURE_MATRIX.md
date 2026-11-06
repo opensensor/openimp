@@ -18,10 +18,10 @@ Rules (machine-readable: `docs/status/release.yaml`). **RC3** is green only if (
 
 Project board status of an open issue (https://github.com/users/Lu-Fi/projects/1): Todo, In progress, **Monitoring** (diagnostics are running, waiting for the next event of the kind), **Waiting** (blocked from outside, for example on test hardware or a measurement setup; the issue says what it waits for, such as a light box A/B), Review, Done. Monitoring and Waiting issues are still open: they keep counting for the gates above.
 
-- **RC3: 🔴 RED** (3 blocking issues)
+- **RC3: 🔴 RED** (5 blocking issues)
   - (a) streamer functions: 🟢 2017 of 2017 cells work, 0 missing
   - (b) no open issue with severity critical or high: 🔴 2 critical, 1 high
-  - (c) no open issue in milestone RC3: 🔴 3 open
+  - (c) no open issue in milestone RC3: 🔴 5 open
 - **Release 1: 🔴 RED** (0 of 8 SoCs reached 14 stable days; image –, soak as of 2026-11-06 06:52)
   - Not started: the 14-day counter starts when RC3 is published (tag pending) and runs only on the image built from that tag.
 
@@ -32,10 +32,12 @@ Project board status of an open issue (https://github.com/users/Lu-Fi/projects/1
   - [#108](https://github.com/Lu-Fi/openimp/issues/108) T23: unexplained reboot on the agg47 image (~4.6 h after flash) (severity critical; milestone RC3)
 - **High (severity:high): 1**
   - [#84](https://github.com/Lu-Fi/openimp/issues/84) [T40] One full vendor-vs-open comparison pass (chart, day, night, CPU) (severity high; milestone RC3)
-- **RC3 milestone: 3**
+- **RC3 milestone: 5**
   - [#84](https://github.com/Lu-Fi/openimp/issues/84) [T40] One full vendor-vs-open comparison pass (chart, day, night, CPU) (severity high; milestone RC3)
   - [#94](https://github.com/Lu-Fi/openimp/issues/94) [T31] T31L watchdog reboot after 52 h without a kernel trace (severity critical; milestone RC3)
   - [#108](https://github.com/Lu-Fi/openimp/issues/108) T23: unexplained reboot on the agg47 image (~4.6 h after flash) (severity critical; milestone RC3)
+  - [#213](https://github.com/Lu-Fi/openimp/issues/213) [T40] Open stack noise worse than vendor at equal brightness: chroma temporal noise 1.9x, SNR 2-4 dB lower (#84) (severity medium; milestone RC3)
+  - [#219](https://github.com/Lu-Fi/openimp/issues/219) [All] Independent Opus code review of eprc T30, FS rotation and T40 AE fix (review 2026-11-06) (severity medium; milestone RC3)
 
 ### RC3: streamer functions that work
 
@@ -296,7 +298,7 @@ Not adopted: OSD edge flush, reference sharing on T10/T20/T31 (not in that SoC's
 | 21 | [Rotation 90°/270°](#21-rotation-90270) | — | — | — | ✅ | ✅+ | ✅ | ? | 📋 | ✅ | ✅ |
 |  | **Video encoder and streams** |  |  |  |  |  |  |  |  |  |  |
 | 22 | [H.264](#22-h264) | ✅ | ✅ | ✅ | ✅+ | ✅ | ✅ | 🔧 | 📋 | ✅ | ✅ |
-| 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | ❌ | ✅ | ? | 📋 | ✅ | ✅ |
+| 23 | [H.265 / HEVC](#23-h265--hevc) | — | — | — | — | 🔧 | ✅ | ? | 📋 | ✅ | ✅ |
 | 24 | [JPEG / MJPEG / snapshot](#24-jpeg--mjpeg--snapshot) | ✅ | ✅ | ✅+ | ✅ | 🔧 | ✅ | 🔧 | 📋 | ✅ | ✅ |
 | 25 | [Sub-stream / scaler (ch1 640×360)](#25-sub-stream--scaler-ch1-640360) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ? | 📋 | ✅ | ✅ |
 | 26 | [Rate-control mode (CBR/VBR/FixQP/Capped*/SMART)](#26-rate-control-mode-cbrvbrfixqpcappedsmart) | ✅+ | ✅ | ✅ | ✅ | 🔧 | ✅ | ? | 📋 | ✅ | ✅ |
@@ -666,7 +668,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T20:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T21:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T23:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
-- **T30:** ❌ not implemented: the T30 build encodes H.264 and JPEG only (the vendor library exports `H265TransCfg` calls, no HEVC encoder in OpenIMP T30)
+- **T30:** 🔧 in progress (#208, claude/t30-h265): Radix encoder (vendor rate control, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; host test of the encoder object); PT_H265 only with OPENIMP_T30_H265=1 until the QEMU and T30X proofs
 - **T31:** ✅ real HEVC on AVPU (VPS/SPS/PPS, CABAC); 2×900 frames, 0 errors
 - **T32:** ? not examined: no T32 hardware yet; the open driver only runs in QEMU and OpenIMP has no T32 build
 - **T33:** 📋 planned, not started: no T33 driver, OpenIMP build or hardware yet (T33L test module ordered)

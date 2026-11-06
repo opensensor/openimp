@@ -81,6 +81,9 @@ static pthread_mutex_t codec_crop_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
+#if defined(PLATFORM_T30)
+#include "t30/radix/t30_radix_encoder.h"
+#endif
 #include "t30/helix_jpeg.h"
 #endif
 #include "t40_ep1.h"
@@ -8581,6 +8584,12 @@ struct AL_CodecEncode {
     uint32_t t30_helix_restarts;   /* re-creations without a good picture */
     int t30_helix_stopped;         /* H.264 output given up */
     uint64_t t30_helix_retry_ms;   /* no create before (CLOCK_MONOTONIC) */
+    /* H.265 on the Radix block (OPENIMP_T30_H265=1, docs/T30_HEVC.md) */
+    T30RadixEncoder *t30_radix;
+    uint32_t t30_radix_width, t30_radix_height;
+    uint32_t t30_radix_restarts;
+    int t30_radix_stopped;
+    uint64_t t30_radix_retry_ms;
 #endif
 #if defined(PLATFORM_T23)
     uint8_t helix_roi[8][7];       /* AL_Codec_Encode_SetRoi (codec_roi_lock) */
@@ -10556,6 +10565,8 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
+    OpenIMP_T30_RadixDestroy(enc->t30_radix);
+    enc->t30_radix = NULL;
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
     if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
@@ -10604,6 +10615,8 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
+    OpenIMP_T30_RadixDestroy(enc->t30_radix);
+    enc->t30_radix = NULL;
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
     /* pairs with OpenIMP_HelixJpeg_Reserve in AL_Codec_Encode_Create */
@@ -11789,6 +11802,62 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
     uint64_t timestamp = codec_frame_capture_timestamp(frame);
 
 #if defined(PLATFORM_T30)
+    if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_HEVC) {
+        /* H.265 on Radix (CreateChn lets it through only with
+         * OPENIMP_T30_H265=1): created at the first picture for its size,
+         * re-created after failures like the Helix encoder */
+        if (enc->t30_radix_stopped) {
+            codec_set_error(enc, -1);
+            return -1;
+        }
+        if (enc->t30_radix && (enc->t30_radix_width != width ||
+                               enc->t30_radix_height != height)) {
+            OpenIMP_T30_RadixDestroy(enc->t30_radix);
+            enc->t30_radix = NULL;
+        }
+        if (!enc->t30_radix) {
+            struct timespec ts;
+            uint64_t now_ms;
+            HWEncoderParams hp = enc->hw_params;
+
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            now_ms = (uint64_t)ts.tv_sec * 1000u +
+                     (uint64_t)ts.tv_nsec / 1000000u;
+            hp.width = width;
+            hp.height = height;
+            if (now_ms < enc->t30_radix_retry_ms ||
+                OpenIMP_T30_RadixCreate(&enc->t30_radix, &hp) != 0) {
+                enc->t30_radix = NULL;
+                if (now_ms >= enc->t30_radix_retry_ms)
+                    enc->t30_radix_retry_ms = now_ms + T30_HELIX_RETRY_MS;
+                codec_set_error(enc, -1);
+                return -1;
+            }
+            enc->t30_radix_width = width;
+            enc->t30_radix_height = height;
+            enc->use_hardware = 3;
+        }
+        if (__sync_lock_test_and_set(&enc->force_next_idr, 0))
+            OpenIMP_T30_RadixRequestIDR(enc->t30_radix);
+        if (OpenIMP_T30_RadixEncode(enc->t30_radix,
+                                    (const IMPFrameInfo *)frame,
+                                    &hw_stream) != 0) {
+            if (OpenIMP_T30_RadixFailures(enc->t30_radix) >= T30_HELIX_MAX_FAILURES) {
+                OpenIMP_T30_RadixDestroy(enc->t30_radix);
+                enc->t30_radix = NULL;
+                if (++enc->t30_radix_restarts > T30_HELIX_MAX_RESTARTS) {
+                    enc->t30_radix_stopped = 1;
+                    IMP_LOG_ERR("Encoder", "channel %d: Radix failures after %u "
+                                "re-creations, stopping this channel's H.265 output",
+                                enc->channel_id - 1, T30_HELIX_MAX_RESTARTS);
+                }
+            }
+            codec_set_error(enc, -1);
+            return -1;
+        }
+        enc->t30_radix_restarts = 0;
+        goto queue_encoded_stream;
+    }
     if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_AVC) {
         if (enc->t30_helix_stopped) {
             codec_set_error(enc, -1);

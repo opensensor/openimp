@@ -1,7 +1,8 @@
 # T30 H.265 (HEVC): Radix encoder (work in progress, #208)
 
-Status 2026-11-05: `IMP_Encoder_CreateChn(PT_H265)` on T30 still returns -1 (as before). This page describes the
-hardware path and what of it is in the tree.
+Status 2026-11-06: `IMP_Encoder_CreateChn(PT_H265)` on T30 returns -1 unless `OPENIMP_T30_H265=1` is set; with it the
+channel encodes on Radix (`src/t30/radix/t30_radix_encoder.c`), not yet proven in QEMU or on a T30X. This page describes
+the hardware path and what of it is in the tree.
 
 ## Hardware and kernel
 
@@ -33,6 +34,8 @@ Like the vendor libimp 1.0.5 (an x265-derived encoder, "i265e"):
 | `src/t30/radix/t30_radix_hevc.c/.h` | VPS, SPS (with VUI/HRD), PPS and slice header RBSP writers and the NAL framing (start code, emulation prevention) |
 | `tests/t30/radix/radix_cabac_test.c`, `radix_hevc_test.c` | host tests against vendor hashes (`make -C tests/t30 check`) |
 | `tests/t30/radix/hevc_diff.c` | desk tool: CABAC, header writers and NAL framing against the vendor functions under qemu-mipsel |
+| `src/t30/radix/t30_radix_encoder.c/.h` | the encoder object: soc_vpu channel (codec direction 0x10, vpu_id 0x4000001), command list, NV12 reconstruction/reference pair with the vendor's 16-sample border, bitstream window, `EPRC30_*` (codec 1) for QP, parameter block and QP map, the 19 statistics registers, re-encode, VPS/SPS/PPS + slice NAL as `sliceEncap` |
+| `tests/t30/radix_encoder_test.c` | host test of the encoder object with a fake soc_vpu (access units, NAL types, emulation prevention, GOP, reference swap, failure path) |
 | `t30_hevc_channel_params()` (`t30_radix_hevc.c`) | the VPS/SPS/PPS values the vendor announces for a channel (size, frame rate, RC mode, bit rate) |
 | `tests/t30/radix/hevc_cfg_diff.c`, `radix_hevc_chan_test.c` | desk tool (vendor `IMP_Encoder_CreateChn`/`I265e` setup + `codeVPS/SPS/PPS` under qemu-mipsel, 5000 random channels, 0 differ) and host test (500 channels, vendor hash) |
 | `tests/t30/radix/radix_diff.c` | desk tool: compares the builder with the vendor function under qemu-mipsel (`make -C tests/t30 radix-diff O=<thingino output> VENDOR_LIBIMP=<libimp.so> QEMU_MIPSEL=<qemu-mipsel>`) |

@@ -1339,6 +1339,13 @@ static uint32_t p2_fill_legacy_packs(P2EncoderChannel *channel,
         pack->virAddr = raw->virt_addr + begin;
         pack->length = next - begin;
         pack->timestamp = timestamp;
+#if defined(PLATFORM_T30)
+        if (channel->codec_type == IMP_ENC_TYPE_HEVC)
+            pack->dataType.h265Type = nal_header < raw->length
+                ? (IMPEncoderH265NaluType)((data[nal_header] >> 1) & 0x3fu)
+                : IMP_H265_NAL_INVALID;
+        else
+#endif
         pack->dataType.h264Type = nal_header < raw->length
             ? (IMPEncoderH264NaluType)(data[nal_header] & 0x1fu)
             : IMP_H264_NAL_UNKNOWN;
@@ -2383,7 +2390,13 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
 
 #if !defined(PLATFORM_T31) && !defined(PLATFORM_T40) && \
     !defined(PLATFORM_T41)
-    if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC) {
+    if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC
+#if defined(PLATFORM_T30)
+        /* T30: the Radix encoder (src/t30/radix) until its device proof
+         * only with OPENIMP_T30_H265=1 */
+        && !(getenv("OPENIMP_T30_H265") && getenv("OPENIMP_T30_H265")[0] == '1')
+#endif
+        ) {
         /* Only the T31, T40 and T41 AVPU backends encode HEVC
          * (docs/T31_HEVC.md, t41_command_builder.c); the
          * other backends (native and OEM Helix, software) are H.264/JPEG
@@ -4091,6 +4104,11 @@ int IMP_Encoder_GetStream(int channel, IMPEncoderStream *stream, int block)
 #elif defined(PLATFORM_T31)
         /* HEVC NAL headers are not H.264 ones; the AVPU codec marks its
          * IDR access units itself. */
+        (ch->codec_type == IMP_ENC_TYPE_HEVC
+            ? raw->frame_type == 0u
+            : p2_h264_stream_is_idr(
+                  (const uint8_t *)(uintptr_t)raw->virt_addr, raw->length));
+#elif defined(PLATFORM_T30)
         (ch->codec_type == IMP_ENC_TYPE_HEVC
             ? raw->frame_type == 0u
             : p2_h264_stream_is_idr(

@@ -126,6 +126,11 @@ compile t30_rate_control src/t40/t31_rate_control.c -Werror
 # the emulator comparison models MIPS32r2 madd.fmt as unfused
 compile t30_eprc src/eprc/eprc_t30.c $hot_flags -Werror -ffp-contract=off -fwrapv
 compile t30_helix_jpeg src/t30/helix_jpeg.c -Werror
+# H.265 on Radix (docs/T30_HEVC.md), CreateChn(PT_H265) only with OPENIMP_T30_H265=1
+compile t30_radix_encoder src/t30/radix/t30_radix_encoder.c -Werror
+compile t30_radix_cmdlist src/t30/radix/t30_radix_cmdlist.c -Werror
+compile t30_radix_cabac src/t30/radix/t30_radix_cabac.c -Werror
+compile t30_radix_hevc src/t30/radix/t30_radix_hevc.c -Werror
 # Audio: the T21 path (src/t31/openimp_t31_audio.c without PLATFORM_T23).
 # The ingenic-sdk T21 and T30 oss2/oss3 audio drivers are byte-identical.
 compile t30_audio src/t31/openimp_t31_audio.c -Werror
@@ -183,6 +188,10 @@ compile t30_dmic src/t31/openimp_t31_dmic.c -Werror
     "$output_dir/t30_rate_control.o" \
     "$output_dir/t30_eprc.o" \
     "$output_dir/t30_helix_jpeg.o" \
+    "$output_dir/t30_radix_encoder.o" \
+    "$output_dir/t30_radix_cmdlist.o" \
+    "$output_dir/t30_radix_cabac.o" \
+    "$output_dir/t30_radix_hevc.o" \
     "$output_dir/t30_audio.o" \
     "$output_dir/openimp_aec.o" \
     "$output_dir/audio_codec.o" \

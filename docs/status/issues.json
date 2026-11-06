@@ -1405,7 +1405,7 @@
   {
    "number": 85,
    "title": "[T40] Remaining lifted OEM chains to clean C (module size toward the vendor)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/85",
    "labels": [
     "area:Driver",
@@ -2080,7 +2080,7 @@
   {
    "number": 125,
    "title": "T41: real ISP bypass needs the VIC frame-channel (MDMA) capture path",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/125",
    "labels": [
     "area:ISP",
@@ -2145,7 +2145,7 @@
   {
    "number": 129,
    "title": "T10/T20/T21/T23/T31: real ISP bypass (SetISPBypass DISABLE) is not supported",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/129",
    "labels": [
     "area:ISP",
@@ -2854,7 +2854,7 @@
   {
    "number": 191,
    "title": "Helix vs VPU picture-size and RD parity on T10/T20 (HSkip second-try rate)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/191",
    "labels": [],
    "created": "2026-11-02T14:23:37Z",
@@ -2874,7 +2874,7 @@
   {
    "number": 193,
    "title": "T40 lifted code: lost call arguments (ARITY) still present on next (from old #140)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/193",
    "labels": [],
    "created": "2026-11-02T19:33:31Z",
@@ -2937,7 +2937,7 @@
   {
    "number": 199,
    "title": "T40 lifted code: 8 unresolved jalr call sites call a no-op instead of the OEM subdev op",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/199",
    "labels": [],
    "created": "2026-11-03T01:39:19Z",
@@ -2958,6 +2958,144 @@
    "created": "2026-11-03T05:18:13Z",
    "closed": null,
    "milestone": null
+  },
+  {
+   "number": 202,
+   "title": "[T30] open-tx-isp: AE sticks at the minimum and AWB gains differ from the vendor stack",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/202",
+   "labels": [
+    "area:AE-AWB",
+    "prio:release-gate",
+    "repo:open-tx-isp",
+    "soc:T30",
+    "type:bug"
+   ],
+   "created": "2026-11-03T14:34:06Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 204,
+   "title": "[T40] #85 leftovers: lifted twin sources, AE classes C/D, vendor gamma and WDR EV updates",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/204",
+   "labels": [
+    "area:Driver",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "soc:T40",
+    "type:gap"
+   ],
+   "created": "2026-11-03T16:06:34Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 207,
+   "title": "[T23] ISP picture OSD is placed at the mirrored position when the ISP hflip/vflip is on (draw and mask blocks are not)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/207",
+   "labels": [
+    "area:OSD",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "repo:openimp",
+    "severity:low",
+    "soc:T23",
+    "type:bug"
+   ],
+   "created": "2026-11-04T15:01:48Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 208,
+   "title": "[T30] H.265 / HEVC encoder (hardware supports it, OpenIMP T30 encodes H.264 and JPEG only)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/208",
+   "labels": [
+    "area:Encoder",
+    "prio:long-term",
+    "repo:openimp",
+    "severity:low",
+    "soc:T30",
+    "type:gap"
+   ],
+   "created": "2026-11-05T17:07:03Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 213,
+   "title": "[T40] Open stack noise worse than vendor at equal brightness: chroma temporal noise 1.9x, SNR 2-4 dB lower (#84)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/213",
+   "labels": [
+    "area:ISP",
+    "prio:streamer",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "soc:T40",
+    "type:gap"
+   ],
+   "created": "2026-11-05T22:30:47Z",
+   "closed": null,
+   "milestone": "RC3"
+  },
+  {
+   "number": 216,
+   "title": "[T30] CBR first-second overshoot with the OEM controller: A/B against the vendor lib",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/216",
+   "labels": [],
+   "created": "2026-11-06T04:56:55Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 217,
+   "title": "[T30] eprc: macroblock-level fields of h264_get_mb_qp and their Helix registers",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/217",
+   "labels": [],
+   "created": "2026-11-06T04:56:56Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 218,
+   "title": "[T30] ISP bypass graph (RAW channel on the core DMA writer): branches claude/t30-bypass-graph (OpenIMP 1c7c3b61, open-tx-isp 7cb3c761) unmerged",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/218",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T30",
+    "type:gap"
+   ],
+   "created": "2026-11-06T06:52:27Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 219,
+   "title": "[All] Independent Opus code review of eprc T30, FS rotation and T40 AE fix (review 2026-11-06)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/219",
+   "labels": [
+    "area:Encoder",
+    "prio:streamer",
+    "repo:openimp",
+    "severity:medium",
+    "soc:T30",
+    "type:gap"
+   ],
+   "created": "2026-11-06T07:27:11Z",
+   "closed": null,
+   "milestone": "RC3"
   }
  ]
 }

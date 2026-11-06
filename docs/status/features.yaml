@@ -901,8 +901,9 @@ features:
       sym: —
       text: '— no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]'
     T30:
-      sym: ❌
-      text: 'not implemented: the T30 build encodes H.264 and JPEG only (the vendor library exports `H265TransCfg` calls, no HEVC encoder in OpenIMP T30)'
+      sym: 🔧
+      text: 'in progress (#208, claude/t30-h265): Radix encoder (vendor rate control, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; host test of the encoder object); PT_H265 only with OPENIMP_T30_H265=1 until the QEMU and T30X proofs'
+      issues: [208]
     T31:
       sym: ✅
       text: real HEVC on AVPU (VPS/SPS/PPS, CABAC); 2×900 frames, 0 errors

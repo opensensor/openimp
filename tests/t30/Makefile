@@ -315,6 +315,15 @@ radix_cabac_test: radix/radix_cabac_test.c $(ROOT)/src/t30/radix/t30_radix_cabac
 radix_hevc_test: radix/radix_hevc_test.c radix/hevc_case.h $(ROOT)/src/t30/radix/t30_radix_hevc.c $(ROOT)/src/t30/radix/t30_radix_hevc.h
 	$(CC) $(CFLAGS) -I$(ROOT)/src -Iradix -o $@ radix/radix_hevc_test.c $(ROOT)/src/t30/radix/t30_radix_hevc.c -lm
 
+RADIX_ENCODER_SOURCES := radix_encoder_test.c $(ROOT)/src/t30/radix/t30_radix_encoder.c \
+	$(ROOT)/src/t30/radix/t30_radix_hevc.c $(ROOT)/src/t30/radix/t30_radix_cabac.c \
+	$(ROOT)/src/t30/radix/t30_radix_cmdlist.c $(ROOT)/src/eprc/eprc_t30.c
+
+radix_encoder_test: $(RADIX_ENCODER_SOURCES) $(ROOT)/src/t30/radix/t30_radix_encoder.h
+	$(CC) $(CFLAGS) -DPLATFORM_T30 -fno-pie -no-pie -fwrapv -ffp-contract=off \
+		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=open,--wrap=close,--wrap=ioctl \
+		$(RADIX_ENCODER_SOURCES) $(ROOT)/src/core/imp_log_emit.c -o $@ -lm
+
 radix_hevc_chan_test: radix/radix_hevc_chan_test.c radix/hevc_chan_case.h $(ROOT)/src/t30/radix/t30_radix_hevc.c $(ROOT)/src/t30/radix/t30_radix_hevc.h
 	$(CC) $(CFLAGS) -I$(ROOT)/src -Iradix -o $@ radix/radix_hevc_chan_test.c $(ROOT)/src/t30/radix/t30_radix_hevc.c -lm
 
@@ -343,11 +352,12 @@ check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test 
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 fs_lifecycle_test_t30 \
 	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
 	p2_gap_test_t21 p2_gap_test_t20 osd_attach_test isp_gap_test_t21 isp_gap_test_t20 \
-	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test radix_cmdlist_test radix_cabac_test radix_hevc_test radix_hevc_chan_test
+	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test radix_cmdlist_test radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test
 	./radix_cmdlist_test
 	./radix_cabac_test
 	./radix_hevc_test
 	./radix_hevc_chan_test
+	./radix_encoder_test
 	./isp_t1x_test_t20
 	./isp_t1x_test_t21
 	./isp_t31_movestate_test
@@ -463,7 +473,7 @@ dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c
 		-o $@ dmic_t30_test.c -pthread -ldl
 
 clean:
-	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_hevc_headers.265 hevc_diff hevc_cfg_diff
+	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test radix_hevc_headers.265 hevc_diff hevc_cfg_diff
 	$(RM) p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	$(RM) isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test isp_t1x_test_t20 isp_t1x_test_t21 p2_t1x_test_t20 p2_t1x_test_t21
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
