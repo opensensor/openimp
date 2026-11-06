@@ -1244,10 +1244,233 @@ static void e30_api_enc265(Eprc30 *rc)
     memset(b + 0x177, 0, 0x80);
 }
 
-/* h265_get_lcu_qp (0x12ef6c): not ported yet. */
+static uint32_t e30_f2u(double v)
+{
+    return v < 2147483648.0 ? (uint32_t)e30_trunc_w(v)
+                            : (uint32_t)e30_trunc_w(v - 2147483648.0) | 0x80000000u;
+}
+
+static float e30_u2f(uint32_t v)
+{
+    return (float)(double)v;
+}
+
+/* One byte of the QP map, MSB first within the 32-bit word. */
+static void e30_mi_put(uint8_t *m, int32_t pos, uint8_t v)
+{
+    m[(pos & ~3) + 3 - (pos & 3)] |= v;
+}
+
+/* rc_h265_qpg_lcu_qp_tab (0x12cdc0): the per-CU QP offsets (16 per 64x64
+ * block, the table at S+912 = E+600) run-length coded into the QP map
+ * S+1316 (E+140, A+212 bytes), its length in words to S+1312.  The offsets
+ * come from A+229 / A+230 (E+148 / 149), which are 0 in every
+ * configuration set up here: the table is all zero. */
+static void e30_qpg(Eprc30 *rc)
+{
+    uint8_t *A = rc->blk;
+    uint8_t *S = rc->blk + 0x120;
+    int8_t *q = (int8_t *)rc->x;
+    uint8_t *m = rc->qpmap;
+    int32_t n = A32(224) * 16, pos, run, i;
+
+    S8(1308) = 1;
+    if (m == NULL) {
+        S8(1308) = 0;
+        return;
+    }
+    memset(m, 0, AU32(212));
+    memset(q, 0, AU32(224) * 16u);
+    if (n <= 0) {
+        S32(1312) = 0;
+        return;
+    }
+    e30_mi_put(m, 0, (uint8_t)q[0] | 0xc0);
+    pos = 1;
+    run = 0;
+    if (n == 2 && q[1] == q[0]) {
+        pos = 2;
+        n = 1;
+    }
+    for (i = 1; i < n; i++) {
+        if (q[i] == q[i - 1]) {
+            if (i == n - 1) {
+                e30_mi_put(m, pos++, (uint8_t)run);
+                if (run + 1 == 128) {
+                    e30_mi_put(m, pos++, (uint8_t)run);
+                    run = 0;
+                } else {
+                    run++;
+                }
+            } else if (run + 1 == 128) {
+                e30_mi_put(m, pos++, (uint8_t)run);
+                run = 0;
+            } else {
+                run++;
+            }
+        } else {
+            if (run != 0)
+                e30_mi_put(m, pos++, (uint8_t)(run - 1));
+            e30_mi_put(m, pos++, (uint8_t)q[i] | 0xc0);
+            run = 0;
+        }
+    }
+    S32(1312) = (pos + 3) >> 2;
+}
+
+/* The SAS classes of h265_get_lcu_qp (0x12ee28): x the share of the
+ * flat 16x16 (32x32) blocks in percent, y / z the two neighbouring ones. */
+static int32_t e30_sas_class(float x, float y, float z)
+{
+    static const float lim[6] = {22.0f, 32.0f, 42.0f, 52.0f, 62.0f, 72.0f};
+    static const float thr[6] = {60.0f, 50.0f, 40.0f, 30.0f, 25.0f, 20.0f};
+    int32_t i;
+
+    for (i = 0; i < 6; i++)
+        if (x < lim[i])
+            return thr[i] < y ? 3 * i + 1 : thr[i] < z ? 3 * i + 2 : 3 * i + 3;
+    return x < 82.0f ? 19 : x < 92.0f ? 20 : 0;
+}
+
+/* rodata of h265_get_lcu_qp: the SAS parameter rows (PTR-0xcb4 / -0xc20,
+ * 7 bytes each), the thresholds copied to the parameter block (PTR-0xdcc,
+ * -0xdc0, -0xdec, -0xddc, u16) and the basic-unit factors (PTR-0xdb4). */
+static const int8_t e30_sas16[21][7] = {
+    {0, 0, 0, 0, 0, 0, 0}, {-6, -4, -2, 0, 1, 1, 1}, {-6, -4, -2, 0, 0, 1, 2},
+    {-6, -4, -2, 0, 1, 1, 1}, {-5, -3, -1, 0, 2, 2, 2}, {-5, -3, -1, 0, 1, 2, 2},
+    {-5, -3, -1, 0, 1, 2, 3}, {-5, -3, -1, 0, 1, 2, 3}, {-5, -3, -1, 0, 1, 2, 3},
+    {-5, -3, -1, 0, 1, 2, 3}, {-5, -3, -1, 1, 2, 3, 4}, {-5, -3, -1, 1, 2, 3, 4},
+    {-5, -3, -1, 1, 2, 3, 4}, {-6, -4, -1, 1, 2, 3, 5}, {-6, -4, -1, 1, 2, 3, 5},
+    {-6, -4, -1, 1, 2, 4, 5}, {-6, -4, -1, 1, 3, 4, 6}, {-6, -4, -1, 1, 2, 4, 7},
+    {-6, -4, -1, 1, 2, 4, 7}, {-6, -4, -2, 1, 3, 5, 7}, {-6, -4, -2, 1, 3, 6, 8},
+};
+static const int8_t e30_sas32[21][7] = {
+    {0, 0, 0, 0, 0, 0, 0}, {-6, -4, -2, 0, 1, 1, 1}, {-6, -4, -2, 0, 0, 1, 2},
+    {-6, -4, -2, 0, 1, 1, 1}, {-5, -3, -1, 0, 2, 2, 2}, {-5, -3, -1, 0, 1, 2, 2},
+    {-5, -3, -1, 0, 1, 2, 3}, {-5, -3, -1, 0, 1, 2, 3}, {-5, -3, -1, 0, 1, 2, 3},
+    {-5, -3, -1, 0, 1, 2, 3}, {-5, -3, -1, 1, 2, 3, 4}, {-5, -3, -1, 1, 1, 3, 4},
+    {-5, -3, -1, 1, 1, 3, 4}, {-6, -4, -1, 1, 2, 3, 5}, {-6, -4, -1, 1, 1, 3, 5},
+    {-6, -4, -1, 1, 2, 4, 5}, {-6, -4, -1, 1, 3, 4, 6}, {-6, -4, -1, 1, 2, 4, 7},
+    {-6, -4, -1, 1, 2, 4, 7}, {-6, -4, -2, 1, 3, 5, 7}, {-6, -4, -2, 1, 3, 5, 8},
+};
+static const uint16_t e30_lcu_t234[6] = {150, 300, 400, 1000, 2000, 4000};
+static const uint16_t e30_lcu_t246[6] = {600, 1200, 1600, 4000, 8000, 16000};
+static const uint16_t e30_lcu_t186[7] = {300, 600, 1000, 1500, 2500, 5000, 10000};
+static const uint16_t e30_lcu_t200[7] = {1200, 2400, 4000, 6000, 10000, 20000, 40000};
+static const float e30_bu_fac[5][4] = {
+    {0.5f, 1.0f, 2.0f, 2.5f}, {1.0f, 2.0f, 3.0f, 3.5f}, {1.5f, 2.5f, 3.5f, 4.0f},
+    {2.0f, 3.0f, 4.0f, 4.5f}, {2.5f, 3.5f, 4.5f, 5.0f},
+};
+
+static void e30_put_u16s(uint8_t *b, const uint16_t *v, int n)
+{
+    int i;
+
+    for (i = 0; i < n; i++)
+        EU16(b, 2 * i) = v[i];
+}
+
+/* h265_get_lcu_qp (0x12df54): the CU QP map and the adaptive-QP fields of
+ * the parameter block.  A+152 (E+28) is 0x232, 0x230 or 0 on the T30:
+ * nibble 0 the QP map (2: rc_h265_qpg_lcu_qp_tab, 0: none), nibble 1 the
+ * SAS classes (3: by the flat-block shares, 0: off), nibble 2 the basic
+ * unit (2: the A+172 factors, 0: fixed).  The other values (QP-map 1 / 3,
+ * SAS 1 / 2) are not set by the T30 i265e and not ported. */
 static void e30_lcu_qp(Eprc30 *rc)
 {
-    (void)rc;
+    uint8_t *A = rc->blk;
+    uint8_t *S = rc->blk + 0x120;
+    uint8_t *b = rc->slice;
+    uint32_t cfg = AU32(152), n0 = cfg & 15u, n1 = (cfg >> 4) & 15u, n2 = (cfg >> 8) & 15u;
+    uint32_t d, r;
+    int32_t q, k;
+
+    b[173] = (uint8_t)cfg;
+    if (n0 == 2) {
+        e30_qpg(rc);
+    } else if (n0 == 0) {
+        S8(1308) = 0;
+        S32(1312) = 0;
+        if (rc->qpmap != NULL)
+            memset(rc->qpmap, 0, AU32(212));
+        memset(S + 2020, 0, 112);
+    }
+    if (n1 == 0) {
+        memset(S + 2132, 0, 40);
+        memset(S + 2172, 0, 35);
+    } else if (n1 == 3) {
+        int32_t w = A32(36), h = A32(40);
+        float n16 = (float)(((w + 15) >> 4) * ((h + 15) >> 4));
+        float n32 = (float)(((w + 31) >> 5) * ((h + 31) >> 5));
+        float x16 = e30_u2f(SU32(1968)) * 100.0f / n16;
+        float x32 = e30_u2f(SU32(1956)) * 100.0f / n32;
+        int32_t low = SS8(80) < 25;
+        int32_t c16 = 0, c32 = 0;
+
+        if (!(x16 < 12.0f || 92.0f <= x16 || low))
+            c16 = e30_sas_class(x16, e30_u2f(SU32(1972)) * 100.0f / n16,
+                                e30_u2f(SU32(1976)) * 100.0f / n16);
+        memcpy(S + 2186, e30_sas16[c16], 7);
+        if (!(x32 < 12.0f || 92.0f <= x32 || low))
+            c32 = e30_sas_class(x32, e30_u2f(SU32(1960)) * 100.0f / n32,
+                                e30_u2f(SU32(1964)) * 100.0f / n32);
+        memcpy(S + 2179, e30_sas32[c32], 7);
+    }
+    /* 0x12e1bc */
+    b[178] = S8(1308);
+    EU16(b, 176) = (uint16_t)S32(1312);
+    EU32(b, 180) = SU32(1316);
+    memcpy(b + 59, S + 2020, 112);
+    if (S32(0) == 0) {
+        memset(b + 214, 0, 16);
+        memset(b + 258, 0, 14);
+        b[503] = 0;
+        return;
+    }
+    if (n1 == 0 || n1 == 2 || n1 == 3) {
+        b[184] = 0;
+        if (n1 == 0) {
+            memset(b + 230, 0, 4);
+            e30_put_u16s(b + 186, e30_lcu_t186, 7);
+            e30_put_u16s(b + 200, e30_lcu_t200, 7);
+            memcpy(b + 214, S + 2148, 8);
+            memcpy(b + 222, S + 2140, 8);
+        }
+        e30_put_u16s(b + 234, e30_lcu_t234, 6);
+        e30_put_u16s(b + 246, e30_lcu_t246, 6);
+        memcpy(b + 258, S + 2186, 7);
+        memcpy(b + 265, S + 2179, 7);
+    }
+    b[503] = 0;
+    if (n2 != 0 && !(n2 < 4 && S32(188) > 0))
+        return;
+    if (n2 != 0)
+        b[503] = 1;
+    d = AU32(216) & 0xffu;
+    if (d == 0)
+        d = 1;
+    b[504] = (uint8_t)d;
+    b[506] = 1;
+    r = (AU32(224) / d) & 0xffu;
+    b[505] = (uint8_t)r;
+    if (r == 0) {
+        b[505] = 1;
+        r = 1;
+    }
+    q = S32(188) / (int32_t)r;
+    if (n2 == 0) {
+        EU16(b, 508) = (uint16_t)e30_f2u((double)q * 1.5);
+        EU16(b, 510) = (uint16_t)e30_f2u((double)q * 2.5);
+        EU16(b, 512) = (uint16_t)e30_f2u((double)q * 3.5);
+        EU16(b, 514) = (uint16_t)(q << 2);
+    } else {
+        const float *f = e30_bu_fac[AS8(172)];
+
+        for (k = 0; k < 4; k++)
+            EU16(b, 508 + 2 * k) = (uint16_t)e30_f2u((double)((float)q * f[k]));
+    }
+    for (k = 0; k < 128; k++)
+        EI32(b, 516 + 4 * k) = (k + 1) * q;
 }
 
 /* The RD-model picture QP of FRAME_START (0x134d18). */
@@ -1540,12 +1763,24 @@ store_pos:
     if (EU32(e, 12) == 1) {
         S32(32) = EI32(e, 0x218);
         S32(24) = EI32(e, 0x210);
+        S32(1316) = EI32(e, 140);
         e30_api_enc265(rc);
         e30_lcu_qp(rc);
         return;
     }
     e30_api_enc(rc);
     e30_mb_qp(rc);
+}
+
+uint32_t EPRC30_QpMapSize(const Eprc30 *rc)
+{
+    return EU32(rc->e, 144);
+}
+
+void EPRC30_SetQpMap(Eprc30 *rc, uint8_t *map, uint32_t phys)
+{
+    rc->qpmap = map;
+    EU32(rc->e, 140) = map != NULL ? phys : 0;
 }
 
 int EPRC30_FrameStart(Eprc30 *rc, int idr, EprcPicture *pic)
@@ -1570,17 +1805,6 @@ static const int32_t e30_tab398[108] = {              /* -0x398: [t9 0..2][t1 0.
     0, 0, 0, 0, 0, 0, 3, 2, 2, 2, 1, 1, 4, 4, 3, 3, 2, 2 };
 static const int32_t e30_tab1e8[10] = { 1000, 200, 100, 80, 60, 40, 30, 20, 10, 5 };
 static const float e30_motion_lvls[4] = { 0.8f, 5.0f, 32.0f, 80.0f }; /* 0x1a0000 - 0x7668 */
-
-static uint32_t e30_f2u(double v)
-{
-    return v < 2147483648.0 ? (uint32_t)e30_trunc_w(v)
-                            : (uint32_t)e30_trunc_w(v - 2147483648.0) | 0x80000000u;
-}
-
-static float e30_u2f(uint32_t v)
-{
-    return (float)(double)v;
-}
 
 /* scene_judge_enc_frame (0x12853c): the picture class S+884. */
 static void e30_scene_judge(uint8_t *A, uint8_t *S)

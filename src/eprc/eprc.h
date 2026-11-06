@@ -202,6 +202,8 @@ typedef struct Eprc30 {
                                  * block) and E+576 (4 bytes per macroblock row) */
     uint8_t *slice;             /* slice-parameter block (E+564), zeroed by
                                  * the caller, EPRC30_SLICE_SIZE bytes */
+    uint8_t *qpmap;             /* H.265 CU QP map (E+140), EPRC30_QpMapSize
+                                 * bytes, NULL: none */
 } Eprc30;
 
 /* The 25 Helix registers the OEM T30 encoder reads after each picture
@@ -213,6 +215,10 @@ int EPRC30_Init(Eprc30 *rc, const EprcParams *params, uint8_t *slice);
 void EPRC30_Free(Eprc30 *rc);
 /* idr: the picture is an IDR (the T30 i264e codes one every GOP). */
 int EPRC30_FrameStart(Eprc30 *rc, int idr, EprcPicture *pic);
+/* H.265: the CU QP map the encoder reads (written by FrameStart, its
+ * address phys in the parameter block). */
+uint32_t EPRC30_QpMapSize(const Eprc30 *rc);
+void EPRC30_SetQpMap(Eprc30 *rc, uint8_t *map, uint32_t phys);
 /* The coded size in bytes, the 25 statistics registers and the channel's
  * cmpx word.  Returns 1 when the picture is to be coded again with pic
  * (FRAME_REPEATE_JUDGE_T30; may_repeat 0 skips it), else 0. */
