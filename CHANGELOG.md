@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T30: opt-in start QP for the first IDR (#216, extra beyond vendor, device proof pending, default off)
+
+- `OPENIMP_T30_START_QP` (unset or `vendor` = exactly the vendor start QP 26, unchanged): `auto` derives the first IDR's QP from bits per pixel (`src/t30/t30_start_qp.h`, table from the b39 T30X steady-state QPs, 26 from 0.087 bpp upwards), an integer 10..51 is used as is, anything else falls back to vendor. Aim: the first 2 s window of a high-resolution CBR (2048x1536 25 fps, 2000 kbit/s: 6.6 Mbit/s with the vendor QP 26). Host tests in `helix_encoder_test`; no device run yet, the vendor A/B of the first window is planned (audit b41).
+
 ## 2026-11-06, T30: H.265 on Radix - encoder, silicon run b40, run-time changes (#208, branch `claude/t30-h265`, device proof pending)
 
 - `IMP_Encoder_CreateChn(PT_H265)` on T30 encodes on Radix (`src/t30/radix/t30_radix_encoder.c`) **by default** (T30X proof b41, 2026-11-06: 1080p25/1080p15/720p25 CBR 2000 within 0.1-2.4 % of the stock vendor, 2048x1536 works where the vendor delivers nothing, H.265 + H.264 in one process and three restarts decode clean, 0 errors); `OPENIMP_T30_H265=0` turns it off (-1 as before). New capability marker `int OpenIMP_Cap_H265` (1 = available, 0 when the env disables it) for streamers. Rate control, parameter sets, command list, CABAC init and NAL framing are bit-exact against the vendor libimp 1.0.5 on the desk (docs/T30_HEVC.md).
