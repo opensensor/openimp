@@ -33,6 +33,9 @@
 #include "t30/t30_annexb.h"
 #include "t30/t30_h264_level.h"
 #include "t30/t30_start_qp.h"
+#if defined(PLATFORM_T30)
+#include "t30/t30_black_start.h"
+#endif
 #if defined(PLATFORM_T23)
 #include "t30/t23_helix_bs.h"
 #endif
@@ -371,6 +374,16 @@ struct T30HelixEncoder {
     uint32_t eprc30_stats_seconds;          /* OPENIMP_T30_EPRC_STATS */
     uint32_t eprc30_frames, eprc30_idrs;
     uint64_t eprc30_bytes, eprc30_qp_sum[2];
+    /* OPENIMP_T30_BLACK_START (t30_black_start.h): black pictures until the
+     * ISP picture settled; black is the NV12 black picture, bs_now says
+     * that this picture is coded from it */
+    T30BlackStart bs;
+    IMPDMABufferInfo black;
+    int bs_now;
+    /* OPENIMP_T30_START_FLOOR: pictures left with the start QP floor in the
+     * controller, and the controller's own P/IDR min QP to restore */
+    uint32_t eprc30_floor_left;
+    uint8_t eprc30_min_p, eprc30_min_i;
 #endif
 #if defined(PLATFORM_T20)
     int t10;                    /* T10 NVPU: T10 command list, padded refs */
@@ -999,6 +1012,14 @@ static void t30_fill_slice(T30HelixEncoder *encoder,
 #if !defined(PLATFORM_T23)
     if (encoder->grey.phys_addr)
         slice->raw[1] = encoder->grey.phys_addr;
+#endif
+#if defined(PLATFORM_T30)
+    if (encoder->bs_now) {      /* OPENIMP_T30_BLACK_START */
+        slice->raw[0] = encoder->black.phys_addr;
+        slice->raw[1] = encoder->black.phys_addr +
+                        (uint32_t)encoder->params.width *
+                        (uint32_t)encoder->sps.i_mb_height * 16u;
+    }
 #endif
     if (!idr) {
 #if defined(HELIX_HSKIP)
@@ -2362,7 +2383,8 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
     p.min_qp = t30_eprc_clip(encoder->eprc30_min_qp, 0, (int32_t)p.max_qp);
     p.bitrate = hp->bitrate / 1000u;
     p.max_bitrate = hp->bitrate / 1000u < 128u ? 128u : hp->bitrate / 1000u;
-    /* OpenIMP extra, default auto (OPENIMP_T30_START_QP=vendor: vendor start QP) */
+    /* OpenIMP extra, default auto in every mode (OPENIMP_T30_START_QP=vendor:
+     * the vendor start QP 26) */
     p.init_qp = t30_start_qp(getenv("OPENIMP_T30_START_QP"), hp->width,
                              hp->height, hp->fps_num, hp->fps_den,
                              hp->bitrate / 1000u);
@@ -2390,6 +2412,29 @@ static void t30_eprc_start(T30HelixEncoder *encoder)
     if (p.init_qp > 0)
         IMP_LOG_INFO("Encoder", "T30 eprc: start QP %d (OPENIMP_T30_START_QP, "
                      "OpenIMP extra)", p.init_qp);
+    /* OPENIMP_T30_START_FLOOR (default on, "0" off; OpenIMP extra, #216
+     * b45): for the first GOP after a controller start with a start QP the
+     * controller's own min QP is raised to the start QP.  The vendor
+     * controller starts the first P at IDR + 3 and then lowers the QP by
+     * up to 3 per picture while the pictures stay under its budget (b45
+     * 2048x1536 15 fps: I38 P41 P38 P35 = 82/14/32/98 KB, the live picture
+     * still changing); the knots are converged QPs (converged P QP >=
+     * the map value at every b45 point), so the floor stops that descent
+     * below the level the stream settles at anyway.  Restored before the
+     * next IDR. */
+    encoder->eprc30_floor_left = 0u;
+    env = getenv("OPENIMP_T30_START_FLOOR");
+    if (p.init_qp > 0 && !(env && env[0] == '0')) {
+        uint8_t pm, im, f = (uint8_t)p.init_qp;
+
+        EPRC30_GetMinQp(&encoder->eprc30, &pm, &im);
+        encoder->eprc30_min_p = pm;
+        encoder->eprc30_min_i = im;
+        if (f > pm || f > im) {
+            EPRC30_SetMinQp(&encoder->eprc30, f > pm ? f : pm, f > im ? f : im);
+            encoder->eprc30_floor_left = p.gop + 1u;
+        }
+    }
     encoder->eprc30_on = 1;
     memset(encoder->eprc30_regs, 0, sizeof(encoder->eprc30_regs));
     env = getenv("OPENIMP_T30_EPRC_STATS");
@@ -2489,6 +2534,83 @@ static void t30_eprc_report(T30HelixEncoder *encoder, uint32_t qp, int idr,
                      : 0u,
                  encoder->eprc30_reencodes);
     encoder->eprc30_frames = 0u;
+}
+#endif
+
+#if defined(PLATFORM_T30)
+static void t30_start_rate_control(T30HelixEncoder *encoder,
+                                   uint32_t initial_qp);
+
+/* OPENIMP_T30_BLACK_START: decide whether this picture is coded black
+ * (encoder->bs_now).  The first live picture after black ones is an IDR
+ * with a fresh rate controller (start QP as at channel start), so the
+ * controller does not carry the QP it reached on the black pictures. */
+static void t30_black_start_picture(T30HelixEncoder *encoder,
+                                    const IMPFrameInfo *frame)
+{
+    uint8_t samples[T30_BLACK_START_SAMPLES];
+    uint32_t width = encoder->params.width;
+    uint32_t height = encoder->params.height;
+    uint32_t luma_size = width * (uint32_t)encoder->sps.i_mb_height * 16u;
+    uint8_t *luma, *chroma;
+    uint32_t r;
+
+    encoder->bs_now = 0;
+    if (!encoder->bs.active)
+        return;
+    if (!frame->virAddr || width < 64u || height < 64u ||
+        (frame->size && frame->size < luma_size + width * (height / 2u))) {
+        encoder->bs.active = 0;
+        goto live;
+    }
+    luma = (uint8_t *)(uintptr_t)frame->virAddr;
+    chroma = luma + luma_size;
+    /* the ISP wrote the planes by DMA: drop stale lines of the sampled
+     * rows first (write back + invalidate keeps CPU-drawn OSD) */
+    for (r = 0; r < T30_BLACK_START_GRID; r++)
+        (void)DMA_RmemFlushCache(luma + (height * (2u * r + 1u) /
+                                         (2u * T30_BLACK_START_GRID) - 2u) *
+                                            width,
+                                 4u * width, 2);
+    for (r = 0; r < T30_BLACK_START_GRID / 2u; r++)
+        (void)DMA_RmemFlushCache(chroma + ((height / 2u) * (2u * r + 1u) /
+                                           T30_BLACK_START_GRID - 1u) *
+                                              width,
+                                 2u * width, 2);
+    t30_black_start_sample(luma, chroma, width, width, height, samples);
+    if (t30_black_start_step(&encoder->bs, samples, encoder->params.fps_num,
+                             encoder->params.fps_den)) {
+        if (!encoder->black.phys_addr) {
+            uint32_t size = (uint32_t)encoder->sps.i_mb_width * 16u *
+                            (uint32_t)encoder->sps.i_mb_height * 16u * 3u / 2u;
+
+            if (t30_dma_allocate(&encoder->black, size, "t30-helix-black") != 0) {
+                IMP_LOG_WARN("Encoder", "Helix: no memory for the black "
+                             "start picture (%u bytes), live from now", size);
+                encoder->bs.active = 0;
+                goto live;
+            }
+            memset((void *)(uintptr_t)encoder->black.virt_addr, 16, luma_size);
+            memset((uint8_t *)(uintptr_t)encoder->black.virt_addr + luma_size,
+                   128, size - luma_size);
+            if (DMA_RmemFlushCache((void *)(uintptr_t)encoder->black.virt_addr,
+                                   size, 1) != 0) {
+                t30_dma_release(&encoder->black);
+                encoder->bs.active = 0;
+                goto live;
+            }
+        }
+        encoder->bs_now = 1;
+        return;
+    }
+live:
+    if (encoder->black.phys_addr) {
+        t30_dma_release(&encoder->black);
+        IMP_LOG_INFO("Encoder", "Helix: live picture after %u black start "
+                     "pictures (OPENIMP_T30_BLACK_START)", encoder->bs.pictures);
+        t30_start_rate_control(encoder, encoder->params.qp);
+        encoder->force_idr = 1;
+    }
 }
 #endif
 
@@ -2921,6 +3043,10 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
         goto fail;
     t30_start_rate_control(encoder, encoder->params.qp);
     encoder->force_idr = 1;
+#if defined(PLATFORM_T30)
+    t30_black_start_reset(&encoder->bs,
+                          t30_black_start_wanted(getenv("OPENIMP_T30_BLACK_START")));
+#endif
     *encoder_out = encoder;
     LOG_CODEC("T30 Helix: native encoder ready channel=%u %ux%u desc=0x%08x",
               encoder->channel.channel_id, params->width, params->height,
@@ -3536,6 +3662,9 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
         return -1;
     }
     t30_pad_input_rows(encoder, frame);
+#if defined(PLATFORM_T30)
+    t30_black_start_picture(encoder, frame);
+#endif
 #endif
 #if defined(HELIX_HSKIP)
 t20_picture:
@@ -3641,6 +3770,9 @@ t20_again:
     if (encoder->eprc30_on) {
         EprcPicture pic;
 
+        if (encoder->eprc30_floor_left && --encoder->eprc30_floor_left == 0u)
+            EPRC30_SetMinQp(&encoder->eprc30, encoder->eprc30_min_p,
+                            encoder->eprc30_min_i);
         EPRC30_FrameStart(&encoder->eprc30, idr, &pic);
         qp = pic.qp;
     }
@@ -4833,6 +4965,7 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
 #endif
 #if defined(PLATFORM_T30)
     t30_eprc_stop(encoder);
+    t30_dma_release(&encoder->black);
 #endif
     free(encoder);
 }

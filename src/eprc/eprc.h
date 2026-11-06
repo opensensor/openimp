@@ -216,6 +216,12 @@ int EPRC30_Init(Eprc30 *rc, const EprcParams *params, uint8_t *slice);
  * vendor's I265e::reset / i264e_ratecontrol_init path), see eprc_t30.c. */
 int EPRC30_Reinit(Eprc30 *rc, const EprcParams *params);
 void EPRC30_Free(Eprc30 *rc);
+/* OpenIMP extra (#216, T30 H.264 start): the controller's own QP floor,
+ * P (block byte 64, the clamp at the end of every frame start) and IDR
+ * (byte 65), i.e. the application min QP as Init set it.  Get reads them,
+ * Set writes them; values are clamped to the max QP (byte 63). */
+void EPRC30_GetMinQp(const Eprc30 *rc, uint8_t *p_min, uint8_t *i_min);
+void EPRC30_SetMinQp(Eprc30 *rc, uint8_t p_min, uint8_t i_min);
 /* idr: the picture is an IDR (the T30 i264e codes one every GOP). */
 int EPRC30_FrameStart(Eprc30 *rc, int idr, EprcPicture *pic);
 /* H.265: the CU QP map the encoder reads (written by FrameStart, its
