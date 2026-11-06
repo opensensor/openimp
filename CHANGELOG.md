@@ -8,6 +8,10 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T23: openimp_mxu2_select never probes on T23 (Opus review finding B1)
+
+- On T23 builds `openimp_mxu2_select()` now returns the C path before the SIGILL-guarded selftest: the T23 kernel does not raise SIGILL for a COP2 instruction, it oopses in `xburst_cop2_restore` and the watchdog resets the board (observed once on a T23N). Until now only `SetChnRotate` forced the C path (`nv12_rotate_set_impl(0)`); the guard is now compile-time inside the probe function, so no other caller can reach a COP2 instruction on the T23.
+
 ## 2026-11-06, T23: rotation cap raised to 1280x720 (user request; T10/T20/T21 stay at 704x576)
 
 - `OpenIMP_FS_RotateLimits` and `SetChnRotate` now accept up to 1280x720 pixels (sides multiples of 16) on T23; `FS_ROT_T23_MAX_W/H` in `framesource_tseries.c`. The banded C kernel costs 10.3-11.5 ms per 1280x720 frame (whole hook, T23N 2026-11-06 measurement of #215) and 15.3 % process CPU at 15 fps, with 15/15 fps delivered.

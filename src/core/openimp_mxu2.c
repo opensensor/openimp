@@ -43,6 +43,16 @@ int openimp_mxu2_select(const char *name, int (*selftest)(void))
     volatile int ok = 0;
     const char *why;
 
+#if defined(PLATFORM_T23)
+    /* The T23 core has no MXU/COP2 and its kernel does not raise SIGILL for a
+     * COP2 instruction: the CU2 handler restores an MXU context and oopses in
+     * xburst_cop2_restore, the watchdog then resets the board (T23N .30,
+     * 2026-11-05). The SIGILL-guarded selftest below must never run here, so
+     * this build never probes: always the C path (Opus review finding B1). */
+    (void)selftest;
+    fprintf(stderr, "[MXU] %s: C (T23 has no MXU)\n", name);
+    return 0;
+#endif
     if (!openimp_mxu_env_allowed()) {
         fprintf(stderr, "[MXU] %s: C (OPENIMP_MXU=0)\n", name);
         return 0;
