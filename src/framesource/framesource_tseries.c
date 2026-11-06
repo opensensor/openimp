@@ -3706,7 +3706,8 @@ void openimp_fs_rotate_capture(int chn, void *frame)
  * called before the channel is created, with the encoder channel set to
  * the rotated size. Here it also takes effect on a running channel from
  * its next frame. */
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T30)
 /* Largest rotated picture on T10/T20/T21/T23/T30: 704x576 (D1). T31 rotates
  * 1280x704 in ~9 ms on 1.5 GHz; the ~1 GHz T10/T20/T21 cores with slower
  * DDR need about 15-20 ms per megapixel, so a 720p main stream would cost
@@ -3775,7 +3776,8 @@ int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height)
                 chnNum, mode, width, height);
         return -1;
     }
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T30)
     if ((width | height) & 15) {
         fprintf(stderr, "[FS] SetChnRotate ch%d: %dx%d not rotated: width "
                 "and height must be multiples of 16 on this SoC\n",
@@ -3842,7 +3844,8 @@ int OpenIMP_FS_RotateLimits(int chn, int *max_w, int *max_h, int *max_fps,
 
     if (chn < 0 || chn >= FS_MAX_CHANNELS)
         return -1;
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T30)
     w = FS_ROT_MAX_W;
     h = fs_rotate_max_pixels() / w;
     a = 16u;

@@ -9,6 +9,10 @@
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
 
+
+## 2026-11-06: T10/T20 software rotation envelope (timps review)
+
+- T10/T20 builds (`PLATFORM_T20`) were missing from the rotation guards in `src/framesource/framesource_tseries.c`: `OpenIMP_FS_RotateLimits` reported 4096x4096 align 2, and `IMP_FrameSource_SetChnRotate` applied neither the 16-pixel alignment nor the 704x576 pixel cap there. T20 now takes the same envelope as T21: 704x576 pixels (`OPENIMP_FS_ROTATE_MAX_PIXELS` overrides), sides multiples of 16, every channel.
 ## 2026-11-06: T30 start QP `auto` is the default (#216)
 
 - `OPENIMP_T30_START_QP` unset or `auto` now picks the first-IDR QP from bits per pixel (`src/t30/t30_start_qp.h`); `vendor` restores the vendor start QP 26. User decision 2026-11-06 after the T30X runs b42-b44.
