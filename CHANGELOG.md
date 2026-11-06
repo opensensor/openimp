@@ -9,6 +9,12 @@
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
 
+## 2026-11-06 (late): T30 first window - start QP auto for CBR only, black start (#216, branch `claude/t30-start-qp-3`)
+
+- `OPENIMP_T30_START_QP` auto (the default) now applies to CBR only; VBR and SMART keep the vendor start QP 26 until a VBR device run exists (in VBR the start QP also seeds the controller's reference QP of the first GOPs, `src/eprc/eprc_t30.c` S8(5)). An integer still applies to every mode. Header comment corrected: below the first knot of a class the QP is a floor, not a 6 QP/halving slope (1080p25 at 512 kbit/s starts at 38). Host tests: class boundary 1920x1088/1090 (32/39), 30000/1001 fps (34), < 1000 kbit/s, VBR/SMART gating, re-init after a bitrate change (next IDR at the map value of the new bitrate).
+- The remaining burst is documented: b44 0.5 s windows 2048x1536 15 fps auto 5426 / 497 / 717 kbit/s, 1080p15 6255 / 657 / 475 (the 2 s window, 0.98x / 1.00x, averages a burst and a hole). Cause: the live picture while AE/AWB settle (pictures 1-3 are 46-94 KB P pictures) and the vendor controller's at most 3 QP per picture (`src/eprc/eprc_t30.c` 1733-1760); the vendor stack does not show it because its ISP starts dark.
+- New `OPENIMP_T30_BLACK_START` (default on, `0` = off): the T30 H.264 encoder codes black pictures until the picture settled (grid of block means, change <= 1.5 levels, at most 8 pictures / 0.5 s), then starts live with an IDR and a fresh rate controller. Vendor-like start (vendor: dark AE ramp, first IDR 2.5 KB). `src/t30/t30_black_start.h`, host tests in `tests/t30/helix_encoder_test.c`. Device proof pending (b45).
+
 ## 2026-11-06: T30 start QP `auto` is the default (#216)
 
 - `OPENIMP_T30_START_QP` unset or `auto` now picks the first-IDR QP from bits per pixel (`src/t30/t30_start_qp.h`); `vendor` restores the vendor start QP 26. User decision 2026-11-06 after the T30X runs b42-b44.

@@ -9,9 +9,14 @@
 /*
  * OPENIMP_T30_START_QP (OpenIMP extra, ON by default since #216 b44):
  * the QP the T30 OEM rate controller (eprc_t30.c) starts its first IDR with.
- *   unset, "", "auto"                       -> from bits per pixel (default)
+ *   unset, "", "auto"                       -> from bits per pixel (default),
+ *                                              CBR only; VBR/SMART -> -1
  *   "vendor", anything else invalid         -> -1 (the vendor default QP 26)
- *   integer 10..51                          -> that QP
+ *   integer 10..51                          -> that QP (every rate mode)
+ *
+ * auto is gated to CBR (cbr != 0): the knots are CBR convergence QPs, and in
+ * VBR/SMART the start QP also seeds the VBR reference QP of the first GOPs
+ * (eprc_t30.c S8(5)); no VBR device run exists yet (#216 review).
  *
  * auto: piecewise linear in log2(bpp), bpp = bitrate / (width * height * fps),
  * with one knot table per picture class, because the same bpp converges to
@@ -27,15 +32,19 @@
  *     1920x1080 15 fps  bpp 0.0643  IDR 28 (P 31)               b43
  * From bpp 0.0868 (1280x720 25 fps 2000 kbit/s) upwards both classes keep
  * the vendor 26 (720p converges at 23-25, so 26 is no burst).  UNVERIFIED:
- * the knot below the lowest measured bpp of each class (6 QP per halving of
- * bpp, the H.264 rule of thumb), the large-class segment between 0.0424 and
- * 0.0868 and any sensor other than the SC4236.  Result clamp 24..46; the
- * controller clamps to the application's QP range afterwards.
+ * the first knot of each class (small 0.0193/38, large 0.0127/47), placed at
+ * half the lowest measured bpp with +6 QP (6 QP per halving of bpp, the
+ * H.264 rule of thumb); BELOW that first knot the QP does not rise further,
+ * it stays at the knot (a floor: small 38, large 47 -> clamp 46), so e.g.
+ * 1080p25 at 512 kbit/s starts at 38, under its converged QP.  Also
+ * unverified: the large-class segment between 0.0424 and 0.0868 and any
+ * sensor other than the SC4236.  Result clamp 24..46; the controller clamps
+ * to the application's QP range afterwards.
  */
 #define T30_START_QP_VENDOR (-1)
 #define T30_START_QP_LARGE_PIXELS (1920u * 1088u)
 
-static inline int t30_start_qp(const char *env, uint32_t width,
+static inline int t30_start_qp(const char *env, int cbr, uint32_t width,
                                uint32_t height, uint32_t fps_num,
                                uint32_t fps_den, uint32_t bitrate_kbps)
 {
@@ -56,8 +65,10 @@ static inline int t30_start_qp(const char *env, uint32_t width,
     if (env && !strcmp(env, "vendor"))
         return T30_START_QP_VENDOR;
     if (!env || !env[0] || !strcmp(env, "auto")) {
-        if (!width || !height || !fps_num || !fps_den || !bitrate_kbps)
+        if (!cbr || !width || !height || !fps_num || !fps_den ||
+            !bitrate_kbps)
             return T30_START_QP_VENDOR;
+        /* i is the picture class here, the knot segment below */
         i = (uint64_t)width * height > T30_START_QP_LARGE_PIXELS;
         kb = knot_bpp[i];
         kq = knot_qp[i];
@@ -66,7 +77,7 @@ static inline int t30_start_qp(const char *env, uint32_t width,
         if (bpp >= kb[3])
             return 26;
         if (bpp <= kb[0])
-            qp = kq[0];
+            qp = kq[0];                 /* floor, no slope below kb[0] */
         else {
             x = log2(bpp);
             for (i = 0; i < 3; i++)

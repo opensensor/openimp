@@ -39,7 +39,8 @@ HELIX_SOURCES := \
 	$(ROOT)/src/t40/t31_rate_control.c \
 	$(ROOT)/src/eprc/eprc_t30.c
 
-helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
+helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h \
+		$(ROOT)/src/t30/t30_start_qp.h $(ROOT)/src/t30/t30_black_start.h
 	$(CC) $(CFLAGS) -DPLATFORM_T30 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
