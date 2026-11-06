@@ -1435,7 +1435,12 @@ extern int AL_Codec_Encode_SetJpegQl(void *codec, int enable,
 #endif
 extern int IMP_FrameSource_GetFrame(int channel, void **frame);
 extern int IMP_FrameSource_ReleaseFrame(int channel, void *frame);
-#if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23)
+#if defined(PLATFORM_T20) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || \
+    defined(PLATFORM_T30)
+/* The encoder reads the capture frame by physical address.  T30: not
+ * IMP_FrameSource_GetFrame, whose frames are the compact NV12 copy in plain
+ * memory (phyAddr 0) for a height that is not a multiple of 16 (#202); the
+ * Helix refused every such picture (640x360 sub, 1920x1080 main, #209). */
 extern int VBMGetFrame(int chn, void **frame);
 #define P2_FS_TRY_FRAME(chn, frame) VBMGetFrame((chn), (frame))
 #elif defined(PLATFORM_T40)

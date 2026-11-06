@@ -67,5 +67,9 @@ int nv12_rotate_get_impl(void);
 int nv12_rotate_set_impl(int impl);
 /* MXU2 vs C on a small pseudo-random frame, all modes: 1 = bit-exact */
 int nv12_rotate_selftest(void);
+/* C 90/270 kernel (tests, benchmarks): 1 cache-line banded (default), 2
+ * banded with one-line bands also for unaligned destination rows, 0 the
+ * plain 32x32 tiles; returns the setting. */
+int nv12_rotate_set_c_kernel(int banded);
 
 #endif

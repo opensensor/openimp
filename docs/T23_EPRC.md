@@ -390,6 +390,73 @@ change, IDR) the slice fields stay as the OEM hwicodec slice block does.
   (`JZ_VPU_RC_VIDEO_CFG_T20`, `JZ_VPU_RC_FRAME_RC_T20`,
   `eprc_default_set_t20`); needs its own port (M5).
 
+## T30 (eprc_t30.c, #210)
+
+The T30 1.0.5 libimp has its own revision of the controller
+(`eprc_default_set_T30`, `JZ_VPU_RC_VIDEO_CFG_T30`, `JZ_VPU_RC_FRAME_START_T30`,
+`JZ_VPU_RC_FRAME_REPEATE_JUDGE_T30`, `JZ_VPU_RC_FRAME_END_T30` and the helpers
+`gop_init`, `update_qp`, `h264_api_enc`, `h264_get_mb_qp`,
+`scene_judge_enc_frame`, `rd_model_estimator`, `mad_model_estimator`), which
+`i264e_ratecontrol_init` selects with i264e parameter [0] = 3.  OpenIMP's
+reimplementation is `src/eprc/eprc_t30.c` (`EPRC30_*`).  It is older than the
+T21 one and has its own state layout: E at i264e parameters + 0x9044c (the
+T21 E layout up to E+140, then other fields), a 0x120-byte block A, the
+state S = A + 0x120 (0xbe0 bytes) and the arrays from A + 0xd00.
+
+- **Verification**: `tools/eprc_t30_oracle.py` runs the OEM code under the
+  unicorn emulator (the T30 i264e glue: parameters in the T20 layout,
+  slice-parameter and macroblock blocks, the register table of
+  `hwicodec_pf_h264e_t30_enc`).  Under the emulator the E, A and S state of
+  `EPRC30_*` equals the OEM state after every init, FRAME_START and
+  FRAME_END (development harness: 7 oracle scenarios x 200 pictures and
+  150 random scenarios x 150, synthetic statistics and statistics in
+  real-picture ranges with a channel cmpx).  `tests/eprc/eprc_t30_test.c`
+  (in `make check`) replays three vector sets (6966 decisions); a mipsel
+  build of `eprc_t30.c` replayed under the emulator gives the same.  The
+  vectors are from the uclibc 4.7.2 build of the library (md5 abd61e9a,
+  the T30X stock library).  The uclibc 5.4.0 build differs in one place:
+  its MAD outlier test covers 9 of the 10 window entries.
+- **Picture type**: the T30 i264e codes an IDR whenever the picture count
+  since the last IDR is a multiple of the GOP; the caller passes the
+  decision (`EPRC30_FrameStart(rc, idr, ...)`).
+- **Model**: the picture QP is the JM quadratic R-Q model
+  (`rd_model_estimator`, a window of up to 10 pictures with outlier
+  rejection) on the predicted MAD (`mad_model_estimator`, MAD = the
+  channel's cmpx), bit budgets per GOP and picture (CBR: buffer target per
+  P picture; VBR/SMART: a GOP budget between the quality-level minimum and
+  the maximum rate, a "smart-P" QP), the scene class from
+  `scene_judge_enc_frame` (motion = statistics 0x800e8 + 0x800ec, intra
+  share from 0x800e4), and re-encoding of a picture above the super-frame
+  size (at most 3 times, update_qp).
+- **NaN**: a window holding a zero MAD turns the MAD model into NaN; the OEM
+  then converts NaN as MIPS does (2^31 - 1).  `eprc_t30.c` converts through
+  a helper that does the same on any host, so the host tests and the camera
+  decide alike.
+- **Statistics**: after each picture the OEM reads 25 registers (soc_vpu
+  ioctl 0xc0386307, node word 0 = 0x13200000 + register): 0x800e4,
+  0x800e8, 0x800ec, 0x80034, 0x80088, 0x8008c, 0x40094..0x400a0,
+  0x400b8..0x400c0, 0x80120..0x8014c (`EPRC30_StatRegs`).
+- **Not reproduced yet**: the slice-block fields of the macroblock rate
+  control in `h264_get_mb_qp` (SAS offsets, basic-unit targets); only their
+  effect on the picture decisions (a zero MAD becomes 2 when basic units
+  are on) is.  The T30 command list does not program macroblock rate
+  control.
+
+In the T30 Helix encoder (`src/t30/t30_helix_encoder.c`, PLATFORM_T30) the
+controller is the default for CBR, VBR and SMART (`OPENIMP_T30_EPRC=0`
+keeps OpenIMP's GOP controller): `EPRC30_FrameStart` with the encoder's IDR
+decision gives the QP; after the run the encoder reads the 25 registers and
+passes the slice bytes (header and payload) and the channel's cmpx to
+`EPRC30_FrameEnd`; a re-encode request codes the picture again at the new
+QP.  Parameters as on the T20 (the same i264e: IMP attributes with the
+CreateChn clamps, else the i264e_param_default values frame/GOP QP step
+3/15, static time 2, change pos 80, quality 4).  A rate-control change
+restarts the controller.  `OPENIMP_T30_EPRC_STATS=<seconds>` logs the bit
+rate and QPs per interval.  `tests/t30` (helix_encoder_test) checks the
+plumbing: every picture's QP against a second controller fed the same slice
+sizes, registers and cmpx, 25 register reads per picture, none with
+`OPENIMP_T30_EPRC=0`.
+
 ## In the native T21/T23 encoder (M4, M5)
 
 `src/t30/t30_helix_encoder.c` (T21 and T23): `helix_eprc_start` (create,

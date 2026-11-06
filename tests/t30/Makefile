@@ -36,15 +36,16 @@ HELIX_SOURCES := \
 	$(ROOT)/src/t30/h264enc/common.c \
 	$(ROOT)/src/t30/h264enc/set.c \
 	$(ROOT)/src/t30/h264enc/slice.c \
-	$(ROOT)/src/t40/t31_rate_control.c
+	$(ROOT)/src/t40/t31_rate_control.c \
+	$(ROOT)/src/eprc/eprc_t30.c
 
 helix_encoder_test: $(HELIX_SOURCES) $(ROOT)/src/t30/t30_annexb.h $(ROOT)/src/t30/t30_h264_level.h
 	$(CC) $(CFLAGS) -DPLATFORM_T30 -fno-pie -no-pie \
 		-I$(ROOT)/include -I$(ROOT)/src $(INCLUDES) \
 		-Wl,--wrap=open,--wrap=close,--wrap=ioctl \
-	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(HELIX_SOURCES)
+	 $(ROOT)/src/core/imp_log_emit.c	-o $@ $(HELIX_SOURCES) -lm
 
-HELIX_T21_SOURCES := $(filter-out %/t30_h264_descriptor.c,$(HELIX_SOURCES)) \
+HELIX_T21_SOURCES := $(filter-out %/t30_h264_descriptor.c %/eprc_t30.c,$(HELIX_SOURCES)) \
 	$(ROOT)/src/t21/t21_h264_descriptor.c $(ROOT)/src/t30/helix_bitstream.c \
 	$(ROOT)/src/eprc/eprc.c $(ROOT)/src/eprc/eprc_t21.c $(ROOT)/src/eprc/eprc_mbrc.c \
 	$(ROOT)/src/hskip/hskip.c $(ROOT)/src/hskip/hskip_black.c $(ROOT)/src/fisheye/fisheye.c

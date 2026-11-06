@@ -185,6 +185,7 @@ struct fake_chan {
     unsigned int reqbufs;
     int queue[FAKE_BUFS];
     uint32_t queue_addr[FAKE_BUFS];
+    uint32_t idx_addr[FAKE_BUFS];   /* address queued for each index */
     int queued;
 };
 
@@ -193,6 +194,7 @@ static struct fake_chan fake[FAKE_FDS];
 static int fake_open_count;
 static int fake_bad_ioctl;      /* ioctl on an fd that is not an open channel */
 static int fake_qbuf_freed;     /* QBUF of memory that is not allocated */
+static int fake_qbuf_moved;     /* an index queued with another address */
 static int fake_closed_streaming; /* closed while streaming */
 static int fake_inject;
 static int fake_streamoffs;
@@ -298,6 +300,7 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
             words[0] = FAKE_BUFS;
         c->reqbufs = words[0];
         c->queued = 0;
+        memset(c->idx_addr, 0, sizeof(c->idx_addr));
         break;
     case 0x800456c5u:                           /* SET_DEPTH */
         if (fake_inject == INJ_SET_DEPTH)
@@ -333,6 +336,11 @@ int __wrap_ioctl(int fd, unsigned long request, void *arg)
         }
         if (!dma_contains(addr, length))
             fake_qbuf_freed++;
+        /* the driver gets the same buffer per index (a rotate spare must
+         * never be queued) */
+        if (c->idx_addr[index] && c->idx_addr[index] != addr)
+            fake_qbuf_moved++;
+        c->idx_addr[index] = addr;
         c->queue_addr[c->queued] = addr;
         c->queue[c->queued++] = (int)index;
         break;
@@ -520,6 +528,23 @@ static int consumer_hold_ms;
 static int consumer_frames;
 /* size of the last frame record the consumers saw (0x08/0x0c) */
 static uint32_t consumer_width, consumer_height;
+/* frames whose record pointed at a buffer that is not a queued capture
+ * buffer (a rotate spare) */
+static int consumer_spare_frames;
+
+static int is_capture_buffer(uint32_t addr)
+{
+    int fd, i, hit = 0;
+
+    pthread_mutex_lock(&fake_lock);
+    for (fd = 0; fd < FAKE_FDS && !hit; fd++)
+        if (fake[fd].open)
+            for (i = 0; i < FAKE_BUFS; i++)
+                if (fake[fd].idx_addr[i] == addr)
+                    hit = 1;
+    pthread_mutex_unlock(&fake_lock);
+    return hit;
+}
 
 int32_t notify_observers(Module *module, void *frame)
 {
@@ -527,8 +552,14 @@ int32_t notify_observers(Module *module, void *frame)
     if (frame) {
         uint32_t w, h;
 
+        uint32_t virt, phys;
+
         memcpy(&w, (const uint8_t *)frame + 0x08, 4);
         memcpy(&h, (const uint8_t *)frame + 0x0c, 4);
+        memcpy(&phys, (const uint8_t *)frame + 0x18, 4);
+        memcpy(&virt, (const uint8_t *)frame + 0x1c, 4);
+        if (phys == virt && !is_capture_buffer(phys))
+            __atomic_add_fetch(&consumer_spare_frames, 1, __ATOMIC_RELAXED);
         __atomic_store_n(&consumer_width, w, __ATOMIC_RELAXED);
         __atomic_store_n(&consumer_height, h, __ATOMIC_RELAXED);
     }
@@ -591,6 +622,8 @@ static void check_clean(const char *what)
           fake_bad_ioctl);
     CHECK(fake_qbuf_freed == 0, "%s: %d QBUFs of freed memory", what,
           fake_qbuf_freed);
+    CHECK(fake_qbuf_moved == 0, "%s: %d QBUFs of an index with another buffer",
+          what, fake_qbuf_moved);
     CHECK(fake_closed_streaming == 0, "%s: %d fds closed while streaming",
           what, fake_closed_streaming);
     CHECK(dma_bad_free == 0, "%s: %d frees of unknown DMA", what,
@@ -1193,10 +1226,11 @@ static void test_disable_during_dqbuf(void)
     check_clean("disable during dqbuf");
 }
 
-#if !defined(PLATFORM_T23) && !defined(PLATFORM_T30)
+/* Every SoC built by this test rotates in software (T10/T20/T21, T23, T30). */
 #include "framesource/nv12_rotate.h"
 
 void openimp_fs_rotate_capture(int chn, void *frame);
+void openimp_fs_rotate_release(int chn, void *frame);
 
 /* Reference rotation of an NV12 frame (pitch = width, chroma after
  * ALIGN16(height) luma lines; sizes multiples of 16 here), straight from
@@ -1223,7 +1257,7 @@ static void ref_rotate(const uint8_t *src, uint8_t *dst, uint32_t w,
     }
 }
 
-/* T10/T20/T21 SetChnRotate: geometry gate (16-aligned, sub-stream pixel
+/* T10/T20/T21/T23 SetChnRotate: geometry gate (16-aligned, sub-stream pixel
  * cap), the per-frame rotate on a frame record against the reference,
  * and the size the consumers see on a running channel. */
 static void test_rotate(void)
@@ -1239,20 +1273,36 @@ static void test_rotate(void)
     int waited;
     pthread_t thread;
 
-    /* gate: the vendor values only, even, 16-aligned, <= 704x576 */
+    /* gate: the vendor values only, even, 16-aligned, <= the pixel cap
+     * (704x576 on T10/T20/T21, 1280x720 on T30) */
     CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 360) == -1,
           "640x360 (height not 16-aligned) must be refused");
     CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1920, 1080) == -1,
           "1080p main stream must be refused");
+#if defined(PLATFORM_T30)
+    /* T30: cap 1280x720 pixels (T30X measurement, #212) */
+    CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1280, 736) == -1,
+          "above 1280x720 pixels must be refused");
+    {
+        int mw = 0, mh = 0, mf = -1, al = 0;
+
+        CHECK(OpenIMP_Cap_FsRotate == 1, "rotation marker");
+        CHECK(OpenIMP_FS_RotateLimits(1, &mw, &mh, &mf, &al) == 0 &&
+              mw == 1280 && mh == 720 && mf == 0 && al == 16,
+              "limits %dx%d fps %d align %d", mw, mh, mf, al);
+        CHECK(OpenIMP_FS_RotateLimits(9, &mw, &mh, &mf, &al) == -1, "limits bad chn");
+    }
+#else
     CHECK(IMP_FrameSource_SetChnRotate(0, 1, 1280, 720) == -1,
           "720p main stream must be refused");
+#endif
     CHECK(IMP_FrameSource_SetChnRotate(1, 7, 640, 368) == -1, "bad mode");
     CHECK(IMP_FrameSource_SetChnRotate(5, 1, 640, 368) == -1, "bad channel");
     CHECK(IMP_FrameSource_SetChnRotate(0, 0, 1920, 1080) == 0, "rot 0");
 
     for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         uint32_t w = cases[i].w, h = cases[i].h, size = w * h * 3 / 2;
-        uint32_t fourcc = 0x3231564eu, ow = 0, oh = 0, virt;
+        uint32_t fourcc = 0x3231564eu, ow = 0, oh = 0, virt, rp, rv;
         uint8_t *buf = mmap(NULL, size, PROT_READ | PROT_WRITE,
                             MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
         uint8_t *orig = malloc(size), *want = malloc(size);
@@ -1274,6 +1324,9 @@ static void test_rotate(void)
         memcpy(record + 0x14, &size, 4);
         memcpy(record + 0x18, &virt, 4);
         memcpy(record + 0x1c, &virt, 4);
+#if defined(PLATFORM_T23)
+        memcpy(record + 0x20, &virt, 4);
+#endif
         CHECK(IMP_FrameSource_SetChnRotate(2, cases[i].mode, (int)w,
                                            (int)h) == 0,
               "%ux%u mode %d accepted", w, h, cases[i].mode);
@@ -1282,14 +1335,65 @@ static void test_rotate(void)
         memcpy(&oh, record + 0x0c, 4);
         CHECK(ow == h && oh == w, "%ux%u: record %ux%u after rotate", w, h,
               ow, oh);
-        CHECK(memcmp(buf, want, size) == 0,
+        /* rotated into a spare: the record points there, the capture
+         * buffer is untouched */
+        memcpy(&rp, record + 0x18, 4);
+        memcpy(&rv, record + 0x1c, 4);
+        CHECK(rv != virt && rp == rv && dma_contains(rv, size),
+              "%ux%u: record not pointed at a spare (0x%x)", w, h, rv);
+#if defined(PLATFORM_T23)
+        memcpy(&k, record + 0x20, 4);
+        CHECK(k == rp, "%ux%u: T23 direct address 0x%x, want 0x%x", w, h, k, rp);
+#endif
+        CHECK(memcmp(buf, orig, size) == 0, "%ux%u: capture buffer written",
+              w, h);
+        CHECK(memcmp((void *)(uintptr_t)rv, want, size) == 0,
               "%ux%u mode %d: picture differs from the reference", w, h,
               cases[i].mode);
+        /* release: the capture buffer is back in the record */
+        openimp_fs_rotate_release(2, record);
+        memcpy(&rp, record + 0x18, 4);
+        memcpy(&rv, record + 0x1c, 4);
+        CHECK(rp == virt && rv == virt, "%ux%u: release left 0x%x/0x%x", w, h,
+              rp, rv);
+#if defined(PLATFORM_T23)
+        memcpy(&k, record + 0x20, 4);
+        CHECK(k == virt, "%ux%u: T23 direct address not restored", w, h);
+#endif
+        openimp_fs_rotate_release(2, record);   /* twice: no effect */
+        memcpy(&rv, record + 0x1c, 4);
+        CHECK(rv == virt, "%ux%u: second release moved the record", w, h);
         /* the record now has the rotated size: the next frame of the
          * buffer is rotated again (it holds a new capture on a device) */
-        memcpy(buf, orig, size);
         openimp_fs_rotate_capture(2, record);
-        CHECK(memcmp(buf, want, size) == 0, "%ux%u: second frame", w, h);
+        memcpy(&rv, record + 0x1c, 4);
+        CHECK(memcmp((void *)(uintptr_t)rv, want, size) == 0,
+              "%ux%u: second frame", w, h);
+        openimp_fs_rotate_release(2, record);
+        /* without a free spare (consumers hold all FS_ROT_SPARES): the
+         * frame is rotated in place (scratch + copy back) */
+        {
+            uint8_t rec2[2][0x428];
+            uint32_t j;
+
+            for (j = 0; j < 2; j++) {
+                memcpy(rec2[j], record, sizeof(record));
+                openimp_fs_rotate_capture(2, rec2[j]);
+                memcpy(&rv, rec2[j] + 0x1c, 4);
+                CHECK(rv != virt, "%ux%u: spare %u not used", w, h, j);
+            }
+            memcpy(&rv, record + 0x1c, 4);
+            openimp_fs_rotate_capture(2, record);
+            memcpy(&rp, record + 0x1c, 4);
+            CHECK(rp == virt && memcmp(buf, want, size) == 0,
+                  "%ux%u: no spare left: not rotated in place", w, h);
+            openimp_fs_rotate_release(2, record);   /* owns no spare */
+            for (j = 0; j < 2; j++) {
+                openimp_fs_rotate_release(2, rec2[j]);
+                memcpy(&rv, rec2[j] + 0x1c, 4);
+                CHECK(rv == virt, "%ux%u: spare %u not given back", w, h, j);
+            }
+        }
         /* a too small buffer is left alone */
         memcpy(buf, orig, size);
         memcpy(record + 0x08, &w, 4);
@@ -1302,6 +1406,54 @@ static void test_rotate(void)
         munmap(buf, size);
         free(orig);
         free(want);
+    }
+    /* no rmem for a spare: copy back, and no new attempt per frame */
+    {
+        uint32_t w = 64, h = 32, size = w * h * 3 / 2, fourcc = 0x3231564eu;
+        uint32_t virt, rv;
+        uint8_t *buf = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+        int before;
+
+        if (buf == MAP_FAILED)
+            abort();
+        CHECK(IMP_FrameSource_SetChnRotate(2, 0, 0, 0) == 0, "rot off");
+        openimp_fs_rotate_capture(2, record);   /* frees scratch + spares */
+        CHECK(dma_count() == 0, "spares left after rotation off: %d",
+              dma_count());
+        virt = (uint32_t)(uintptr_t)buf;
+        memset(record, 0, sizeof(record));
+        memcpy(record + 0x08, &w, 4);
+        memcpy(record + 0x0c, &h, 4);
+        memcpy(record + 0x10, &fourcc, 4);
+        memcpy(record + 0x14, &size, 4);
+        memcpy(record + 0x18, &virt, 4);
+        memcpy(record + 0x1c, &virt, 4);
+        CHECK(IMP_FrameSource_SetChnRotate(2, NV12_ROT_90_CW, (int)w,
+                                           (int)h) == 0, "64x32 rotate");
+        {
+            uint8_t ra[0x428], rb[0x428];
+
+            memcpy(ra, record, sizeof(ra));
+            memcpy(rb, record, sizeof(rb));
+            openimp_fs_rotate_capture(2, ra);       /* spare 1, held */
+            memcpy(&rv, ra + 0x1c, 4);
+            CHECK(rv != virt, "first spare not used");
+            dma_fail = 1;
+            openimp_fs_rotate_capture(2, rb);       /* spare 2: no rmem */
+            memcpy(&rv, rb + 0x1c, 4);
+            CHECK(rv == virt, "allocation failure: record moved");
+            before = dma_count();
+            openimp_fs_rotate_capture(2, rb);
+            CHECK(dma_count() == before && dma_fail == 0, "allocation retried");
+            /* the spare that exists is still used */
+            openimp_fs_rotate_release(2, ra);
+            openimp_fs_rotate_capture(2, record);
+            memcpy(&rv, record + 0x1c, 4);
+            CHECK(rv != virt, "existing spare not used after a failed allocation");
+            openimp_fs_rotate_release(2, record);
+        }
+        munmap(buf, size);
     }
     CHECK(IMP_FrameSource_SetChnRotate(2, 0, 0, 0) == 0, "rot off");
     openimp_fs_rotate_capture(2, record);   /* frees the scratch */
@@ -1323,6 +1475,15 @@ static void test_rotate(void)
           "consumer saw %ux%u, want 368x640",
           __atomic_load_n(&consumer_width, __ATOMIC_RELAXED),
           __atomic_load_n(&consumer_height, __ATOMIC_RELAXED));
+    /* frames go out in spares and the driver keeps getting the capture
+     * buffers (fake_qbuf_moved, check_clean) */
+    for (waited = 0; waited < 2000 &&
+         __atomic_load_n(&consumer_spare_frames, __ATOMIC_RELAXED) < 10;
+         waited++)
+        sleep_ms(1);
+    CHECK(__atomic_load_n(&consumer_spare_frames, __ATOMIC_RELAXED) >= 10,
+          "consumers got %d frames in a spare",
+          __atomic_load_n(&consumer_spare_frames, __ATOMIC_RELAXED));
     CHECK(IMP_FrameSource_DisableChn(0) == 0, "disable 0");
     __atomic_store_n(&puller_stop, 1, __ATOMIC_RELAXED);
     pthread_join(thread, NULL);
@@ -1330,14 +1491,6 @@ static void test_rotate(void)
     CHECK(IMP_FrameSource_SetChnRotate(0, 0, 0, 0) == 0, "rot off 0");
     check_clean("rotate");
 }
-#else
-/* T23 rotates in the caller (unbound YuvEncode), the T30 vendor libimp has no SetChnRotate: it refuses. */
-static void test_rotate(void)
-{
-    CHECK(IMP_FrameSource_SetChnRotate(1, 2, 640, 368) == -1, "T23 refuses");
-    CHECK(IMP_FrameSource_SetChnRotate(1, 0, 640, 368) == 0, "T23 rot 0");
-}
-#endif
 
 #if defined(PLATFORM_T30)
 /* T30 format ioctl: 0xc05c56c3 with the 0x5c-byte object of the vendor
@@ -1481,6 +1634,8 @@ static void test_ivs_only_stock_dq_delay(void)
 
 int main(void)
 {
+    /* rotate spares (opt-in on a device): the record / release paths */
+    setenv("OPENIMP_FS_ROTATE_SPARES", "2", 1);
     report = fdopen(dup(2), "w");
     if (!report)
         return 1;

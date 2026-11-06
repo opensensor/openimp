@@ -1664,6 +1664,14 @@ static void vbm_log_rmem(const char *what, int chn, int size)
         DMA_LogRmem(what);
 }
 
+/* IMP_FrameSource_SetChnRotate (framesource_tseries.c): a frame record that
+ * points at a rotate spare gets its capture buffer back before the driver
+ * sees it again; a destroyed pool frees every spare. */
+extern void openimp_fs_rotate_release(int chn, void *frame)
+    __attribute__((weak));
+extern void openimp_fs_rotate_pool_gone(int chn)
+    __attribute__((weak));
+
 static int vbm_destroy_pool(int chn, int park);
 
 int VBMDestroyPool(int chn) {
@@ -1696,6 +1704,8 @@ static int vbm_destroy_pool(int chn, int park) {
     /* for the log line after the release (the pool is retired by then) */
     int pool_bytes = pool->frame_size * pool->frame_count;
     vbm_instance[chn] = NULL;
+    if (openimp_fs_rotate_pool_gone)
+        openimp_fs_rotate_pool_gone(chn);
 
     /* the held frames go with the pool; a GetTimedFrame waiting or copying
      * finishes first (it holds vbm_delay_lock) */
@@ -1844,7 +1854,7 @@ extern void openimp_t31_ivs_capture(int fs_chn, const void *frame)
     __attribute__((weak));
 #endif
 
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
 /* IMP_FrameSource_SetChnRotate software rotation (framesource_tseries.c) */
 extern void openimp_fs_rotate_capture(int chn, void *frame)
     __attribute__((weak));
@@ -2326,7 +2336,7 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
     defined(PLATFORM_T21) || defined(PLATFORM_T30)
     /* IVS groups bound to this channel copy the luma they need now, while
      * the buffer is still private to this thread (openimp_t31_ivs.c). */
-#if defined(PLATFORM_T31) || defined(PLATFORM_T21)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30)
     /* Rotate first, as the vendor does before notifying any consumer. */
     if (openimp_fs_rotate_capture)
         openimp_fs_rotate_capture(chn, &pool->frames[idx]);
@@ -2398,6 +2408,8 @@ int VBMKernelDequeue(int chn, int fd, void **frame_out) {
         VBM_DQ_STEP(chn, VBM_DQ_STEP_REQUEUE);
         ki_trace("libimp/VBM: ready-queue-full ch=%d idx=%d count=%d\n",
                  chn, idx, pool->queue_count);
+        if (openimp_fs_rotate_release)
+            openimp_fs_rotate_release(chn, captured);
         if (fs_qbuf(fd, idx, captured->phys_addr,
                     (unsigned int)captured->size) == 0 &&
             pool->buf_in_userspace)
@@ -2707,6 +2719,11 @@ static int vbm_release_frame(int chn, void *frame) {
     int kernel_backed = (pool->fd >= 0);
 
     pthread_mutex_lock(&pool->queue_mutex);
+    /* the first release after DQBUF: a rotated frame that points at a
+     * rotate spare takes its capture buffer back before QBUF */
+    if (pool->buf_in_userspace != NULL && pool->buf_in_userspace[frame_idx] &&
+        openimp_fs_rotate_release)
+        openimp_fs_rotate_release(chn, frame);
 
     if (pool->buf_in_userspace != NULL && pool->ops[1] != NULL) {
         int in_userspace = pool->buf_in_userspace[frame_idx];

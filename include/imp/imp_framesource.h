@@ -222,10 +222,13 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int hei
                               void *out_buffer, IMPFrameInfo *info);
 
 /**
- * Set channel rotation (T31 only)
+ * Set channel rotation (vendor API on T31; OpenIMP extra on T10/T20/T21/T23/T30)
  *
  * Software rotation of the channel's NV12 frames, as in the vendor libimp
- * (docs/T31_ROTATE.md). Set the encoder channel to the rotated size.
+ * (docs/T31_ROTATE.md). Call it before CreateChn with the landscape size; the
+ * FrameSource attributes stay landscape, set the encoder channel to the
+ * rotated size. On SoCs without the software path it returns -1 for a
+ * rotation. Probe OpenIMP_Cap_FsRotate / OpenIMP_FS_RotateLimits below.
  *
  * @param chnNum Channel number
  * @param rotTo90 0: off, 1: 90 degrees counterclockwise, 2: 90 degrees
@@ -235,6 +238,16 @@ int IMP_FrameSource_SnapFrame(int chnNum, IMPPixelFormat fmt, int width, int hei
  * @return 0 on success, negative on error
  */
 int IMP_FrameSource_SetChnRotate(int chnNum, int rotTo90, int width, int height);
+
+/* OpenIMP extras (bind weakly; absent in vendor libraries and in OpenIMP
+ * builds where SetChnRotate does not rotate): OpenIMP_Cap_FsRotate is 1 when
+ * SetChnRotate rotates in software on this SoC.  OpenIMP_FS_RotateLimits
+ * returns 0 and the envelope SetChnRotate accepts for chnNum (pre-rotation
+ * size at most *max_w x *max_h pixels, both sides multiples of *align,
+ * *max_fps 0 = no frame-rate cap), -1 for an invalid channel. */
+extern const int OpenIMP_Cap_FsRotate;
+int OpenIMP_FS_RotateLimits(int chn, int *max_w, int *max_h, int *max_fps,
+                            int *align);
 
 /* Additional framesource functions (raptor-hal parity) */
 int IMP_FrameSource_GetFrameDepth(int chnNum, int *depth);

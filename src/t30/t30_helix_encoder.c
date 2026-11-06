@@ -70,7 +70,7 @@ typedef T21H264SliceConfig PlatformH264SliceConfig;
 typedef T30H264SliceConfig PlatformH264SliceConfig;
 #endif
 #include "t40/t31_rate_control.h"
-#if defined(HELIX_T21_SYNTAX)
+#if defined(HELIX_T21_SYNTAX) || defined(PLATFORM_T30)
 #include "eprc/eprc.h"
 #endif
 #if defined(PLATFORM_T20)
@@ -354,6 +354,19 @@ struct T30HelixEncoder {
 #endif
     OpenIMPT31RateController rate_control;
     int rate_control_enabled;
+#if defined(PLATFORM_T30)
+    /* OEM T30 picture rate control (src/eprc/eprc_t30.c, docs/T23_EPRC.md
+     * "T30"), default for CBR/VBR/SMART; OPENIMP_T30_EPRC=0 keeps the GOP
+     * controller */
+    Eprc30 eprc30;
+    uint8_t eprc30_slice[EPRC30_SLICE_SIZE];
+    int eprc30_on;
+    uint32_t eprc30_min_qp, eprc30_max_qp;  /* the application's QP range */
+    uint32_t eprc30_reencodes, eprc30_stat_errors;
+    uint32_t eprc30_stats_seconds;          /* OPENIMP_T30_EPRC_STATS */
+    uint32_t eprc30_frames, eprc30_idrs;
+    uint64_t eprc30_bytes, eprc30_qp_sum[2];
+#endif
 #if defined(PLATFORM_T20)
     int t10;                    /* T10 NVPU: T10 command list, padded refs */
     /* OEM T20 rate control (src/rc_t20, docs/T20_RC.md) */
@@ -2301,6 +2314,153 @@ static void t20_trig_idr(T30HelixEncoder *encoder, int idr)
 }
 #endif
 
+#if defined(PLATFORM_T30)
+static void t30_eprc_stop(T30HelixEncoder *encoder)
+{
+    if (encoder->eprc30_on)
+        EPRC30_Free(&encoder->eprc30);
+    encoder->eprc30_on = 0;
+}
+
+static uint32_t t30_eprc_clip(uint32_t value, int32_t lo, int32_t hi)
+{
+    int32_t v = (int32_t)value;
+
+    return (uint32_t)(v < lo ? lo : v > hi ? hi : v);
+}
+
+/* i264e_ratecontrol_init (T30 1.0.5, i264e parameter [0] = 3) from the
+ * channel parameters, with the clamps of IMP_Encoder_CreateChn as on the
+ * T20 (the same i264e). */
+static void t30_eprc_start(T30HelixEncoder *encoder)
+{
+    const HWEncoderParams *hp = &encoder->params;
+    int app = (hp->rc_flags & HW_RC_FLAG_APP) != 0;
+    int smart = (hp->rc_flags & HW_RC_FLAG_SMART) != 0;
+    const char *env = getenv("OPENIMP_T30_EPRC");
+    EprcParams p;
+
+    t30_eprc_stop(encoder);
+    if ((env && env[0] == '0') ||
+        (hp->rc_mode != HW_RC_MODE_CBR && hp->rc_mode != HW_RC_MODE_VBR) ||
+        !hp->fps_num || !hp->fps_den || !hp->gop_length)
+        return;
+    memset(&p, 0, sizeof(p));
+    p.width = hp->width;
+    p.height = hp->height;
+    p.rc_mode = hp->rc_mode == HW_RC_MODE_CBR ? EPRC_MODE_CBR
+              : smart ? EPRC_MODE_SMART : EPRC_MODE_VBR;
+    p.gop = hp->gop_length;
+    p.fps_num = hp->fps_num;
+    p.fps_den = hp->fps_den;
+    p.max_qp = t30_eprc_clip(encoder->eprc30_max_qp, 0, 51);
+    p.min_qp = t30_eprc_clip(encoder->eprc30_min_qp, 0, (int32_t)p.max_qp);
+    p.bitrate = hp->bitrate / 1000u;
+    p.max_bitrate = hp->bitrate / 1000u < 128u ? 128u : hp->bitrate / 1000u;
+    p.init_qp = -1;
+    if (app) {
+        p.i_bias = (int32_t)t30_eprc_clip((uint32_t)hp->bias_level, -3, 3);
+        p.frm_qp_step = t30_eprc_clip(hp->frm_qp_step, 2, 51);
+        p.gop_qp_step = t30_eprc_clip(hp->gop_qp_step, 2, 51);
+        p.static_time = (int32_t)hp->static_time <= 0 ? 1u : hp->static_time;
+        p.change_pos = t30_eprc_clip(hp->change_pos, 50, 100);
+        p.quality = t30_eprc_clip(hp->quality_level, 0, 6);
+    } else {
+        /* no IMP attribute: the i264e_param_default values */
+        p.frm_qp_step = 3u;
+        p.gop_qp_step = 15u;
+        p.static_time = 2u;
+        p.change_pos = 80u;
+        p.quality = 4u;
+    }
+    memset(encoder->eprc30_slice, 0, sizeof(encoder->eprc30_slice));
+    if (EPRC30_Init(&encoder->eprc30, &p, encoder->eprc30_slice) != 0) {
+        IMP_LOG_WARN("Encoder", "T30 eprc: init failed, using the GOP "
+                     "controller");
+        return;
+    }
+    encoder->eprc30_on = 1;
+    env = getenv("OPENIMP_T30_EPRC_STATS");
+    encoder->eprc30_stats_seconds = env ? (uint32_t)strtoul(env, NULL, 0) : 0u;
+    encoder->eprc30_frames = 0u;
+    IMP_LOG_INFO("Encoder", "T30 eprc: OEM %s %ux%u gop=%u fps=%u/%u "
+                 "bitrate=%u kbit/s qp=[%u,%u] bias=%d steps=%u/%u "
+                 "staticTime=%u changePos=%u quality=%u",
+                 p.rc_mode == EPRC_MODE_CBR ? "CBR" :
+                 p.rc_mode == EPRC_MODE_SMART ? "SMART" : "VBR",
+                 p.width, p.height, p.gop, p.fps_num, p.fps_den,
+                 p.rc_mode == EPRC_MODE_CBR ? p.bitrate : p.max_bitrate,
+                 p.min_qp, p.max_qp, (int)p.i_bias, p.frm_qp_step,
+                 p.gop_qp_step, p.static_time, p.change_pos, p.quality);
+}
+
+/* The 25 registers the OEM T30 encoder reads after each picture
+ * (hwicodec_pf_h264e_t30_enc: soc_vpu ioctl 0xc0386307, node word 0 the
+ * address 0x13200000 + register, word 1 the value). */
+static void t30_eprc_statistics(T30HelixEncoder *encoder,
+                                uint32_t regs[EPRC30_STAT_REGS])
+{
+    unsigned int i;
+
+    for (i = 0; i < EPRC30_STAT_REGS; i++) {
+        uint32_t node[14];
+
+        memset(node, 0, sizeof(node));
+        node[0] = 0x13200000u + EPRC30_StatRegs[i];
+        if (ioctl(encoder->fd, 0xc0386307u, node) != 0) {
+            if (encoder->eprc30_stat_errors++ == 0)
+                IMP_LOG_WARN("Encoder", "T30 eprc: reading 0x%08x failed "
+                             "(%s); the statistics are 0", node[0],
+                             strerror(errno));
+            memset(regs, 0, EPRC30_STAT_REGS * sizeof(regs[0]));
+            return;
+        }
+        regs[i] = node[1];
+    }
+}
+
+/* OPENIMP_T30_EPRC_STATS=<seconds>: one line per interval with the bit
+ * rate and the average QPs. */
+static void t30_eprc_report(T30HelixEncoder *encoder, uint32_t qp, int idr,
+                            uint32_t bytes)
+{
+    int k = idr ? 1 : 0;
+    uint64_t kbps;
+
+    if (!encoder->eprc30_stats_seconds || !encoder->params.fps_den)
+        return;
+    if (!encoder->eprc30_frames) {
+        encoder->eprc30_qp_sum[0] = encoder->eprc30_qp_sum[1] = 0u;
+        encoder->eprc30_idrs = 0u;
+        encoder->eprc30_bytes = 0u;
+    }
+    encoder->eprc30_frames++;
+    encoder->eprc30_idrs += (uint32_t)k;
+    encoder->eprc30_bytes += bytes;
+    encoder->eprc30_qp_sum[k] += qp;
+    if ((uint64_t)encoder->eprc30_frames * encoder->params.fps_den <
+        (uint64_t)encoder->eprc30_stats_seconds * encoder->params.fps_num)
+        return;
+    kbps = encoder->eprc30_bytes * 8u * encoder->params.fps_num /
+           ((uint64_t)encoder->eprc30_frames * encoder->params.fps_den * 1000u);
+    IMP_LOG_INFO("Encoder", "T30 eprc stats: %ux%u %u frames %llu kbit/s "
+                 "(set %u) P qp avg %u IDR %u qp avg %u re-encodes %u",
+                 encoder->params.width, encoder->params.height,
+                 encoder->eprc30_frames, (unsigned long long)kbps,
+                 encoder->params.bitrate / 1000u,
+                 encoder->eprc30_frames > encoder->eprc30_idrs
+                     ? (uint32_t)(encoder->eprc30_qp_sum[0] /
+                                  (encoder->eprc30_frames - encoder->eprc30_idrs))
+                     : 0u,
+                 encoder->eprc30_idrs,
+                 encoder->eprc30_idrs
+                     ? (uint32_t)(encoder->eprc30_qp_sum[1] / encoder->eprc30_idrs)
+                     : 0u,
+                 encoder->eprc30_reencodes);
+    encoder->eprc30_frames = 0u;
+}
+#endif
+
 static void t30_start_rate_control(T30HelixEncoder *encoder,
                                    uint32_t initial_qp)
 {
@@ -2321,6 +2481,9 @@ static void t30_start_rate_control(T30HelixEncoder *encoder,
 #endif
 #if defined(PLATFORM_T20)
     t20_rc_start(encoder);
+#endif
+#if defined(PLATFORM_T30)
+    t30_eprc_start(encoder);
 #endif
 }
 
@@ -2459,6 +2622,10 @@ int OpenIMP_T30_HelixCreate(T30HelixEncoder **encoder_out,
      * min QP of 0 into 18) */
     encoder->t20rc_min_qp = params->max_qp ? params->min_qp : 0u;
     encoder->t20rc_max_qp = params->max_qp ? params->max_qp : 51u;
+#endif
+#if defined(PLATFORM_T30)
+    encoder->eprc30_min_qp = params->max_qp ? params->min_qp : 0u;
+    encoder->eprc30_max_qp = params->max_qp ? params->max_qp : 51u;
 #endif
     t30_normalize_params(&encoder->params, NULL);
 #if defined(PLATFORM_T23)
@@ -3280,6 +3447,9 @@ static int t30_helix_encode_job(T30HelixEncoder *encoder,
 #if defined(HELIX_T21_HSKIP)
     uint32_t hs_tries = 0;      /* T21: re-encodes of the picture in hand (the scene cut is judged on the first try) */
 #endif
+#if defined(PLATFORM_T30)
+    uint32_t t30_reencodes = 0u;
+#endif
 #if defined(PLATFORM_T20)
     uint32_t t20_reencodes;
     /* SetChangeRef second try (i264e_slice_write): cr_second: this run is the second try; the kept try of the
@@ -3435,6 +3605,15 @@ t20_picture:
 t20_again:
     payload = NULL;             /* this try's bitstream is in the window */
     hdr_ptr = NULL;
+#endif
+#if defined(PLATFORM_T30)
+    if (encoder->eprc30_on) {
+        EprcPicture pic;
+
+        EPRC30_FrameStart(&encoder->eprc30, idr, &pic);
+        qp = pic.qp;
+    }
+t30_again:
 #endif
 #if defined(PLATFORM_T23)
     if (!encoder->eprc_on)
@@ -3777,6 +3956,34 @@ again:
 #endif
         return -1;
     }
+#if defined(PLATFORM_T30)
+    if (encoder->eprc30_on) {
+        uint32_t regs[EPRC30_STAT_REGS];
+        EprcPicture pic;
+
+        t30_eprc_statistics(encoder, regs);
+        /* the OEM counts the slice bytes (header and payload) */
+        pic.qp = (uint8_t)qp;
+        if (EPRC30_FrameEnd(&encoder->eprc30,
+                            header_length + encoder->channel.output_len, regs,
+                            encoder->channel.cmpx, &pic,
+                            t30_reencodes < 4u) == 1) {
+            /* OEM FRAME_REPEATE_JUDGE_T30: code the picture again at the
+             * new QP (the reference input is untouched) */
+            encoder->eprc30_reencodes++;
+            if (encoder->eprc30_reencodes <= 3u ||
+                encoder->eprc30_reencodes % 100u == 0u)
+                IMP_LOG_INFO("Encoder", "T30 eprc: frame=%u %s %u bytes at "
+                             "qp=%u, coding again at qp=%u (%u so far)",
+                             encoder->frame_number, idr ? "IDR" : "P",
+                             header_length + encoder->channel.output_len,
+                             qp, (uint32_t)pic.qp, encoder->eprc30_reencodes);
+            qp = pic.qp;
+            t30_reencodes++;
+            goto t30_again;
+        }
+    }
+#endif
 #if defined(HELIX_T21_HSKIP)
     /* T21 1.0.33 i264e_slice_write: i264e_decide_reset_slice_to_idr judges the first try of a picture before the
      * re-encode judge; a black picture reaches neither the judge nor FRAME_END (i264e_icodec_black) */
@@ -4046,6 +4253,10 @@ again:
 #if defined(PLATFORM_T20)
     if (encoder->t20rc_on || encoder->t10rc_on)
         t20_rc_report(encoder, qp, idr, stream->length);
+#endif
+#if defined(PLATFORM_T30)
+    if (encoder->eprc30_on)
+        t30_eprc_report(encoder, qp, idr, stream->length);
 #endif
 #if defined(PLATFORM_T23)
     if (!idr) {
@@ -4415,6 +4626,12 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
     }
 #endif
 #endif
+#if defined(PLATFORM_T30)
+    if (requested->max_qp) {
+        encoder->eprc30_min_qp = requested->min_qp;
+        encoder->eprc30_max_qp = requested->max_qp;
+    }
+#endif
     t30_normalize_params(&next, &encoder->params);
 #if defined(PLATFORM_T20)
     {
@@ -4474,6 +4691,11 @@ int OpenIMP_T30_HelixUpdateParams(T30HelixEncoder *encoder,
     if (qp > next.max_qp)
         qp = next.max_qp;
 
+#if defined(PLATFORM_T30)
+    /* the OEM re-runs i264e_ratecontrol_init on every rate-control change */
+    if (encoder->eprc30_on)
+        model_changed = 1;
+#endif
 #if defined(PLATFORM_T20)
     /* the OEM re-runs i264e_ratecontrol_init on every rate-control change */
     if (encoder->t20rc_on || encoder->t10rc_on || t20_rc_wanted(encoder) ||
@@ -4556,6 +4778,9 @@ void OpenIMP_T30_HelixDestroy(T30HelixEncoder *encoder)
 #if defined(PLATFORM_T20)
     t20_rc_stop(encoder);
     free(encoder->cr_buf);
+#endif
+#if defined(PLATFORM_T30)
+    t30_eprc_stop(encoder);
 #endif
     free(encoder);
 }

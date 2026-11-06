@@ -14,6 +14,49 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - New `src/t30/radix/`: the 0x1204-byte per-picture parameter block (names/offsets from the vendor debug dumper) and the command list builder written from the vendor `H265E_T30_SliceInit` (0x3ad5c) with the register map and interpolation tables of the kernel's GPL `radix.h`. Desk proof: under qemu-mipsel against the vendor function, 25 000 random blocks (I and P) give identical lists; host test `radix_cmdlist_test` (64 vendor list hashes) in `make -C tests/t30 check`.
 - CABAC context init (`t30_radix_cabac.c`, = vendor `Entropy::resetEntropy` for every slice type and QP), VPS/SPS/PPS/slice header writers and NAL framing (`t30_radix_hevc.c`, bit-identical to the vendor `codeVPS`/`codeSPS`/`codePPS`/`codeSliceHeader`/`NALList::serialize` over 20 000 random value sets under qemu-mipsel); host tests `radix_cabac_test`, `radix_hevc_test` (vendor hashes) in `make -C tests/t30 check`.
 - Not linked into libimp yet: `IMP_Encoder_CreateChn(PT_H265)` on T30 still returns -1. Open: block defaults, the vendor's header values per channel setting, encoder object, QEMU and T30X proofs. Matrix row 23 unchanged.
+## 2026-11-06, T30: OEM picture rate control (eprc T30 revision, #210)
+
+- T30 CBR/VBR/SMART now run the vendor's own T30 rate controller, reimplemented in `src/eprc/eprc_t30.c` (`JZ_VPU_RC_*_T30` of the T30 1.0.5 libimp), instead of OpenIMP's GOP controller. The GOP controller changes QP only at GOP boundaries: on the T30X at 2048x1536 / 2000 kbit/s CBR the first GOP ran at QP 30 (about 82 Mbit/s), then QP sat at the maximum 45 (about 0.5 Mbit/s), 7.5 Mbit/s average over 12 s at 25 fps. The vendor CBR held 2018 kbit/s.
+- Bit-exact with the OEM code under the emulator: state after every call equal for 7 + 150 scenarios; `tests/eprc/eprc_t30_test.c` replays 6966 OEM decisions of the T30X stock library build (uclibc 4.7.2, md5 abd61e9a); a mipsel build of the module gives the same.
+- Encoder: QP per picture from the controller, the 25 Helix statistics registers read after each run (soc_vpu ioctl 0xc0386307), slice bytes and cmpx to FRAME_END, re-encode on request. `OPENIMP_T30_EPRC=0` keeps the GOP controller; `OPENIMP_T30_EPRC_STATS=<s>` logs rate and QPs. Details: docs/T23_EPRC.md "T30".
+- Not yet: the macroblock-level fields of `h264_get_mb_qp` (the T30 command list has no macroblock rate control). Device proof (T30X b39, 2026-11-06 05:36, open ko, CBR 2000 kbit/s): steady 2040-2069 kbit/s at 2048x1536 25 and 15 fps and at 1080p + 640x360 sub (before: 7.5 Mbit/s at 25 fps, 3.2 at 15 fps; GOP controller A/B in the same run 14.2 Mbit/s; vendor CBR 2018 kbit/s); VBR max 2000 settles at 1.4 Mbit/s; 0 GetStream errors, process CPU 2.5-5 %. The first window is high (6.6 Mbit/s at 25 fps: first IDR at the vendor default QP 26); an A/B against the vendor lib over the first seconds is still open.
+
+## 2026-11-06, T30: encoder pulls the capture frame, heights that are not a multiple of 16 encode again (#209; QEMU, T30X proof pending)
+
+- The T30 encoder took its pictures through `IMP_FrameSource_GetFrame`. Since #202 that returns the compact NV12 copy in plain memory (`phyAddr` 0) for a height that is not a multiple of 16. Helix refused every such picture (`t30_helix_encoder.c`, frame check without a physical address), so a 640x360 sub and a 1920x1080 main gave "3 consecutive Helix failures" and no stream (timps b34/b35, enc2 b36).
+- The encoder now pulls the capture frame with `VBMGetFrame`, as on T20/T21/T23 (`openimp_p2_encoder.c`). Applications keep getting the compact copy from GetFrame.
+- QEMU T30 (enc2, instrumented library): before the fix, 9 refusals per 4 s with `phy=0x0 size=345600 640x360`; after it, the 640x360 sub encodes 98/98 frames next to a 1280x720 main.
+- The vendor stack on the T30X (b37) encodes 640x360 and 1920x1080.
+- make check / status-check rc 0.
+## 2026-11-06, all SoCs: FrameSource rotation costs less per frame (C kernel, optional no copy back)
+
+- New C kernel for the 90/270 rotation (`src/framesource/nv12_rotate.c`, used where there is no MXU2: T23, `OPENIMP_MXU=0`, and the strips of the MXU2 path are unchanged). Cache-line bands anchored at destination column 0, each destination line allocated with `PREF 30` and written front to back in one go, a 4x4 transpose in 18 instead of 28 operations (`INS`). Bit-exact against the reference and the old kernel on the host and under QEMU (mipsel), every mode, envelope sizes and odd sizes.
+- T23N device (cams .30 and .23), whole capture hook per frame, before -> after, default copy back (rottest client, 15/15 fps, 0 decode errors, pictures checked):
+  - 640x352: 3.7-4.3 -> 2.2 ms; 704x576: 6.3-7.0 -> 3.9-4.0 ms; 960x544: 8.5-8.6 -> 5.2-5.3 ms (cap raised); 1280x720: 14.9-16.5 -> 10.3-11.5 ms (cap raised, no main).
+  - Client process CPU at 15 fps: 704x576 11.3-13.2 % -> 8.8-9.0 %; 640x352 8.2 % -> 6.4 %; 960x544 15.9 % -> 10.8 %.
+  - Table and analysis: docs/T31_ROTATE.md "Cost per frame".
+- Optional: `OPENIMP_FS_ROTATE_SPARES=1|2` rotates straight into a spare rmem buffer that the frame record points at until it is released. The capture buffer goes back into the record before its QBUF, so the driver always gets the same buffer per index. This saves the copy back (T23N 704x576: 3.9-4.0 -> 3.0 ms). It is off by default: each spare is one more frame of rmem, and on a T23N with a 1080p main a 960x544 spare left the main encoder without room. It needs a 1 MiB rmem headroom, and without a free spare it copies back.
+- The 704x576 pixel cap on T10/T20/T21/T23 is unchanged (proposal only: on T23N 960x544 now costs 5.2 ms, less than 704x576 did before).
+- `nv12_rotate_bench` (tests/t31) times the kernels on a device; `--mxu` adds the MXU2 path (refused on T23).
+
+## 2026-11-05, T23: FrameSource software rotation (`IMP_FrameSource_SetChnRotate`, beyond vendor)
+
+- T23 now rotates 90/270 through `IMP_FrameSource_SetChnRotate` like T31 and T10/T20/T21: the same `nv12_rotate` path on the FrameSource dequeue thread, before OSD, IVS and the encoders (`FS_SW_ROTATE` and the `kernel_interface.c` capture hook now include `PLATFORM_T23`; `nv12_rotate.o`/`core_mxu2.o` in `build-t23.sh`). Rules as on T21: width and height multiples of 16, at most 704x576 (sub stream), encoder channel created with the rotated size. The vendor T23 libimp has no rotation call; streamers rotated in their own software path.
+- T23 never runs the MXU2 selftest: the T23 has no MXU, and its kernel does not raise SIGILL for a COP2 instruction but oopses in `xburst_cop2_restore` (one `lu1q` from user space reset a T23N, sled `kernel_oops`). `SetChnRotate` fixes the C path on T23.
+- Device (two T23N, sc1a4t and sc2336p, test client, no flash): 640x352 -> 352x640 (both directions), 704x576 -> 576x704, H.264 + JPEG correctly oriented, 0 decode errors, 15/15 fps; 2.9-3.9 ms per 640x352 frame, 6.5 ms per 704x576, 14.8 ms per 1280x720 (cap raised for the measurement). Host: `fs_lifecycle_test_t23` runs the rotation test (geometry gate, bit-exact picture against a reference, consumer sees the rotated record). Details: docs/T31_ROTATE.md "T23".
+
+## 2026-11-05, T30: software rotation through `SetChnRotate` (#212, extra beyond vendor), rotation marker and limits for every rotating SoC
+
+- T30: `IMP_FrameSource_SetChnRotate` now rotates on the T21 path (`FS_SW_ROTATE`, `nv12_rotate` C plus MXU2 after the bit-exact selftest).
+  - Vendor enum: 1 = 90 CCW, 2 = 90 CW; OpenIMP 3 = 180.
+  - Call it before CreateChn with the landscape size, and create the encoder with the rotated size.
+  - Envelope as on T21: both sides multiples of 16, pixel cap 1280x720. Main streams above that (e.g. a 1088x1920 portrait main) stay refused (-1).
+  - Before this change the call stored the value and the frames were not rotated.
+- T30X lab camera (b36, idle, ms per frame, MXU2 == C bit-exact):
+  - rot90: 640x360 1.6-2.5, 1280x720 8.6-10.6, 1920x1080 22-24, 2048x1536 40-41;
+  - rot180: 1.2 / 4.8 / 11.2 / 15.0.
+  - Proof with this library: sub 640x352 -> 352x640, modes 1 and 2, 24.8 fps next to the 2048x1536 main, valid H.264 352x640.
+- New for streamers on every SoC that rotates in software (T31, T10/T20/T21, T23, T30): `OpenIMP_Cap_FsRotate` and `OpenIMP_FS_RotateLimits(chn, &max_w, &max_h, &max_fps, &align)`, declared in `imp_framesource.h`, exported through `libimp.map`.
 
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 

@@ -229,6 +229,268 @@ static void rot180_plane(const uint8_t *src, uint32_t ss, uint8_t *dst,
     }
 }
 
+/*
+ * PREF 30 (PrepareForStore) for the C path: allocates a cache line without
+ * reading it from memory. PREF is base MIPS32 (no COP2), so it is safe on
+ * every XBurst core, T23 included; a core that does not implement the hint
+ * treats it as a NOP. The old contents of the line become undefined, so it
+ * is only issued on whole 32-byte lines that the code writes completely
+ * right afterwards (an eviction in between costs time, not correctness).
+ */
+#if defined(__mips__)
+#define NV12_C_PREF_STORE(p) __asm__ volatile("pref 30, 0(%0)" :: "r"(p))
+#else
+#define NV12_C_PREF_STORE(p) ((void)(p))
+#endif
+
+/* The cache line of every XBurst1 core (T10..T31): 32 bytes. */
+#define NV12_ROT_LINE 32u
+
+#if NV12_ROT_WORDS
+/*
+ * 16-bit 2x2 transpose of two words in place: lo = [lo.h0 hi.h0],
+ * hi = [lo.h1 hi.h1] (h0 = bits 0..15). Three instructions on MIPS32R2
+ * (SRL + 2x INS; GCC makes 7 of the C form). INS is base MIPS32R2, which
+ * every libimp build already targets (-march=mips32r2).
+ */
+#if defined(__mips__) && defined(__mips_isa_rev) && __mips_isa_rev >= 2
+#define NV12_PAIR16(lo, hi) do {                                        \
+        uint32_t t_ = (lo) >> 16;                                       \
+        __asm__("ins %0, %1, 16, 16" : "+r"(lo) : "r"(hi));             \
+        __asm__("ins %0, %1, 0, 16" : "+r"(hi) : "r"(t_));              \
+    } while (0)
+#else
+#define NV12_PAIR16(lo, hi) do {                                        \
+        uint32_t t_ = (lo) >> 16;                                       \
+        (lo) = ((lo) & 0xffffu) | ((hi) << 16);                         \
+        (hi) = ((hi) & 0xffff0000u) | t_;                               \
+    } while (0)
+#endif
+
+/*
+ * 4x4 byte transpose in place, 18 operations (TRANSPOSE4: 28): rows a..d
+ * (byte k = column k) become columns (byte k = row k: a, b, c, d). 16-bit
+ * 2x2 first, then the byte 2x2 as a delta swap.
+ */
+#define NV12_T4(a, b, c, d) do {                                        \
+        uint32_t u_;                                                    \
+        NV12_PAIR16(a, c);                                              \
+        NV12_PAIR16(b, d);                                              \
+        u_ = (((a) >> 8) ^ (b)) & 0x00ff00ffu;                          \
+        (b) ^= u_;                                                      \
+        (a) ^= u_ << 8;                                                 \
+        u_ = (((c) >> 8) ^ (d)) & 0x00ff00ffu;                          \
+        (d) ^= u_;                                                      \
+        (c) ^= u_ << 8;                                                 \
+    } while (0)
+
+/* Keeps the compiler from turning the unrolled band loops into one
+ * precomputed pointer per source row (32 of them, spilled to the stack). */
+#define NV12_ROT_OPAQUE(p) __asm__("" : "+r"(p))
+
+/* C 90/270 kernel: 1 cache-line banded (default), 2 banded with one-line
+ * bands whatever the alignment, 0 the plain 32x32 tiles (2 and 0 for tests
+ * and benchmarks) */
+static int nv12_rot_c_banded = 1;
+
+/* PREF 30 on every whole cache line inside [l, l + bytes) of each of the
+ * n destination rows: the caller writes all those bytes next. */
+static inline __attribute__((always_inline)) void
+pref_store_segs(uint8_t *const *l, int n, uint32_t bytes)
+{
+    int i;
+
+    for (i = 0; i < n; i++) {
+        uintptr_t a = (uintptr_t)l[i], p, e = a + bytes;
+
+        if (bytes == NV12_ROT_LINE) {   /* the common case: one line */
+            if ((a & (NV12_ROT_LINE - 1u)) == 0u)
+                NV12_C_PREF_STORE(l[i]);
+            continue;
+        }
+        p = (a + NV12_ROT_LINE - 1u) & ~(uintptr_t)(NV12_ROT_LINE - 1u);
+        for (; p + NV12_ROT_LINE <= e; p += NV12_ROT_LINE)
+            NV12_C_PREF_STORE((uint8_t *)p);
+    }
+}
+
+/*
+ * One luma band: source rows [y0, y0+n) (n a multiple of 4, at most 64)
+ * become n contiguous bytes from destination column col of every
+ * destination row. The walk goes along x in 4-column steps and, for each,
+ * down the band: the four destination rows are written front to back, one
+ * whole cache line each when n is 32 and the line is aligned (allocated
+ * with PREF 30 first); the band's source lines stay in L1 across the 8
+ * steps that read them.
+ */
+static inline __attribute__((always_inline)) void
+rot90_y_band(const uint8_t *src, uint32_t ss, uint8_t *dst, uint32_t ds,
+             uint32_t w, int cw, uint32_t y0, uint32_t n, size_t col)
+{
+    const uint8_t *s0 = src + (size_t)y0 * ss;
+    const size_t ss4 = (size_t)ss * 4u;
+    uint32_t x, k;
+
+    for (x = 0; x < w; x += 4u) {
+        const uint8_t *s = s0 + x;
+        uint8_t *d[4];
+
+        if (cw) {
+            d[0] = dst + (size_t)x * ds + col;
+            d[1] = d[0] + ds;
+            d[2] = d[1] + ds;
+            d[3] = d[2] + ds;
+        } else {
+            d[0] = dst + (size_t)(w - 1u - x) * ds + col;
+            d[1] = d[0] - ds;
+            d[2] = d[1] - ds;
+            d[3] = d[2] - ds;
+        }
+        pref_store_segs(d, 4, n);
+        if (cw) {
+            /* rows y+3 .. y land at columns n-4-k .. n-1-k */
+#pragma GCC unroll 8
+            for (k = 0; k < n; k += 4u) {
+                uint32_t r0 = LD32(s), r1 = LD32(s + ss);
+                uint32_t r2 = LD32(s + 2u * ss), r3 = LD32(s + 3u * ss);
+
+                s += ss4;
+                NV12_ROT_OPAQUE(s);
+                NV12_T4(r3, r2, r1, r0);
+                ST32(d[0] + (n - 4u - k), r3);
+                ST32(d[1] + (n - 4u - k), r2);
+                ST32(d[2] + (n - 4u - k), r1);
+                ST32(d[3] + (n - 4u - k), r0);
+            }
+        } else {
+#pragma GCC unroll 8
+            for (k = 0; k < n; k += 4u) {
+                uint32_t r0 = LD32(s), r1 = LD32(s + ss);
+                uint32_t r2 = LD32(s + 2u * ss), r3 = LD32(s + 3u * ss);
+
+                s += ss4;
+                NV12_ROT_OPAQUE(s);
+                NV12_T4(r0, r1, r2, r3);
+                ST32(d[0] + k, r0);
+                ST32(d[1] + k, r1);
+                ST32(d[2] + k, r2);
+                ST32(d[3] + k, r3);
+            }
+        }
+    }
+}
+
+/* One CbCr band: n pair rows (even, at most 32), 2 pairs per step. */
+static inline __attribute__((always_inline)) void
+rot90_uv_band(const uint8_t *src, uint32_t ss, uint8_t *dst, uint32_t ds,
+              uint32_t w, int cw, uint32_t y0, uint32_t n, size_t col)
+{
+    const uint8_t *s0 = src + (size_t)y0 * ss;
+    const size_t ss2 = (size_t)ss * 2u;
+    uint32_t x, k;
+
+    for (x = 0; x < w; x += 2u) {
+        const uint8_t *s = s0 + (size_t)x * 2u;
+        uint8_t *d[2];
+
+        if (cw) {
+            d[0] = dst + (size_t)x * ds + col;
+            d[1] = d[0] + ds;
+        } else {
+            d[0] = dst + (size_t)(w - 1u - x) * ds + col;
+            d[1] = d[0] - ds;
+        }
+        pref_store_segs(d, 2, n * 2u);
+        if (cw) {
+            /* pair columns n-2-k, n-1-k = rows y+1, y */
+#pragma GCC unroll 8
+            for (k = 0; k < n; k += 2u) {
+                uint32_t a = LD32(s), b = LD32(s + ss);
+
+                s += ss2;
+                NV12_ROT_OPAQUE(s);
+                NV12_PAIR16(b, a);
+                ST32(d[0] + (n - 2u - k) * 2u, b);
+                ST32(d[1] + (n - 2u - k) * 2u, a);
+            }
+        } else {
+#pragma GCC unroll 8
+            for (k = 0; k < n; k += 2u) {
+                uint32_t a = LD32(s), b = LD32(s + ss);
+
+                s += ss2;
+                NV12_ROT_OPAQUE(s);
+                NV12_PAIR16(a, b);
+                ST32(d[0] + k * 2u, a);
+                ST32(d[1] + k * 2u, b);
+            }
+        }
+    }
+}
+
+/*
+ * 90/270 word path over the whole plane, cache-line banded (both sides in
+ * whole 4x4 / 2x2 blocks, buffers word-aligned).
+ *
+ * Measured on T23 (no MXU, 2026-11-06, nv12_rotate_bench and a luma
+ * micro benchmark, 704x576): the 32x32-tile path took 2.4 ms for the luma
+ * plane, of which ~1.0 ms were the transposes alone (data in L1), ~0.7 ms
+ * the tile loads and ~1.1 ms the scattered 4-byte stores (each tile touches
+ * 32 destination lines 8 times); a memcpy of the same bytes takes 0.47 ms.
+ * PREF 0 on the source made it slower. Hence:
+ *  - a band is the source rows that fill one destination cache line (32
+ *    luma rows, 16 CbCr pair rows), anchored at destination column 0 (CW:
+ *    at the source bottom, CCW: at the top; the remainder band at the
+ *    other end), so a full band writes whole aligned lines;
+ *  - each destination line is allocated with PREF 30 and written front to
+ *    back in one go (rot90_*_band);
+ *  - the 4x4 transpose takes 18 instead of 28 operations (NV12_T4).
+ */
+static void rot90_words_banded(const uint8_t *src, uint32_t ss, uint8_t *dst,
+                               uint32_t ds, uint32_t w, uint32_t h, int bpp,
+                               int mode)
+{
+    const int cw = mode == NV12_ROT_90_CW;
+    /* destination bytes per band row: one line; two for CW when the
+     * destination rows are not line-aligned (a 16-byte offset then leaves
+     * one whole line per band row instead of none). T23N, nv12_rotate_bench
+     * 2026-11-06: CW 640x368 1.74 vs 1.94 ms, 1280x720 8.56 vs 8.73 ms;
+     * CCW is faster with one line (1.69 vs 1.77, 7.94 vs 8.47 ms). */
+    const uint32_t bb = nv12_rot_c_banded == 1 && cw &&
+                        (((uintptr_t)dst | ds) & (NV12_ROT_LINE - 1u)) ?
+                        2u * NV12_ROT_LINE : NV12_ROT_LINE;
+    const uint32_t band = bb / (uint32_t)bpp;     /* source rows per band */
+    const uint32_t rem = h % band;
+    uint32_t y0, y1;
+
+    for (y0 = 0; y0 < h; y0 = y1) {
+        size_t col;
+
+        if (cw)
+            y1 = y0 == 0 && rem ? rem : y0 + band;
+        else
+            y1 = y0 + band <= h ? y0 + band : h;
+        /* destination byte column of the band's first byte */
+        col = (size_t)(cw ? h - y1 : y0) * (uint32_t)bpp;
+        if (bpp == 1) {
+            if (y1 - y0 == 32u)
+                rot90_y_band(src, ss, dst, ds, w, cw, y0, 32u, col);
+            else if (y1 - y0 == 64u)
+                rot90_y_band(src, ss, dst, ds, w, cw, y0, 64u, col);
+            else
+                rot90_y_band(src, ss, dst, ds, w, cw, y0, y1 - y0, col);
+        } else {
+            if (y1 - y0 == 16u)
+                rot90_uv_band(src, ss, dst, ds, w, cw, y0, 16u, col);
+            else if (y1 - y0 == 32u)
+                rot90_uv_band(src, ss, dst, ds, w, cw, y0, 32u, col);
+            else
+                rot90_uv_band(src, ss, dst, ds, w, cw, y0, y1 - y0, col);
+        }
+    }
+}
+#endif /* NV12_ROT_WORDS */
+
 /* C rotation of the rectangle [x0,x1) x [y0,y1) (90/270 only): word path
  * in 32x32 tiles when the plane allows it, scalar otherwise. */
 static void rot90_c_rect(const uint8_t *src, uint32_t ss, uint8_t *dst,
@@ -412,6 +674,11 @@ static void rot180_mxu2(const uint8_t *src, uint32_t ss, uint8_t *dst,
 
 /* -1: not selected yet, 0: C, 1: MXU2 */
 static int nv12_rot_impl = -1;
+int nv12_rotate_set_c_kernel(int banded)
+{
+    nv12_rot_c_banded = banded < 0 ? 0 : banded > 2 ? 2 : banded;
+    return nv12_rot_c_banded;
+}
 
 static void rotate_plane_impl(const uint8_t *src, uint32_t src_stride,
                               uint8_t *dst, uint32_t dst_stride,
@@ -551,6 +818,13 @@ static void rotate_plane_impl(const uint8_t *src, uint32_t src_stride,
                      mode, words, 0, wb, yhi, height);
         return;
     }
+#if NV12_ROT_WORDS
+    if (words && nv12_rot_c_banded) {
+        rot90_words_banded(src, src_stride, dst, dst_stride, width, height,
+                           bpp, mode);
+        return;
+    }
+#endif
     rot90_c_rect(src, src_stride, dst, dst_stride, width, height, bpp, mode,
                  words, 0, width, 0, height);
 }
