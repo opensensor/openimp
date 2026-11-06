@@ -1493,7 +1493,7 @@ static void e30_model_update(uint8_t *S)
     n = S8(3028);
     if (n != 0) {
         sum = 0.0f;
-        m = n < 9 ? n : 9;                           /* the OEM loop has 9 terms */
+        m = n;          /* T30X stock build (uclibc 4.7.2); the 5.4.0 build stops at 9 */
         for (i = 0; i < m; i++) {
             err[i] = (SF(2768) * SF(2944 + 4 * i) + SF(2772)) - SF(2860 + 4 * i);
             sum = sum + err[i] * err[i];

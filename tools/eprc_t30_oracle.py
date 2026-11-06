@@ -12,8 +12,14 @@ EPRC30_* against.  Nothing from the vendor library is copied into OpenIMP;
 it is read from the path you pass.  The emulator, the scenarios and the
 picture-size and statistics models are those of tools/eprc_oracle.py.
 
-    tools/eprc_t30_oracle.py T30/lib/1.0.5/uclibc/5.4.0/libimp.so > tests/eprc/eprc_t30_vectors.txt
-    tools/eprc_t30_oracle.py LIB --random SEED N [FRAMES]
+    tools/eprc_t30_oracle.py T30/lib/1.0.5/uclibc/4.7.2/libimp.so > tests/eprc/eprc_t30_vectors.txt
+    tools/eprc_t30_oracle.py LIB --real [--random SEED N [FRAMES]]
+
+The OEM T30 i264e codes an IDR whenever the picture count since the last
+IDR is a multiple of the GOP (i264e_ratecontrol_start: [0] % gop).  '--real'
+replaces the synthetic statistics by counts in the ranges of a real picture
+(and a non-zero channel cmpx, the MAD input), so that the scene classes and
+the MAD model run on finite values; the S line then carries a 19th field 1.
 
 The T30 i264e glue (i264e parameters in the T20 layout, controller block E
 at i264e parameters + 0x9044c):
@@ -119,13 +125,33 @@ def validated_sizes(L, w, h):
     return L.r32(R + 280), L.r32(R + 284)
 
 
+def real_statistics(frame, w, h):
+    """statistics(frame) scaled into the ranges of a real picture, and the
+    channel cmpx (as the test)."""
+    regs = list(statistics(frame))
+    mbs = ((w + 15) // 16) * ((h + 15) // 16)
+    k = (frame // 20) % 5
+    regs[0] = ((regs[0] % max(1, mbs // (1 + k))) & 0x7fff) | \
+              (((regs[4] % max(1, mbs // 3)) & 0x7fff) << 16)
+    regs[1] = (regs[1] % (mbs * (1 + 20 * k))) & 0x7ffffff
+    regs[2] = (regs[2] % (mbs * (1 + 10 * k))) & 0x7ffffff
+    for j in (10, 11, 12):
+        regs[j] = regs[j] % max(1, mbs)
+    cmpx = 1 + (regs[3] % 40000) * (1 + (frame // 30) % 3)
+    return regs, cmpx
+
+
 def main():
     lib = sys.argv[1]
-    frames = 120
+    args = sys.argv[2:]
+    real = '--real' in args
+    if real:
+        args.remove('--real')
+    frames = 200 if real else 120
     scenarios = SCENARIOS
-    if len(sys.argv) > 4 and sys.argv[2] == '--random':
-        scenarios = random_scenarios(int(sys.argv[3]), int(sys.argv[4]))
-        frames = int(sys.argv[5]) if len(sys.argv) > 5 else 150
+    if len(args) > 2 and args[0] == '--random':
+        scenarios = random_scenarios(int(args[1]), int(args[2]))
+        frames = int(args[3]) if len(args) > 3 else 150
     for n, sc in enumerate(scenarios):
         (mode, w, h, gop, fps, minqp, maxqp, br, mbr, fstep, gstep, bias, static,
          cpos, qual, bgmul, initqp, idr) = sc[:18]
@@ -133,15 +159,19 @@ def main():
                    maxqp=maxqp, bitrate=br, maxbitrate=mbr, frm_step=fstep, gop_step=gstep,
                    bias=bias, static_time=static, change_pos=cpos, quality=qual,
                    initqp=initqp)
-        print('S', ' '.join(str(v) for v in sc))
+        print('S', ' '.join(str(v) for v in sc) + (' 1' if real else ''))
         for f in range(frames):
             since = f % idr
+            is_idr = since % gop == 0
             qp = s.start(since)
             out = [qp]
-            size = picture_bytes(f, qp, since == 0, w * h, n % 2)
-            regs = statistics(f)
+            size = picture_bytes(f, qp, is_idr, w * h, n % 2)
+            if real:
+                regs, s.cmpx = real_statistics(f, w, h)
+            else:
+                regs = statistics(f)
             while True:
-                r = s.end(size, regs, since == 0, qp)
+                r = s.end(size, regs, is_idr, qp)
                 if r != 1:
                     break
                 qp = s.qp()
