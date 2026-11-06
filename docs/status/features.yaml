@@ -823,7 +823,7 @@ features:
       text: coerced to 0 ("unsupported on this SoC")
     T23:
       sym: ✅
-      text: '`IMP_FrameSource_SetChnRotate` 90/270 (beyond vendor: the T23 libimp has none): the T31/T21 software rotation on the FrameSource thread, before OSD, IVS and the encoders; sizes multiples of 16, at most 704x576 (sub stream). Device-tested 2026-11-05 on two T23N (sc1a4t, sc2336p) with a test client, not under timps yet: 352x640 and 576x704 H.264 + JPEG correctly oriented, 0 decode errors, 15/15 fps; 3-4 ms per 640x352 frame, 6.5 ms per 704x576 (C path, the T23 has no MXU). Before this, sub-stream rotation on T23 was timps'' own software path (unbound `IMP_Encoder_Yuv*`), not the native encoder; IMP_Encoder_YuvSetCrop implemented (host-tested only, timps does not call it) [claude/t23-fs-rotate]'
+      text: '`IMP_FrameSource_SetChnRotate` 90/270 (beyond vendor: the T23 libimp has none): the T31/T21 software rotation on the FrameSource thread, before OSD, IVS and the encoders; sizes multiples of 16, at most 704x576 (sub stream). Device-tested 2026-11-05 on two T23N (sc1a4t, sc2336p) with a test client, not under timps yet: 352x640 and 576x704 H.264 + JPEG correctly oriented, 0 decode errors, 15/15 fps; 3-4 ms per 640x352 frame, 6.5 ms per 704x576 (C path, the T23 has no MXU); banded C kernel 2026-11-06 (both cams, rottest): 2.2 ms per 640x352, 3.9-4.0 ms per 704x576 [claude/rotate-speed]. Before this, sub-stream rotation on T23 was timps'' own software path (unbound `IMP_Encoder_Yuv*`), not the native encoder; IMP_Encoder_YuvSetCrop implemented (host-tested only, timps does not call it) [claude/t23-fs-rotate]'
     T30:
       sym: '?'
       text: no rotation call in the T30 vendor export list
