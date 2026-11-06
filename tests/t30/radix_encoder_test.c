@@ -74,18 +74,26 @@ int DMA_RmemFlushCache(void *virt_addr, uint32_t size, int dir)
     return 0;
 }
 
+static int open_fds, chan_requests, chan_releases, request_fail;
+
 int __real_open(const char *path, int flags, ...);
 int __wrap_open(const char *path, int flags, ...)
 {
-    if (!strcmp(path, "/dev/soc_vpu"))
+    if (!strcmp(path, "/dev/soc_vpu")) {
+        open_fds++;
         return FAKE_FD;
+    }
     return __real_open(path, flags, 0);
 }
 
 int __real_close(int fd);
 int __wrap_close(int fd)
 {
-    return fd == FAKE_FD ? 0 : __real_close(fd);
+    if (fd == FAKE_FD) {
+        open_fds--;
+        return 0;
+    }
+    return __real_close(fd);
 }
 
 /* what the last RUN's command list programmed */
@@ -126,12 +134,17 @@ int __wrap_ioctl(int fd, unsigned long request, ...)
         FakeChannel *c = arg;
 
         assert(c->codecdir == 0x10u && c->thread_id == -1 && c->mdelay == 20000u);
+        if (request_fail)
+            return -1;
+        chan_requests++;
         c->clist = 1;
         c->channel_id = 5;
         return 0;
     }
-    if (request == 0xc0386301u)
+    if (request == 0xc0386301u) {
+        chan_releases++;
         return 0;
+    }
     if (request == 0xc0386307u) {
         uint32_t *reg = arg;
 
@@ -384,6 +397,50 @@ int main(void)
     }
     OpenIMP_T30_RadixDestroy(e);
     assert(live_buffers == 0u);
+    assert(open_fds == 0 && chan_requests == chan_releases);
+
+    /* lifetime: channel restarts (create / encode / destroy) with other
+     * sizes and RC modes, a change pending at destroy, a failed channel
+     * request; nothing may stay allocated or open */
+    {
+        static const uint32_t sizes[4][2] = {{640, 360}, {320, 240}, {352, 288}, {640, 368}};
+        unsigned int cyc;
+        /* heap in use before and after (no sanitizer runtime on every
+         * build host): the cycles must not leak a byte */
+        size_t heap0 = mallinfo2().uordblks;
+
+        for (cyc = 0; cyc < 40u; cyc++) {
+            HWEncoderParams cp = hp;
+            unsigned int k;
+
+            cp.width = sizes[cyc % 4u][0];
+            cp.height = sizes[cyc % 4u][1];
+            cp.rc_mode = cyc % 3u == 0u ? HW_RC_MODE_CBR
+                       : cyc % 3u == 1u ? HW_RC_MODE_VBR : HW_RC_MODE_FIXQP;
+            request_fail = cyc % 13u == 7u;
+            if (request_fail) {
+                assert(OpenIMP_T30_RadixCreate(&e, &cp) != 0);
+                assert(live_buffers == 0u && open_fds == 0);
+                continue;
+            }
+            assert(OpenIMP_T30_RadixCreate(&e, &cp) == 0);
+            for (k = 0; k < 3u; k++) {
+                HWStreamBuffer *s = NULL;
+
+                if (k == 1u) {
+                    cp.bitrate = 250000u + cyc * 1000u;
+                    assert(OpenIMP_T30_RadixUpdateParams(e, &cp) == 0);
+                }
+                assert(OpenIMP_T30_RadixEncode(e, &frame, &s) == 0 && s);
+                free((void *)(uintptr_t)s->virt_addr);
+                free(s);
+            }
+            OpenIMP_T30_RadixDestroy(e);
+            assert(live_buffers == 0u && open_fds == 0 && chan_requests == chan_releases);
+        }
+        request_fail = 0;
+        assert(mallinfo2().uordblks == heap0);
+    }
     printf("radix_encoder_test: PASS (%u runs, %u register reads)\n", runs, reg_reads);
     return 0;
 }

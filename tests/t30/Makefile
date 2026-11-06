@@ -234,6 +234,10 @@ sanitize: $(FS_DEPS) $(HELIX_SOURCES) $(HELIX_T21_SOURCES) $(IVS_DEPS)
 			-o helix_encoder_asan_$$name $$srcs -lm; \
 		./helix_encoder_asan_$$name; \
 	done
+	$(SAN_CC) $(HELIX_SANITIZE) -DPLATFORM_T30 -fno-pie -no-pie -fwrapv -ffp-contract=off \
+		-I$(ROOT)/include -I$(ROOT)/src -Wl,--wrap=open,--wrap=close,--wrap=ioctl \
+		$(RADIX_ENCODER_SOURCES) $(ROOT)/src/core/imp_log_emit.c -o radix_encoder_ubsan -lm
+	./radix_encoder_ubsan
 	set -e; for soc in "T21" "T20 -DPLATFORM_T21"; do \
 		name=$$(echo $$soc | cut -d' ' -f1); \
 		$(SAN_CC) $(FS_SANITIZE_ASAN) -Wno-unused-function -DPLATFORM_$$soc \

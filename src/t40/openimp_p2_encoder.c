@@ -2391,7 +2391,7 @@ static int p2_create_chn(int channel, IMPEncoderCHNAttr *attr)
 #if !defined(PLATFORM_T31) && !defined(PLATFORM_T40) && \
     !defined(PLATFORM_T41)
     if (p2_attr_codec_type(attr) == IMP_ENC_TYPE_HEVC
-#if defined(PLATFORM_T30)
+#if defined(P2_T30_NATIVE)
         /* T30: the Radix encoder (src/t30/radix) until its device proof
          * only with OPENIMP_T30_H265=1 */
         && !(getenv("OPENIMP_T30_H265") && getenv("OPENIMP_T30_H265")[0] == '1')

@@ -21,6 +21,12 @@
 #if defined(PLATFORM_T21)
 #define PLATFORM_T30 1
 #endif
+/* H.265 on Radix: the real T30 only (T20/T21 come here through the alias
+ * above, their libimp does not link src/t30/radix) */
+#if defined(PLATFORM_T30) && !defined(PLATFORM_T21) && !defined(PLATFORM_T20) && \
+    !defined(PLATFORM_T23)
+#define CODEC_T30_RADIX 1
+#endif
 
 #include <imp/imp_encoder.h>
 #include <imp/imp_system.h>
@@ -81,7 +87,7 @@ static pthread_mutex_t codec_crop_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
 #include "t30/t30_helix_encoder.h"
-#if defined(PLATFORM_T30)
+#if defined(CODEC_T30_RADIX)
 #include "t30/radix/t30_radix_encoder.h"
 #endif
 #include "t30/helix_jpeg.h"
@@ -8584,12 +8590,14 @@ struct AL_CodecEncode {
     uint32_t t30_helix_restarts;   /* re-creations without a good picture */
     int t30_helix_stopped;         /* H.264 output given up */
     uint64_t t30_helix_retry_ms;   /* no create before (CLOCK_MONOTONIC) */
+#if defined(CODEC_T30_RADIX)
     /* H.265 on the Radix block (OPENIMP_T30_H265=1, docs/T30_HEVC.md) */
     T30RadixEncoder *t30_radix;
     uint32_t t30_radix_width, t30_radix_height;
     uint32_t t30_radix_restarts;
     int t30_radix_stopped;
     uint64_t t30_radix_retry_ms;
+#endif
 #endif
 #if defined(PLATFORM_T23)
     uint8_t helix_roi[8][7];       /* AL_Codec_Encode_SetRoi (codec_roi_lock) */
@@ -10565,8 +10573,10 @@ int AL_Codec_Encode_Create(void **codec, void *params) {
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
+#if defined(CODEC_T30_RADIX)
     OpenIMP_T30_RadixDestroy(enc->t30_radix);
     enc->t30_radix = NULL;
+#endif
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
     if (enc->hw_params.codec_type == IMP_ENC_TYPE_JPEG)
@@ -10615,8 +10625,10 @@ static int al_codec_encode_destroy_impl(void *codec) {
 #if defined(PLATFORM_T30)
     OpenIMP_T30_HelixDestroy(enc->t30_helix);
     enc->t30_helix = NULL;
+#if defined(CODEC_T30_RADIX)
     OpenIMP_T30_RadixDestroy(enc->t30_radix);
     enc->t30_radix = NULL;
+#endif
 #endif
 #if defined(PLATFORM_T30) || defined(PLATFORM_T23)
     /* pairs with OpenIMP_HelixJpeg_Reserve in AL_Codec_Encode_Create */
@@ -11802,6 +11814,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
     uint64_t timestamp = codec_frame_capture_timestamp(frame);
 
 #if defined(PLATFORM_T30)
+#if defined(CODEC_T30_RADIX)
     if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_HEVC) {
         /* H.265 on Radix (CreateChn lets it through only with
          * OPENIMP_T30_H265=1): created at the first picture for its size,
@@ -11865,6 +11878,7 @@ static int al_codec_encode_process_impl(void *codec, void *frame,
         enc->t30_radix_restarts = 0;
         goto queue_encoded_stream;
     }
+#endif
     if (codec_param_read_codec_type(enc->codec_param) == IMP_ENC_TYPE_AVC) {
         if (enc->t30_helix_stopped) {
             codec_set_error(enc, -1);
