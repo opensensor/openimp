@@ -182,3 +182,74 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# ---------------------------------------------------------------- H.265
+# The i265e glue (I265eRatectrl, i265e object = i265e_param_t copy at +0):
+#   rcInit(this, i265e)     E = this + 0x60; i265e +0x14/+0x18 fps, +0x1c gop,
+#                           +0x28/+0x2c size, +0x48 mode, +0x4c QP, +0x50 bit
+#                           rate, +0x60 double, +0x70/+0x74 frame/GOP QP step,
+#                           +0x9c/+0xa0 max/min QP, +0xa4 I bias, +0xa8 static
+#                           time, +0xac, +0xb4 change pos, +0xb8 quality
+#   rcStart(this, common)   common +0x28 = frame: +0x778 slice type (2 I),
+#                           +0xd54 parameter block (E+0x234), +0xd4c (E+0x8c);
+#                           QP at frame +0x77c
+#   rcReEncode / rcEnd(this, task)  task +0x28 = frame: +0xea0 bytes, +0xd44
+#                           the (register, value) list of the 19 Radix
+#                           statistics registers
+STAT_REGS_265 = (0x40088, 0x4008c, 0x400a0, 0x400a4, 0x400b0, 0x400b8, 0x40028,
+                 0x4002c, 0x200a0, 0x200a4, 0x200a8, 0x200ac, 0x200b0, 0x200b4,
+                 0x200b8, 0x200bc, 0x20128, 0x2012c, 0x20130)
+RC265 = dict(init='_ZN8I265E_NS13I265eRatectrl6rcInitEP5i265e',
+             start='_ZN8I265E_NS13I265eRatectrl7rcStartERNS_15I265eEncodeTaskERNS_17I265eEncodeCommonE',
+             end='_ZN8I265E_NS13I265eRatectrl5rcEndEPNS_15I265eEncodeTaskE',
+             reenc='_ZN8I265E_NS13I265eRatectrl10rcReEncodeEPNS_15I265eEncodeTaskE')
+
+
+class SimT30H265:
+    def __init__(self, lib, mode=1, w=1920, h=1080, gop=50, fps=(25, 1), minqp=15, maxqp=45,
+                 bitrate=1000, frm_step=3, gop_step=15, bias=0, static_time=2, change_pos=80,
+                 quality=4, qp=42, fluct=2):
+        L = self.L = Lib(lib)
+        self.TH = HEAP + 0x10000            # I265eRatectrl
+        self.P = HEAP + 0x11000             # i265e (param copy)
+        self.F = HEAP + 0x20000             # frame (0x2100)
+        self.C = HEAP + 0x13000             # encode common / task (+0x28 = frame)
+        self.IO = HEAP + 0x14000            # statistics list
+        self.BLK = HEAP + 0x30000           # parameter block 0x1204
+        self.MI = HEAP + 0x40000
+        L.wr(HEAP, bytes(0x50000))
+        L.call('i265e_param_default', self.P)
+        P = self.P
+        for o, v in ((0x14, fps[0]), (0x18, fps[1]), (0x1c, gop), (0x28, w), (0x2c, h),
+                     (0x48, mode), (0x4c, qp), (0x50, bitrate), (0x70, frm_step),
+                     (0x74, gop_step), (0x9c, maxqp), (0xa0, minqp), (0xa4, bias),
+                     (0xa8, static_time), (0xac, fluct), (0xb4, change_pos), (0xb8, quality)):
+            L.w32(P + o, v)
+        L.call(RC265['init'], self.TH, P)
+        self.E = self.TH + 0x60
+        F = self.F
+        L.w32(F + 0xd54, self.BLK)
+        L.w32(F + 0xd4c, self.MI)
+        L.w32(F + 0xd44, self.IO)
+        L.w32(self.C + 0x28, F)
+        for i, o in enumerate(STAT_REGS_265):
+            L.w32(self.IO + 8 * i, 0x13600000 + o)
+
+    def qp(self):
+        return self.L.r32(self.F + 0x77c) & 0xff
+
+    def start(self, idr):
+        self.L.w32(self.F + 0x778, 2 if idr else 1)
+        self.L.call(RC265['start'], self.TH, self.C)
+        return self.qp()
+
+    def end(self, nbytes, regs):
+        L = self.L
+        for i, v in enumerate(regs):
+            L.w32(self.IO + 8 * i + 4, v)
+        L.w32(self.F + 0xea0, nbytes)
+        if L.call(RC265['reenc'], self.TH, self.C) == 1:
+            return 1
+        L.call(RC265['end'], self.TH, self.C)
+        return 0
