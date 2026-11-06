@@ -1798,6 +1798,101 @@ static void e30_model_update(uint8_t *S)
     e30_mad_model(S);
 }
 
+/* r_lambda_model_estimator (0x128dcc): ln(lambda) = ln(alpha) + beta *
+ * ln(bpp) fitted over the unrejected window entries (S+2248 flags, x =
+ * S+2332, y = S+2416, n = S+2500): alpha S+2232, beta S+2236, ln(alpha)
+ * S+2240. */
+static void e30_rl_model(uint8_t *S)
+{
+    int32_t n = S32(2500), i;
+    double a00 = 0, sx = 0, b0 = 0, a11 = 0, b1 = 0, det;
+    float beta;
+
+    for (i = 0; i < n; i++) {
+        float x = SF(2332 + 4 * i), y = SF(2416 + 4 * i);
+
+        if (S32(2248 + 4 * i) != 0)
+            continue;
+        a00 = a00 + 1.0;
+        sx = sx + (double)x;
+        b0 = b0 + (double)y;
+        a11 = a11 + (double)(x * x);
+        b1 = b1 + (double)(x * y);
+    }
+    det = a00 * a11 - sx * sx;
+    if (n >= 1 && fabs(det) > 1e-6) {
+        float c, alpha;
+
+        beta = (float)((a00 * b1 - sx * b0) / det);
+        SF(2236) = beta;
+        c = (float)((a11 * b0 - sx * b1) / det);
+        SF(2240) = c;
+        alpha = (float)pow(2.718282, (double)c);
+        SF(2232) = alpha;
+        if ((double)alpha < 0.05)
+            SF(2232) = 0.05f;
+        else if (200.0f < alpha)
+            SF(2232) = 200.0f;
+        beta = SF(2236);
+    } else {
+        SF(2240) = 0.0f;
+        SF(2232) = 1.0f;
+        beta = (float)(b0 / a00);
+        SF(2236) = beta;
+    }
+    if (-3.0f <= beta) {
+        if ((double)beta <= -0.1)
+            return;
+        SF(2236) = -0.1f;
+        return;
+    }
+    SF(2236) = -3.0f;
+}
+
+/* The R-lambda model update of FRAME_END (0x136b4c, A+192 == 2: H.265),
+ * P pictures. */
+static void e30_rl_update(uint8_t *A, uint8_t *S)
+{
+    float err[10], sum = 0.0f, sd;
+    double la;
+    int32_t n, i;
+
+    SF(2244) = (float)pow(2.718282, ((double)S8(80) - 13.7122) / 4.2005);
+    for (i = 9; i > 0; i--) {
+        SF(2332 + 4 * i) = SF(2328 + 4 * i);
+        SF(2416 + 4 * i) = SF(2412 + 4 * i);
+    }
+    SF(2332) = (float)log((double)S32(196) / (double)A32(52));
+    SF(2416) = (float)log((double)SF(2244));
+    if (SU32(0) < 3u)
+        return;
+    n = S32(2500) + 1;
+    if (n <= 0)
+        n = 1;
+    else if (n > 10)
+        n = 10;
+    S32(2500) = n;
+    memset(S + 2248, 0, 84);
+    if (A32(192) == 2)
+        e30_rl_model(S);
+    n = S32(2500);
+    if (n >= 1) {
+        for (i = 0; i < n; i++) {
+            la = log((double)SF(2232));
+            err[i] = (float)(((double)(SF(2236) * SF(2332 + 4 * i)) + la) -
+                             (double)SF(2416 + 4 * i));
+            sum = sum + err[i] * err[i];
+        }
+        sd = n < 3 ? 0.0f : (float)sqrt((double)(sum / (float)n));
+        for (i = 0; i < n; i++)
+            if (sd < fabsf(err[i]))
+                S32(2248 + 4 * i) = 1;
+    }
+    S32(2248) = 0;
+    if (A32(192) == 2)
+        e30_rl_model(S);
+}
+
 /* The smart-P QP S+5 of VBR/SMART (FRAME_END 0x135cc0). */
 static void e30_smartp(uint8_t *A, uint8_t *S, int32_t bits, int32_t pos, int32_t s1048)
 {
@@ -1863,14 +1958,33 @@ static void e30_frame_end(Eprc30 *rc)
 
     S8(80) = EU8(e, 552);
     S32(196) = bits;
-    /* 0x135af8: the statistics */
-    S32(892) = EI32(e, 176);
-    S32(1324) = A32(56) - EI32(e, 208) - EI32(e, 204);
-    S32(1332) = A32(56);
-    S32(1336) = EI32(e, 196);
-    memcpy(S + 1352, e + 212, 48);
-    memcpy(S + 1848, e + 340, 32);
-    memcpy(S + 1968, e + 460, 12);
+    if (EU32(e, 12) == 1) {                      /* H.265 (0x1355f8) */
+        uint32_t m = EU32(e, 180);
+
+        SU32(896) = m;
+        if (m != 0) {
+            float x = e30_u2f(m) / (float)A32(52);
+
+            SF(900) = (float)(log(x < 1.0f ? 655025.0 : 655025.0 / (double)x) *
+                              10.0 / 2.302585092994046);
+        }
+        S32(1324) = EI32(e, 200);
+        S32(1332) = A32(56);
+        S32(1336) = EI32(e, 196);
+        memcpy(S + 1816, e + 308, 32);
+        memcpy(S + 1848, e + 340, 32);
+        memcpy(S + 1956, e + 448, 12);
+        memcpy(S + 1968, e + 460, 12);
+    } else {
+        /* 0x135af8: the statistics */
+        S32(892) = EI32(e, 176);
+        S32(1324) = A32(56) - EI32(e, 208) - EI32(e, 204);
+        S32(1332) = A32(56);
+        S32(1336) = EI32(e, 196);
+        memcpy(S + 1352, e + 212, 48);
+        memcpy(S + 1848, e + 340, 32);
+        memcpy(S + 1968, e + 460, 12);
+    }
 
     type = S32(40);
     pos = S32(52) + 1;
@@ -2052,7 +2166,7 @@ average:                                             /* 0x1352cc */
     }
     if (type != 1)
         goto tail;
-    if (A8(200) != 0 && A32(196) == 0)
+    if (A8(200) != 0 && (A32(196) == 0 || A32(196) == 1))   /* A+201 == 0 */
         e30_scene_judge(A, S);
     if (S32(40) != 1)
         goto tail;
@@ -2060,6 +2174,8 @@ average:                                             /* 0x1352cc */
         goto tail;
     if (A32(192) == 0)
         e30_model_update(S);
+    else if (A32(192) == 2)
+        e30_rl_update(A, S);
 tail:
     EU8(e, 580) = S8(920);
 }
@@ -2085,8 +2201,15 @@ static int e30_repeat_judge(Eprc30 *rc)
         EU8(e, 552) = (v & 0xffu) > 51u ? 51 : (uint8_t)v;
         SU32(188) = t;
         S32(76) = S32(76) + 1;
-        e30_api_enc(rc);
-        e30_mb_qp(rc);
+        if (EU32(e, 12) == 1) {
+            S32(32) = EI32(e, 0x218);
+            S32(24) = EI32(e, 0x210);
+            e30_api_enc265(rc);
+            e30_lcu_qp(rc);
+        } else {
+            e30_api_enc(rc);
+            e30_mb_qp(rc);
+        }
         return 1;
     }
     S32(76) = 0;
@@ -2105,6 +2228,32 @@ int EPRC30_FrameEnd(Eprc30 *rc, uint32_t bytes,
     if (may_repeat && e30_repeat_judge(rc)) {
         pic->qp = EU8(e, 552);
         return 1;
+    }
+    if (EU32(e, 12) == 1) {
+        /* I265eRatectrl::rcEnd (0x6e9bc): the 19 Radix registers in the
+         * order of the io list (E+0x8c's frame +0xd44) */
+        uint32_t m = (EU8(e, 28) & 0xffu) >> 4;
+
+        if (m == 1) {
+            for (i = 0; i < 4; i++) {
+                EU32(e, 340 + 8 * i) = regs[8 + i] & 0xffffu;
+                EU32(e, 344 + 8 * i) = regs[8 + i] >> 16;
+                EU32(e, 308 + 8 * i) = regs[12 + i] & 0xffffu;
+                EU32(e, 312 + 8 * i) = regs[12 + i] >> 16;
+            }
+        } else if (m != 0 && m < 4) {
+            for (i = 0; i < 3; i++) {
+                EU32(e, 460 + 4 * i) = regs[16 + i] & 0x1ffffu;
+                EU32(e, 448 + 4 * i) = regs[16 + i] >> 17;
+            }
+        }
+        EU32(e, 180) = regs[6];
+        EU32(e, 200) = ((regs[3] & 0x1ffffu) >> 2) + (regs[3] >> 17) +
+                       ((regs[4] & 0x3ffffffu) >> 13) * 4u;
+        EU32(e, 192) = (uint32_t)EU16(e, 4) * EU16(e, 6);
+        EU32(e, 196) = (regs[0] & 0x7ffffffu) + (regs[1] & 0x7ffffffu);
+        e30_frame_end(rc);
+        return 0;
     }
     EU32(e, 176) = cmpx;
     EU32(e, 196) = (regs[1] & 0x7ffffffu) + (regs[2] & 0x7ffffffu);
