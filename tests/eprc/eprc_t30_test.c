@@ -3,7 +3,9 @@
  * (the uclibc 4.7.2 build the T30X ships) on the same synthetic picture
  * sizes and statistics as below.  An S line with a 19th field 1 uses the
  * "real" statistics (counts in the ranges of a real picture and a non-zero
- * channel cmpx). */
+ * channel cmpx).  H / G lines are H.265 (tools/eprc_t30_oracle.py --h265):
+ * per picture the QPs and the CRC-32 of the parameter block and the CU QP
+ * map. */
 #include "eprc/eprc.h"
 
 #include <stdint.h>
@@ -48,6 +50,20 @@ static uint32_t real_statistics(uint32_t frame, uint32_t w, uint32_t h,
     return 1u + (regs[3] % 40000u) * (1u + (frame / 30u) % 3u);
 }
 
+static uint32_t crc32(const uint8_t *p, size_t n)
+{
+    uint32_t c = 0xffffffffu;
+    size_t i;
+    int k;
+
+    for (i = 0; i < n; i++) {
+        c ^= p[i];
+        for (k = 0; k < 8; k++)
+            c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1u)));
+    }
+    return ~c;
+}
+
 static uint32_t picture_bytes(uint32_t frame, uint32_t qp, int idr,
                               uint64_t pixels, int pattern)
 {
@@ -70,7 +86,8 @@ int main(int argc, char **argv)
     FILE *f = fopen(path, "r");
     char line[512];
     Eprc30 rc;
-    static uint8_t slice[EPRC30_SLICE_SIZE];
+    static uint8_t slice[0x1204];
+    static uint8_t qpmap[0x10000];
     EprcParams p;
     int scenario = -1, frame = 0, active = 0, real = 0;
     long checked = 0, failed = 0;
@@ -117,6 +134,85 @@ int main(int argc, char **argv)
             active = 1;
             scenario++;
             frame = 0;
+        } else if (line[0] == 'H') {
+            int v[16], i;
+            char *t = line + 1;
+
+            for (i = 0; i < 16; i++)
+                v[i] = (int)strtol(t, &t, 10);
+            if (active)
+                EPRC30_Free(&rc);
+            memset(&p, 0, sizeof(p));
+            p.codec = 1;
+            p.rc_mode = (uint32_t)v[0];
+            p.width = (uint32_t)v[1];
+            p.height = (uint32_t)v[2];
+            p.gop = (uint32_t)v[3];
+            p.fps_num = (uint32_t)v[4];
+            p.fps_den = 1;
+            p.min_qp = (uint32_t)v[5];
+            p.max_qp = (uint32_t)v[6];
+            p.bitrate = p.max_bitrate = (uint32_t)v[7];
+            p.frm_qp_step = (uint32_t)v[8];
+            p.gop_qp_step = (uint32_t)v[9];
+            p.i_bias = v[10];
+            p.static_time = (uint32_t)v[11];
+            p.change_pos = (uint32_t)v[12];
+            p.quality = (uint32_t)v[13];
+            p.init_qp = p.cqp = v[14];
+            p.fluct_lvl = (uint32_t)v[15];
+            p.ip_ratio = 1.399999976158142;
+            memset(slice, 0, sizeof(slice));
+            if (EPRC30_Init(&rc, &p, slice) != 0 || EPRC30_QpMapSize(&rc) > sizeof(qpmap))
+                return 2;
+            EPRC30_SetQpMap(&rc, qpmap, 0x10000000u);
+            active = 1;
+            scenario++;
+            frame = 0;
+        } else if (line[0] == 'G' && active) {
+            int want[16], n = 0, i, idr;
+            unsigned long crc_b, crc_m;
+            char *t = line + 1;
+            EprcPicture pic;
+            uint32_t regs[EPRC30_STAT_REGS], bytes;
+
+            idr = (int)strtol(t, &t, 10);
+            crc_b = strtoul(t, &t, 16);
+            crc_m = strtoul(t, &t, 16);
+            while (n < 16) {
+                char *e;
+                long v = strtol(t, &e, 10);
+                if (e == t)
+                    break;
+                want[n++] = (int)v;
+                t = e;
+            }
+            EPRC30_FrameStart(&rc, idr, &pic);
+            statistics((uint32_t)frame, regs);
+            bytes = picture_bytes((uint32_t)frame, pic.qp, idr,
+                                  (uint64_t)p.width * p.height, scenario % 2);
+            for (i = 0;; i++) {
+                checked++;
+                if (i >= n || pic.qp != want[i]) {
+                    if (failed++ < 10)
+                        fprintf(stderr, "%s: scenario %d picture %d step %d: QP %d, OEM %d\n",
+                                path, scenario, frame, i, pic.qp, i < n ? want[i] : -1);
+                    break;
+                }
+                if (EPRC30_FrameEnd(&rc, bytes, regs, 0, &pic, 1) != 1)
+                    break;
+                bytes = bytes / 2u < 20u ? 20u : bytes / 2u;
+            }
+            if (i + 1 < n && failed++ < 10)
+                fprintf(stderr, "%s: scenario %d picture %d: %d re-encodes, OEM %d\n",
+                        path, scenario, frame, i, n - 1);
+            memset(slice + 0xb4, 0, 4);
+            checked++;
+            if ((crc32(slice, sizeof(slice)) != crc_b ||
+                 crc32(qpmap, EPRC30_QpMapSize(&rc)) != crc_m) && failed++ < 10)
+                fprintf(stderr, "%s: scenario %d picture %d: parameter block / QP map differ\n",
+                        path, scenario, frame);
+            frame++;
         } else if (line[0] == 'F' && active) {
             int want[16], n = 0, since, i, idr;
             char *s = line + 1;

@@ -465,6 +465,29 @@ built with wrapping signed arithmetic (`-fwrapv`, as the MIPS `mul`); the
 history writes S+1304-4n / S+860-4n stay in bounds (n <= 60,
 `eprc_t30_static_vectors.txt`).
 
+H.265 (#208): the T30 i265e drives the same controller through
+`I265eRatectrl` (E = object + 0x60, the i265e parameters mapped in
+`rcInit`; `EprcParams.codec = 1`).  Ported: the H.265 defaults and
+VIDEO_CFG branches, the R-lambda picture QP of FRAME_START
+(ln lambda = ln alpha + beta ln bpp, QP = 4.2005 ln lambda + 13.7122), the
+FRAME_END prologue and the R-lambda model update
+(`r_lambda_model_estimator`, a window of up to 10 pictures with outlier
+rejection, alpha in [0.05, 200], beta in [-3, -0.1]), `h265_api_enc`,
+`h265_get_lcu_qp` and `rc_h265_qpg_lcu_qp_tab` (the CU QP map, run-length
+coded, with the zero offsets the T30 sets; the SAS classes from the shares
+of flat 16x16 / 32x32 blocks; the basic-unit fields) and the `rcEnd`
+mapping of the 19 Radix statistics registers (0x40088, 0x4008c, 0x400a0,
+0x400a4, 0x400b0, 0x400b8, 0x40028, 0x4002c, 0x200a0..0x200bc,
+0x20128..0x20130).  `EPRC30_SetQpMap` gives the QP-map buffer
+(`EPRC30_QpMapSize` bytes) and the address the encoder reads.  Under the
+emulator E, A, S, the arrays, the parameter block (0x1204 bytes) and the QP
+map equal the OEM after every call (6 scenarios x 120 pictures, 24 random
+x 200); `make check` replays `eprc_t30_h265_vectors.txt` and
+`eprc_t30_h265_random_vectors.txt` (QPs and the CRC-32 of block and map
+per picture, 6322 decisions).  Not ported: the A+152 variants the T30
+i265e does not set (QP map 1 / 3, SAS 1 / 2) and the ROI / I-picture
+offsets (E+148 / 149, always 0).
+
 ## In the native T21/T23 encoder (M4, M5)
 
 `src/t30/t30_helix_encoder.c` (T21 and T23): `helix_eprc_start` (create,

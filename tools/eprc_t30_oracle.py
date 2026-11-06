@@ -14,6 +14,7 @@ picture-size and statistics models are those of tools/eprc_oracle.py.
 
     tools/eprc_t30_oracle.py T30/lib/1.0.5/uclibc/4.7.2/libimp.so > tests/eprc/eprc_t30_vectors.txt
     tools/eprc_t30_oracle.py LIB --real [--random SEED N [FRAMES]]
+    tools/eprc_t30_oracle.py LIB --h265 [--random SEED N [FRAMES]]  (H.265, I265eRatectrl)
 
 The OEM T30 i264e codes an IDR whenever the picture count since the last
 IDR is a multiple of the GOP (i264e_ratecontrol_start: [0] % gop).  '--real'
@@ -144,6 +145,9 @@ def real_statistics(frame, w, h):
 def main():
     lib = sys.argv[1]
     args = sys.argv[2:]
+    if '--h265' in args:
+        args.remove('--h265')
+        return main_h265(lib, args)
     real = '--real' in args
     if real:
         args.remove('--real')
@@ -184,9 +188,6 @@ def main():
                 size = max(size // 2, 20)
             print('F', since, ' '.join(str(v) for v in out))
 
-
-if __name__ == '__main__':
-    main()
 
 
 # ---------------------------------------------------------------- H.265
@@ -258,3 +259,71 @@ class SimT30H265:
             return 1
         L.call(RC265['end'], self.TH, self.C)
         return 0
+
+
+# H.265 scenarios: mode w h gop fps minqp maxqp bitrate frame-step gop-step
+# I-bias static-time change-pos quality qp fluct
+SCENARIOS_265 = [
+    (1, 1920, 1080, 50, 25, 15, 45, 2000, 3, 15, 0, 2, 80, 4, 42, 2),
+    (2, 1920, 1080, 50, 25, 15, 45, 2000, 3, 15, 0, 2, 80, 4, 42, 2),
+    (3, 1280, 720, 30, 15, 20, 51, 1000, 3, 15, 0, 2, 80, 2, 38, 2),
+    (0, 1920, 1080, 25, 25, 15, 45, 2000, 3, 15, 0, 2, 80, 4, 32, 2),
+    (1, 2304, 1296, 40, 20, 10, 51, 3000, 2, 10, -2, 3, 90, 3, 35, 4),
+    (2, 640, 360, 20, 15, 22, 48, 500, 4, 8, 1, 1, 60, 6, 40, 1),
+]
+
+
+def random_scenarios_265(seed, n):
+    import random
+    rnd = random.Random(seed)
+    out = []
+    for _ in range(n):
+        w, h = rnd.choice([(640, 360), (1280, 720), (1920, 1080), (2304, 1296),
+                           (2560, 1440), (800, 448), (352, 288)])
+        mn = rnd.randint(5, 30)
+        mx = rnd.randint(max(mn + 1, 35), 51)
+        out.append((rnd.choice([0, 1, 2, 3]), w, h, rnd.choice([10, 20, 25, 30, 50, 60, 100]),
+                    rnd.choice([5, 10, 15, 20, 25, 30]), mn, mx,
+                    rnd.choice([200, 500, 1000, 2000, 4000, 8000]), rnd.randint(1, 6),
+                    rnd.randint(1, 20), rnd.randint(-3, 3), rnd.randint(1, 5),
+                    rnd.randint(20, 100), rnd.randint(1, 7), rnd.randint(mn, mx),
+                    rnd.randint(0, 5)))
+    return out
+
+
+def main_h265(lib, args):
+    """'H' scenario lines and per picture 'G IDR CRC-BLOCK CRC-MAP QP...':
+    the CRC-32 of the parameter block (0x1204 bytes, the QP-map address at
+    +0xb4 as 0) and of the QP map after the last decision."""
+    import zlib
+    scenarios, frames = SCENARIOS_265, 120
+    if len(args) > 2 and args[0] == '--random':
+        scenarios = random_scenarios_265(int(args[1]), int(args[2]))
+        frames = int(args[3]) if len(args) > 3 else 150
+    for n, sc in enumerate(scenarios):
+        (mode, w, h, gop, fps, minqp, maxqp, br, fstep, gstep, bias, static, cpos,
+         qual, qp0, fluct) = sc
+        s = SimT30H265(lib, mode=mode, w=w, h=h, gop=gop, fps=(fps, 1), minqp=minqp,
+                       maxqp=maxqp, bitrate=br, frm_step=fstep, gop_step=gstep, bias=bias,
+                       static_time=static, change_pos=cpos, quality=qual, qp=qp0,
+                       fluct=fluct)
+        L = s.L
+        print('H', ' '.join(str(v) for v in sc))
+        for f in range(frames):
+            idr = f % gop == 0
+            qp = s.start(idr)
+            out = [qp]
+            size = picture_bytes(f, qp, idr, w * h, n % 2)
+            regs = list(statistics(f)[:19])
+            while s.end(size, regs) == 1:
+                out.append(s.qp())
+                size = max(size // 2, 20)
+            blk = bytearray(L.rd(s.BLK, 0x1204))
+            blk[0xb4:0xb8] = bytes(4)
+            mi = L.rd(s.MI, L.r32(s.E + 0x90))
+            print('G', int(idr), '%08x' % zlib.crc32(bytes(blk)), '%08x' % zlib.crc32(mi),
+                  ' '.join(str(v) for v in out))
+
+
+if __name__ == '__main__':
+    main()

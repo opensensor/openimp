@@ -20,6 +20,8 @@ check: $(EPRC_TEST) $(EPRC30_TEST)
 	$(EPRC30_TEST) eprc_t30_real_vectors.txt
 	$(EPRC30_TEST) eprc_t30_random_vectors.txt
 	$(EPRC30_TEST) eprc_t30_static_vectors.txt
+	$(EPRC30_TEST) eprc_t30_h265_vectors.txt
+	$(EPRC30_TEST) eprc_t30_h265_random_vectors.txt
 
 $(EPRC_TEST): eprc_test.c $(PROJECT_DIR)/src/eprc/eprc.c $(PROJECT_DIR)/src/eprc/eprc_t21.c $(PROJECT_DIR)/src/eprc/eprc_mbrc.c \
 		$(PROJECT_DIR)/src/eprc/eprc.h $(PROJECT_DIR)/src/eprc/eprc_internal.h
