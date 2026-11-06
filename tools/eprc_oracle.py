@@ -83,6 +83,11 @@ class Lib:
         self.unaligned_count = 0
         # T23 1.3.0 has h264_api_enc as a function, T21 1.0.33 inlines it
         self.lay = LAYOUT_T23 if 'h264_api_enc' in self.syms else LAYOUT_T21
+        if 'JZ_VPU_RC_VIDEO_CFG_T30' in self.syms:
+            # T30 1.0.5 (tools/eprc_t30_oracle.py): the eprc helpers from
+            # eprc_min up to JZ_VPU_RC_FREE_T30, wherever this build has them
+            self.lay = dict(LAYOUT_T30, code=(self.syms['eprc_min'] & ~3,
+                                              (self.syms['JZ_VPU_RC_FREE_T30'] + 0x100) & ~3))
         lo, hi = self.lay['code']
         self.code = {a: self.r32(a) for a in range(lo, hi, 4)}
         uc.hook_add(UC_HOOK_CODE, self._track, begin=lo, end=hi)
@@ -246,6 +251,10 @@ LAYOUT_T23 = dict(name='T23', code=(0xbd600, 0xcce90), table=0xd7a40, pshift=0,
                   enable=(4, 4), rc=4896, slice=3880, qp=2096)
 LAYOUT_T21 = dict(name='T21', code=(0x8edc0, 0x9d630), table=0xa7aa0, pshift=-4,
                   enable=(0, 4), rc=4784, slice=3884, qp=2080)
+
+# T30 1.0.5: a separate i264e glue (tools/eprc_t30_oracle.py); the code
+# range is taken from the symbols of the library at hand.
+LAYOUT_T30 = dict(name='T30', code=(0, 0))
 
 class Sim:
     def __init__(self, lib, mode=3, w=1920, h=1080, gop=25, fps=(25, 1), minqp=15, maxqp=45,
