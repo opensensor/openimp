@@ -11,7 +11,7 @@ SOURCES := \
 	$(ROOT)/src/t30/h264enc/common.c \
 	$(ROOT)/src/t30/h264enc/set.c
 
-.PHONY: radix-diff check clean ivs-bench sanitize
+.PHONY: radix-diff radix-smoke check clean ivs-bench sanitize
 
 descriptor_test: $(SOURCES)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(SOURCES)
@@ -345,6 +345,17 @@ radix-diff:
 		./hevc_cfg_diff $(VENDOR_LIBIMP) 5000
 QEMU_MIPSEL ?= qemu-mipsel
 
+# Desk / QEMU / T30X tool: synthetic NV12 pictures through the Radix encoder
+# object on the real /dev/soc_vpu and rmem (no ISP):
+#   make radix-smoke O=<thingino output dir>; radix_smoke 640 360 60 out.h265 cbr 500
+radix-smoke:
+	$(O)/host/bin/mipsel-linux-gcc -std=gnu99 -O2 -Wall -Wextra -Werror -mabi=32 -march=mips32r2 \
+		-DPLATFORM_T30 -fwrapv -ffp-contract=off -I$(ROOT)/include -I$(ROOT)/src radix/radix_smoke.c \
+		$(ROOT)/src/t30/radix/t30_radix_encoder.c $(ROOT)/src/t30/radix/t30_radix_hevc.c \
+		$(ROOT)/src/t30/radix/t30_radix_cabac.c $(ROOT)/src/t30/radix/t30_radix_cmdlist.c \
+		$(ROOT)/src/eprc/eprc_t30.c $(ROOT)/src/dma_alloc.c $(ROOT)/src/core/imp_log_emit.c \
+		-lpthread -lm -o radix_smoke
+
 check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test p2_t1x_test_t20 p2_t1x_test_t21 rmem_highwater_test ref_ring_test ref_ring_test_t23 descriptor_test annexb_test level_test nv12_compact_test helix_encoder_test \
 	helix_encoder_test_t21 helix_encoder_test_t20 t21_rmem_layout_test t23_ring_layout_test \
 	t21_sinter_map_test t21_front_crop_test helix_jpeg_test_t21 helix_jpeg_test_t20 helix_jpeg_test_t23 \
@@ -473,7 +484,7 @@ dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c
 		-o $@ dmic_t30_test.c -pthread -ldl
 
 clean:
-	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test radix_hevc_headers.265 hevc_diff hevc_cfg_diff
+	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test radix_smoke radix_hevc_headers.265 hevc_diff hevc_cfg_diff
 	$(RM) p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	$(RM) isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test isp_t1x_test_t20 isp_t1x_test_t21 p2_t1x_test_t20 p2_t1x_test_t21
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \

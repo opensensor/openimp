@@ -54,5 +54,6 @@ hevc_diff
 radix_hevc_test
 radix_hevc_chan_test
 radix_encoder_test
+radix_smoke
 hevc_cfg_diff
 radix_hevc_headers.265

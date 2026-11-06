@@ -1,8 +1,8 @@
 # T30 H.265 (HEVC): Radix encoder (work in progress, #208)
 
 Status 2026-11-06: `IMP_Encoder_CreateChn(PT_H265)` on T30 returns -1 unless `OPENIMP_T30_H265=1` is set; with it the
-channel encodes on Radix (`src/t30/radix/t30_radix_encoder.c`), not yet proven in QEMU or on a T30X. This page describes
-the hardware path and what of it is in the tree.
+channel encodes on Radix (`src/t30/radix/t30_radix_encoder.c`); proven in the QEMU T30 machine with synthetic pictures, not
+yet on a T30X. This page describes the hardware path and what of it is in the tree.
 
 ## Hardware and kernel
 
@@ -45,8 +45,20 @@ linked into libimp yet.
 
 ## Still to do
 
-The encoder object (buffers, channel, packs; rate control and parameter block from `EPRC30_*` with `codec = 1`, see
-docs/T23_EPRC.md "T30"), the QEMU proof (the QEMU T30 machine has a Radix model) and a T30X device proof.
+The T30X device proof (audit DEVICE_PLAN: Radix present, OpenIMP H.265 run, decode and RC checks, vendor reference).
+
+## QEMU proof (2026-11-06)
+
+`tests/t30/radix/radix_smoke.c` (`make -C tests/t30 radix-smoke O=<thingino output>`) feeds synthetic NV12 pictures (gradient,
+moving box) from rmem to the encoder object on the real `/dev/soc_vpu` driver of the `qemu_t30x` image; the QEMU T30 machine's
+Radix model replays the command list and encodes with the AVPU HEVC core.  640x360, 60 pictures each for CBR 500 kbit/s, FIXQP
+30 and VBR: one radix interrupt per picture, no oops or timeout, IDR every 25 pictures; ffmpeg decodes all three streams without an
+error message (HEVC Main, level 2.1), 60 of 60 distinct pictures each, and the decoded pictures show the synthetic pattern with the
+box at its position.  The model does not check most registers, the QP generator or the statistics (they read 0), so this proves the
+channel, buffers, command-list addresses, parameter sets, slice header, NAL framing and the rate-control loop, not silicon
+behaviour.  The IMP path (`apitest enc` with `OPENIMP_T30_H265=1`) creates the H.265 channel (CreateChn 0, attributes read back)
+but gets no pictures in QEMU: FrameSource `EnableChn` fails for every channel there (`set format failed`, H.264 likewise; the
+QEMU T30 frame path to the encoder is not modelled, README-T30).
 
 ## Channel parameter sets
 

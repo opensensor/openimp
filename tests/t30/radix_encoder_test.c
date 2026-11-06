@@ -260,6 +260,9 @@ int main(void)
             assert(n == 1u && types[0] == 1u && s->frame_type == HW_FRAME_TYPE_P);
             /* P: the previous reconstruction is the reference */
             assert(list_ref_y == prev_recon && list_recon_y != prev_recon);
+            /* slice_pic_order_cnt_lsb after first_slice (1), pps id ue 0
+             * ('1') and slice_type ue 1 ('010'): the count since the IDR */
+            assert(((((uint32_t)slice[2] & 7u) << 5) | (slice[3] >> 3)) == f % 10u);
         }
         assert(((list_sde_cfg0 >> 2) & 3u) == (idr ? 2u : 1u));
         assert(list_rawc == frame_phys + 640u * 368u);

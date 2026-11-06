@@ -90,7 +90,8 @@
 # define ENC_OLD 1
 #endif
 /* H.265 in the vendor API of the SoC */
-#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T31) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T21) || defined(PLATFORM_T23) || defined(PLATFORM_T30) || defined(PLATFORM_T31) || \
+    defined(PLATFORM_T41)
 # define HAVE_H265 1
 #endif
 #ifdef PLATFORM_T41

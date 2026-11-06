@@ -1659,9 +1659,19 @@ void t_enc(void)
     /* the Helix encoder of T21/T23 is H.264/JPEG only: the headers declare H.265 types, the silicon has no HEVC core */
     rep(LBL("H.265 stream"), -1, V_NA, "no HEVC encoder in the T21/T23 silicon (OpenIMP CreateChn refuses it so callers fall back to H.264)");
 # else
+# if defined(PLATFORM_T30)
+    /* T30: the Radix encoder of OpenIMP is opt-in (OPENIMP_T30_H265=1) until its device proof */
+    if (!getenv("OPENIMP_T30_H265")) {
+        rep(LBL("H.265 stream"), -1, V_NA, "T30 Radix encoder not enabled (OPENIMP_T30_H265=1)");
+    } else
+# endif
     if (grp_up(0, 0) == 0) {
         if (chn_up(0, CODEC_H265, 1, 1) == 0) {
-            pull(0, CODEC_H265, 60, 2, 0, &si, 3000);
+            /* APITEST_ENC_DUMP=<file>: the pulled H.265 stream (decode check off the camera) */
+            if (getenv("APITEST_ENC_DUMP")) g_dump = fopen(getenv("APITEST_ENC_DUMP"), "wb");
+            pull(0, CODEC_H265, getenv("APITEST_H265_FRAMES") ? atoi(getenv("APITEST_H265_FRAMES")) : 60,
+                 getenv("APITEST_H265_FRAMES") ? 0 : 2, 0, &si, 3000);
+            if (g_dump) { fclose(g_dump); g_dump = NULL; }
             rep(LBL("H.265 stream NAL check"), 0, (si.vps && si.sps && si.pps && si.idr) ? V_PASS : V_FAIL,
                 "%d frames: VPS %d SPS %d PPS %d IDR %d SEI %d other %d", si.frames, si.vps, si.sps, si.pps, si.idr, si.sei, si.other);
             live_common(0, CODEC_H265);

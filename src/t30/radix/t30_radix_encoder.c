@@ -382,7 +382,8 @@ static int radix_slice_header(const T30RadixEncoder *e, int idr, uint32_t qp,
                               T30HevcBits *b)
 {
     T30HevcSlice s;
-    int32_t poc = idr ? 0 : (int32_t)e->frames_since_idr;
+    /* decTypeAndRef: the POC is the picture count since the IDR */
+    int32_t poc = idr ? 0 : (int32_t)e->frames_since_idr + 1;
 
     memset(&s, 0, sizeof(s));
     s.nal_unit_type = idr ? 19u : 1u;

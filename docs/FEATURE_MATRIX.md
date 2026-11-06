@@ -668,7 +668,7 @@ Per feature: the vendor-stack behaviour and the full per-SoC cell text (chronolo
 - **T20:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T21:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
 - **T23:** — — no HEVC hardware; OpenIMP rejects PT_H265 with -1 and a clear log (vendor: silent empty channel) [claude/h265-reject]
-- **T30:** 🔧 in progress (#208, claude/t30-h265): Radix encoder (vendor rate control, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; host test of the encoder object); PT_H265 only with OPENIMP_T30_H265=1 until the QEMU and T30X proofs
+- **T30:** 🔧 in progress (#208, claude/t30-h265): Radix encoder (vendor rate control, parameter sets, command list, CABAC init, all bit-exact against libimp 1.0.5 on the desk; host test of the encoder object; QEMU T30 machine: 3 RC modes x 60 synthetic pictures decode clean); PT_H265 only with OPENIMP_T30_H265=1 until the T30X proof
 - **T31:** ✅ real HEVC on AVPU (VPS/SPS/PPS, CABAC); 2×900 frames, 0 errors
 - **T32:** ? not examined: no T32 hardware yet; the open driver only runs in QEMU and OpenIMP has no T32 build
 - **T33:** 📋 planned, not started: no T33 driver, OpenIMP build or hardware yet (T33L test module ordered)
