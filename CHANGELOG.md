@@ -8,6 +8,14 @@
 
 Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
+## 2026-11-06, T30: encoder pulls the capture frame, heights that are not a multiple of 16 encode again (#209; QEMU, T30X proof pending)
+
+- The T30 encoder took its pictures through `IMP_FrameSource_GetFrame`. Since #202 that returns the compact NV12 copy in plain memory (`phyAddr` 0) for a height that is not a multiple of 16. Helix refused every such picture (`t30_helix_encoder.c`, frame check without a physical address), so a 640x360 sub and a 1920x1080 main gave "3 consecutive Helix failures" and no stream (timps b34/b35, enc2 b36).
+- The encoder now pulls the capture frame with `VBMGetFrame`, as on T20/T21/T23 (`openimp_p2_encoder.c`). Applications keep getting the compact copy from GetFrame.
+- QEMU T30 (enc2, instrumented library): before the fix, 9 refusals per 4 s with `phy=0x0 size=345600 640x360`; after it, the 640x360 sub encodes 98/98 frames next to a 1280x720 main.
+- The vendor stack on the T30X (b37) encodes 640x360 and 1920x1080.
+- make check / status-check rc 0.
+
 ## 2026-11-05, T30: device evidence for GetAFMetrices (T30X run b30, API cells only)
 
 - Device (T30X lab camera, `.231`, open-tx-isp `claude/t30-iridix2` `d09dc553` and OpenIMP next `7b9f3448` at run time, no flash): `ISP_Tuning_GetAFMetrices` returns 0 and writes the 16-bit value `0xffff` like the vendor libimp 1.0.5 (b29: vendor ret 0, `0xffff`, fixed-focus unit), `?` -> `dev`; t30pass + t30pass2 49 / 0. T30 API 284/350 -> 285/350 works.
