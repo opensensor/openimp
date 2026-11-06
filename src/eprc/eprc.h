@@ -64,6 +64,13 @@ typedef struct {
      * gets a QP at most this much below the previous picture's coded QP
      * (stops the static-scene QP sawtooth; rises are not limited). */
     uint32_t qp_down_max;
+    /* T30 (eprc_t30.c) H.265: codec 1 selects the H.265 branches, set up as
+     * the OEM I265eRatectrl::rcInit does; fluct_lvl = i265e +0xac (CBR
+     * fluctuation level), ip_ratio = i265e +0x60 (FIXQP I-QP offset,
+     * vendor default 1.4).  0 for H.264. */
+    uint32_t codec;
+    uint32_t fluct_lvl;
+    double ip_ratio;
 } EprcParams;
 
 /* Per-picture inputs (i264e_ratecontrol_start, 0x420e8). */

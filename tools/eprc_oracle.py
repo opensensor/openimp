@@ -216,6 +216,22 @@ class Lib:
             else:
                 r = math.floor(x)
             self.setd(0, r)
+        elif name in ('log2f', 'logf', 'powf', 'sqrtf', 'floorf'):
+            # o32 single-precision: argument(s) in $f12 ($f14), result in $f0;
+            # uClibc computes them in double and rounds (libuClibc-1.0.58)
+            fs = lambda r: struct.unpack('<f', struct.pack('<I', self.uc.reg_read(UC_MIPS_REG_F0 + r) & 0xffffffff))[0]
+            x = fs(12)
+            if name == 'log2f':
+                r = math.log2(x) if x > 0 else (-math.inf if x == 0 else math.nan)
+            elif name == 'logf':
+                r = math.log(x) if x > 0 else (-math.inf if x == 0 else math.nan)
+            elif name == 'powf':
+                r = math.pow(x, fs(14))
+            elif name == 'sqrtf':
+                r = math.sqrt(x) if x >= 0 else math.nan
+            else:
+                r = math.floor(x)
+            self.uc.reg_write(UC_MIPS_REG_F0, struct.unpack('<I', struct.pack('<f', r))[0])
         elif name in ('free', 'i264e_log', 'puts', 'fwrite', 'vfprintf', 'printf', 'fprintf'):
             pass
         elif name == 'access':

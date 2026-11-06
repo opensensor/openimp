@@ -36,6 +36,59 @@ static const int32_t e30_quality[10] = { 90, 80, 70, 60, 50, 40, 30, 20, 10, 50 
 
 /* ------------------------------------------------------- default values */
 
+/* eprc_default_set_T30 (0x131ed4), the E+12 == 1 (H.265) branch, without
+ * its debug-file switches (E+148/E+149 stay 0).  The OEM caller
+ * (I265eRatectrl::rcInit) runs it with E+8 == 0 and E+16 == 1. */
+static void e30_default_set_h265(uint8_t *e)
+{
+    uint32_t bits = (uint32_t)((int32_t)(EU16(e, 0) * EU16(e, 2) * 3u) >> 1) << 3;
+
+    EU16(e, 0) = 1280;
+    EU16(e, 2) = 720;
+    EU16(e, 4) = 120;
+    EU16(e, 6) = 80;
+    EU32(e, 8) = 1;
+    EU32(e, 20) = 0;
+    EU32(e, 28) = 0x32;
+    EU32(e, 32) = 0;
+    EU32(e, 24) = 1;
+    EU32(e, 36) = 0;
+    EU8(e, 40) = 40;
+    EU8(e, 149) = 0;
+    EU8(e, 148) = 0;
+    EU8(e, 150) = 1;
+    EU32(e, 96) = 2;
+    EU8(e, 80) = 0;
+    EU32(e, 84) = 1;
+    EU32(e, 88) = 0xffffffffu;
+    EU32(e, 92) = 2;
+    EU32(e, 144) = 0x1000;
+    EF32(e, 152) = 1.2f;
+    EU32(e, 100) = bits / 10u;
+    EU32(e, 104) = bits / 20u;
+    EU32(e, 108) = bits / 20u;
+    /* gop_mode 1, E+8 (the mode word written before the call) 1 */
+    EU32(e, 116) = EU32(e, 44) * 3u;
+    EU8(e, 120) = 3;
+    EU8(e, 121) = 3;
+    EU32(e, 44) = 25;
+    EU32(e, 48) = 1;
+    EU32(e, 56) = 1;
+    EU32(e, 52) = 25;
+    EU32(e, 60) = 1000;
+    EU8(e, 64) = 1;
+    EU8(e, 68) = 100;
+    EU8(e, 69) = 1;
+    EU8(e, 70) = 51;
+    EU8(e, 71) = 10;
+    EU8(e, 74) = 2;
+    EU8(e, 77) = 5;
+    EU8(e, 78) = 3;
+    EU8(e, 76) = 3;
+    EU8(e, 73) = 10;
+    EU8(e, 79) = 0;
+}
+
 /* eprc_default_set_T30 (0x131ed4), the E+12 == 0 (H.264) branch. */
 static void e30_default_set(uint8_t *e)
 {
@@ -123,6 +176,99 @@ static void e30_vbv_fields(const EprcParams *p, uint32_t *f280, uint32_t *f284)
     v = 14043429;
     v = v < lo ? lo : v > hi ? hi : v;
     *f284 = (uint32_t)v;
+}
+
+/* I265eRatectrl::rcInit (0x5e490): the i265e parameters into E. */
+static void e30_setup_e_h265(uint8_t *e, const EprcParams *p)
+{
+    uint32_t mode = p->rc_mode;
+    int32_t px8 = (int32_t)((p->width & 0xffffu) * (p->height & 0xffffu) * 8u);
+
+    EU32(e, 12) = 1;
+    EU32(e, 16) = 1;
+    e30_default_set_h265(e);
+    EU32(e, 8) = mode;
+    if (mode == EPRC_MODE_CQP)
+        EU32(e, 28) = 0;
+    EU16(e, 0) = (uint16_t)p->width;
+    EU16(e, 2) = (uint16_t)p->height;
+    EU16(e, 4) = (uint16_t)((p->width + 15u) >> 4);
+    EU16(e, 6) = (uint16_t)((p->height + 15u) >> 4);
+    EU32(e, 20) = 0;
+    EU32(e, 32) = 0;
+    EU8(e, 120) = 3;
+    EU8(e, 121) = 3;
+    EU32(e, 116) = p->gop * p->bg_interval_gops;
+    EU32(e, 88) = 0xffffffffu;
+    EU32(e, 96) = 2;
+    EU8(e, 80) = 0;
+    EU32(e, 84) = 1;
+    EU32(e, 92) = 2;
+    EI32(e, 100) = px8 / 10;
+    EI32(e, 104) = px8 / 20;
+    EI32(e, 108) = px8 / 20;
+    if (mode == EPRC_MODE_CQP) {
+        float l = (float)log2((double)(float)p->ip_ratio);
+
+        EU32(e, 44) = p->gop;
+        EU32(e, 48) = p->fps_num;
+        EU32(e, 52) = p->fps_den;
+        EU8(e, 56) = (uint8_t)((int8_t)p->cqp -
+                               (int8_t)(int32_t)((double)(l * 6.0f) + 0.5));
+        EU8(e, 57) = (uint8_t)p->cqp;
+    } else if (mode == EPRC_MODE_CBR) {
+        EU32(e, 44) = p->gop;
+        EU32(e, 52) = p->fps_num;
+        EU32(e, 56) = p->fps_den;
+        EU32(e, 48) = p->static_time;
+        EU32(e, 60) = p->bitrate;
+        EU8(e, 64) = (uint8_t)p->fluct_lvl;
+        EU8(e, 68) = 100;
+        EU8(e, 69) = 1;
+        EU8(e, 70) = (uint8_t)p->max_qp;
+        EU8(e, 71) = (uint8_t)p->min_qp;
+        EU8(e, 72) = (uint8_t)p->max_qp;
+        EU8(e, 73) = (uint8_t)p->min_qp;
+        EU8(e, 75) = (uint8_t)p->quality;
+        EU8(e, 78) = (uint8_t)p->frm_qp_step;
+        EU8(e, 76) = 2;
+        EU8(e, 77) = (uint8_t)p->gop_qp_step;
+        EU8(e, 79) = (uint8_t)p->i_bias;
+    } else {                                    /* VBR, SMART */
+        EU32(e, 44) = p->gop;
+        EU32(e, 52) = p->fps_num;
+        EU32(e, 56) = p->fps_den;
+        EU32(e, 48) = p->static_time;
+        EU32(e, 60) = p->max_bitrate;
+        EU8(e, 64) = (uint8_t)p->max_qp;
+        EU8(e, 65) = (uint8_t)p->min_qp;
+        EU8(e, 66) = (uint8_t)p->min_qp;
+        EU8(e, 67) = 1;
+        EU8(e, 68) = (uint8_t)p->change_pos;
+        EU8(e, 69) = 100;
+        EU8(e, 70) = 1;
+        EU8(e, 71) = 2;
+        EU8(e, 74) = (uint8_t)p->frm_qp_step;
+        EU8(e, 73) = (uint8_t)p->gop_qp_step;
+        EU8(e, 75) = (uint8_t)p->min_qp;
+        EU8(e, 76) = (uint8_t)p->quality;
+        EU8(e, 77) = 4;
+        EU8(e, 78) = (uint8_t)p->i_bias;
+    }
+    memset(e + 0x114, 0, 0x1f0 - 0x114);
+    EU8(e, 0x1f0) = 0;
+    EU32(e, 0xa4) = 2;
+    EU32(e, 0x220) = 2;
+    EU8(e, 0x228) = (uint8_t)p->init_qp;
+    EU32(e, 0x224) = 7;
+    EU32(e, 0xa8) = 0;
+    EU32(e, 0xac) = 0;
+    EU32(e, 0xc4) = 0;
+    EU32(e, 0xc8) = 0;
+    EU32(e, 0xcc) = 0;
+    EU32(e, 0xd0) = 0;
+    EU32(e, 0x21c) = 0;
+    EU32(e, 0x22c) = 0;
 }
 
 /* i264e_ratecontrol_init (0x52a24), the T30 part (i264e parameter [0] = 3):
@@ -243,8 +389,8 @@ static void e30_validate(uint8_t *e)
         if (f < EU32(e, 104))
             EU32(e, 104) = f;
     }
-    if (EU32(e, 84) > 1u)
-        EU32(e, 84) = 1;
+    if (EU32(e, 84) > (EU32(e, 12) ? 2u : 1u))
+        EU32(e, 84) = EU32(e, 12) ? 2u : 1u;
     if (EU32(e, 88) < 64000u)
         EU32(e, 88) = 64000;
     if (EU32(e, 92) > 0xffffu)
@@ -320,7 +466,7 @@ static int e30_video_cfg(Eprc30 *rc)
     uint32_t w64 = (uint32_t)((int32_t)(EU16(e, 4) * 16u + 63u) >> 6);
     uint32_t h64 = (uint32_t)((int32_t)(EU16(e, 6) * 16u + 63u) >> 6);
     uint32_t n64 = w64 * h64;
-    uint32_t ysz = (EU16(e, 6) * 4u + 15u) & ~15u;
+    uint32_t ysz = EU32(e, 12) ? 0u : (EU16(e, 6) * 4u + 15u) & ~15u;
     uint32_t mode, gop_mode;
 
     EU32(e, 608) = w64;
@@ -430,6 +576,7 @@ static int e30_video_cfg(Eprc30 *rc)
         A32(12) = EI32(e, 52);
         A8(61) = EU8(e, 56);
         A8(62) = EU8(e, 57);
+        return 0;                               /* 0x133184: no tail for FIXQP */
     } else {                                    /* 0x133044: VBR, SMART */
         int32_t gop = EI32(e, 44), den = EI32(e, 56), num = EI32(e, 52);
         int32_t st = EI32(e, 48), br = EI32(e, 60) * 1024, gs, q;
@@ -500,18 +647,32 @@ static int e30_video_cfg(Eprc30 *rc)
         A8(207) = 1;
         A8(206) = 5;
     }
-    if (A8(228) != 0 && mode - 2u < 2u) {       /* VBR, SMART, H.264 */
-        A8(231) = 1;
-        A8(232) = 1;
-        A8(233) = 20;
-        A32(260) = 4;
-        A32(264) = 5;
-        A32(256) = 150;
-        A32(252) = 120;
-        A32(236) = A32(72) * 180 / 100;
-        A8(268) = 4;
-        A32(240) = A32(76) * 100 / 200;
-        A32(272) = A32(16) / 5 < 1 ? 1 : A32(16) / 5;
+    if (A8(228) != 0 && mode - 2u < 2u) {       /* VBR, SMART */
+        if (A32(196) == 0) {                    /* H.264 */
+            A8(231) = 1;
+            A8(232) = 1;
+            A8(233) = 20;
+            A32(260) = 4;
+            A32(264) = 5;
+            A32(256) = 150;
+            A32(252) = 120;
+            A32(236) = A32(72) * 180 / 100;
+            A8(268) = 4;
+            A32(240) = A32(76) * 100 / 200;
+            A32(272) = A32(16) / 5 < 1 ? 1 : A32(16) / 5;
+        } else if (A32(196) == 1) {             /* H.265 */
+            A8(231) = 1;
+            A8(232) = 1;
+            A8(268) = 1;
+            A8(233) = 10;
+            A32(260) = 5;
+            A32(264) = 5;
+            A32(256) = 150;
+            A32(252) = 120;
+            A32(236) = A32(72) * 200 / 100;
+            A32(272) = A32(16) / 2 < 1 ? 1 : A32(16) / 2;
+            A32(240) = A32(76) * 100 / 200;
+        }
     }
     {
         static const uint32_t lim[6] = { 400000, 1000000, 800000, 4000000,
@@ -531,7 +692,14 @@ static int e30_video_cfg(Eprc30 *rc)
             AU32(176) = 0;
         }
     }
-    (void)S;
+    if (A32(192) != 0) {                         /* R-lambda model (H.265) */
+        EU32(S, 2232) = 0x404cd1b7u;            /* 3.2003f, alpha */
+        EU32(S, 2236) = 0xbfaef9dbu;            /* -1.367f, beta */
+        if (AS8(204) < 2)
+            A8(204) = 2;
+        else if (AS8(204) > 7)
+            A8(204) = 7;
+    }
     return 0;
 }
 
@@ -540,7 +708,10 @@ int EPRC30_Init(Eprc30 *rc, const EprcParams *params, uint8_t *slice)
     memset(rc, 0, sizeof(*rc));
     if (!params->gop || !params->fps_num || !params->fps_den)
         return -1;
-    e30_setup_e(rc->e, params);
+    if (params->codec)
+        e30_setup_e_h265(rc->e, params);
+    else
+        e30_setup_e(rc->e, params);
     rc->slice = slice;
     return e30_video_cfg(rc);
 }
@@ -982,6 +1153,91 @@ static void e30_mb_qp(Eprc30 *rc)
         S32(892) = 2;
 }
 
+/* .rodata 0x170000 - 0x584 .. - 0x524: the mode-decision constants of
+ * h265_api_enc */
+static const uint8_t e30_h265_md[96] = {
+    0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x0a, 0x01, 0x0a, 0x01, 0x0d, 0x00, 0x00,
+    0x01, 0x0a, 0x01, 0x09, 0x01, 0x0d, 0x01, 0x0d, 0x00, 0x00, 0x00, 0x00, 0x01, 0x0c, 0x01, 0x0f,
+    0x01, 0x0a, 0x01, 0x09, 0x01, 0x0b, 0x01, 0x0b, 0x00, 0x00, 0x00, 0x00, 0x01, 0x0a, 0x01, 0x0a,
+    0x01, 0x0a, 0x01, 0x09, 0x01, 0x0a, 0x01, 0x09, 0x00, 0x00, 0x00, 0x00, 0x01, 0x09, 0x01, 0x0a,
+    0x01, 0x06, 0x01, 0x06, 0x01, 0x06, 0x00, 0x00, 0x00, 0x01, 0x0a, 0x1a, 0x02, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01 };
+#define MD(off) (e30_h265_md + 0x584 + (off))   /* off: -0x584 .. -0x525 */
+
+/* h265_api_enc (0x131a98): the rate-control and mode-decision fields of the
+ * Radix parameter block (t30_radix_sliceinfo.h layout) for the picture.
+ * The Gaussian SAS map (E+148 debug switch) is not reproduced. */
+static void e30_api_enc265(Eprc30 *rc)
+{
+    uint8_t *e = rc->e;
+    uint8_t *b = rc->slice;
+    uint8_t type = (uint8_t)EU32(e, 544), qp = EU8(e, 552);
+    uint8_t hi = (uint8_t)(qp + 13), lo = (uint8_t)(qp - 12);
+    const uint8_t *t;
+
+    b[0x24] = type;
+    b[0x38] = 1;
+    b[0x36] = qp;
+    b[0x39] = 0;
+    b[0x3a] = 0;
+    b[0xab] = hi == 0 ? 1 : hi > 51 ? 51 : hi;
+    b[0xac] = lo == 0 ? 1 : lo > 51 ? 51 : lo;
+    b[0xae] = 1;
+    b[0x110] = b[0x111] = b[0x112] = 1;
+    b[0x113] = b[0x114] = 0;
+    b[0x115] = b[0x116] = 0xff;
+    b[0x119] = 0;
+    b[0x11a] = 2;
+    b[0x120] = EU32(e, 544) == 2 ? 0x17 : 0x1f;
+    b[0x121] = 0;
+    memcpy(b + 0x122, MD(-0x534), 16);
+    b[0x132] = b[0x133] = 1;
+    b[0x137] = 3;
+    b[0x138] = 7;
+    b[0x134] = b[0x135] = b[0x136] = 0;
+    b[0x139] = 7;
+    b[0x13a] = b[0x13b] = 1;
+    b[0x13d] = 3;
+    b[0x13c] = b[0x13e] = b[0x13f] = 0;
+    memcpy(b + 0x140, MD(-0x53c), 4);
+    b[0x144] = *MD(-0x538);
+    b[0x145] = b[0x146] = 0;
+    memcpy(b + 0x147, MD(-0x53c), 4);
+    b[0x14b] = *MD(-0x538);
+    b[0x14c] = b[0x14d] = 0;
+    memcpy(b + 0x14e, MD(-0x53c), 4);
+    b[0x152] = *MD(-0x538);
+    b[0x153] = b[0x154] = 0;
+    memcpy(b + 0x155, MD(-0x53c), 4);
+    b[0x159] = *MD(-0x538);
+    b[0x15a] = b[0x15b] = 0xf;
+    b[0x15c] = *MD(-0x584);
+    b[0x15d] = *MD(-0x583);
+    b[0x15e] = *MD(-0x580);
+    b[0x15f] = *MD(-0x57f);
+    b[0x160] = 0;
+    memcpy(b + 0x161, MD(-0x57c), 4);
+    b[0x165] = *MD(-0x578);
+    b[0x166] = *MD(-0x577);
+    if (type == 2)
+        t = qp >= 0x30 ? MD(-0x56c) : qp >= 0x2c ? MD(-0x55c) : MD(-0x54c);
+    else
+        t = qp >= 0x30 ? MD(-0x574) : qp >= 0x2c ? MD(-0x564) : MD(-0x554);
+    memcpy(b + 0x167, t, 8);
+    memcpy(b + 0x16f, MD(-0x544), 4);
+    b[0x173] = *MD(-0x540);
+    b[0x174] = *MD(-0x53f);
+    b[0x175] = 0;
+    b[0x176] = 0;
+    memset(b + 0x177, 0, 0x80);
+}
+
+/* h265_get_lcu_qp (0x12ef6c): not ported yet. */
+static void e30_lcu_qp(Eprc30 *rc)
+{
+    (void)rc;
+}
+
 /* The RD-model picture QP of FRAME_START (0x134d18). */
 static int32_t e30_rd_qp(uint8_t *S, int32_t tb)
 {
@@ -1025,12 +1281,21 @@ static void e30_frame_start(Eprc30 *rc)
     S8(36) = (uint8_t)idr;
     S8(17) = EU8(e, 496);
     if (idr == 0) {
-        if ((uint32_t)A32(160) - 3u < 4u && S32(56) % A32(16) == 0)
-            S32(40) = 6;
-        else
-            S32(40) = 1;
+        if (A32(196) == 0) {
+            if ((uint32_t)A32(160) - 3u < 4u && S32(56) % A32(16) == 0)
+                S32(40) = 6;
+            else
+                S32(40) = 1;
+        } else {                                 /* H.265 (0x1343a8) */
+            if ((uint32_t)A32(160) < 7u && S32(56) % A32(16) == 0 &&
+                A32(16) < A32(28))
+                S32(40) = 6;
+            else
+                S32(40) = 1;
+        }
         if (EU32(e, 8) != 0)
-            A32(152) = 0x230;
+            A32(152) = EU32(e, 12) == 1 && EU16(e, 0) < 0x781u &&
+                       EU16(e, 2) < 0x441u ? 0x232 : 0x230;
         S32(188) = 0;
         type = S32(40);
         if (type == 6) {
@@ -1126,6 +1391,13 @@ static void e30_frame_start(Eprc30 *rc)
                 q = (int8_t)(SS8(81) + AS8(95));
             } else if (t == 0) {
                 q = (int8_t)(SS8(81) + AS8(95));
+            } else if (A32(192) != 0) {          /* R-lambda (0x134718) */
+                float bpp = (float)t / (float)A32(52);
+                float lambda = (float)((double)SF(2232) *
+                                       pow((double)bpp, (double)SF(2236)));
+
+                SF(2244) = lambda;
+                q = (int8_t)e30_trunc_w(log((double)lambda) * 4.2005 + 13.7122 + 0.5);
             } else {
                 q = (int8_t)e30_rd_qp(S, t);
             }
@@ -1253,6 +1525,13 @@ store_pos:
     EI32(e, 544) = type == 6 ? 1 : type;
     EI32(e, 548) = S32(884);
     EI32(e, 556) = S32(188);
+    if (EU32(e, 12) == 1) {
+        S32(32) = EI32(e, 0x218);
+        S32(24) = EI32(e, 0x210);
+        e30_api_enc265(rc);
+        e30_lcu_qp(rc);
+        return;
+    }
     e30_api_enc(rc);
     e30_mb_qp(rc);
 }
