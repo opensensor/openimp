@@ -352,7 +352,9 @@ static void radix_picture_fields(T30RadixEncoder *e, const IMPFrameInfo *frame,
     rsi_set_u16(b, RSI_DST_Y_STRIDE, (uint16_t)e->width);
     rsi_set_u16(b, RSI_DST_C_STRIDE, (uint16_t)(e->width >> 1));
     rsi_set_u16(b, RSI_REF_Y_STRIDE, (uint16_t)e->width);
-    rsi_set_u16(b, RSI_REF_C_STRIDE, (uint16_t)(e->width >> 1));
+    /* codec_enc: the reference chroma stride is the frame's +0x2c as is,
+     * only the reconstruction's is halved */
+    rsi_set_u16(b, RSI_REF_C_STRIDE, (uint16_t)e->width);
     rsi_set_u16(b, RSI_FRAME_WIDTH, (uint16_t)e->width);
     rsi_set_u16(b, RSI_FRAME_HEIGHT, (uint16_t)e->height);
     rsi_set_u8(b, RSI_CONTEXT_TYPE, idr ? 2u : 1u);
