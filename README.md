@@ -10,7 +10,7 @@
 <p align="center">
 
 [![license](https://img.shields.io/badge/license-per%20file-blue)](NOTICE)
-[![SoCs](https://img.shields.io/badge/SoC-T10%20%C2%B7%20T20%20%C2%B7%20T21%20%C2%B7%20T23%20%C2%B7%20T30%20%C2%B7%20T31%20%C2%B7%20T41-3e63dd)](#status)
+[![SoCs](https://img.shields.io/badge/SoC-T10%20%C2%B7%20T20%20%C2%B7%20T21%20%C2%B7%20T23%20%C2%B7%20T30%20%C2%B7%20T31%20%C2%B7%20T40%20%C2%B7%20T41-3e63dd)](#status)
 [![status](https://img.shields.io/badge/open%20stack-device%20tested-30a46c)](#status)
 [![branch aperto](https://img.shields.io/badge/branch-aperto-e5484d)](https://github.com/opensensor/openimp/tree/aperto)
 [![thingino](https://img.shields.io/badge/thingino-integrated-orange)](https://github.com/themactep/thingino-firmware)
@@ -27,8 +27,8 @@ a camera application it forms an open camera stack
 for Ingenic T10, T20, T21, T23, T30, T31, T40 and T41 SoCs. The public API is the
 vendor IMP API, so existing camera applications link against it unchanged.
 
-The `aperto` branch carries the released open stack (device-test campaign work for
-T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and releases](#branches-and-releases).
+The `aperto` branch carries the released open stack (RC3 `v2026.11.07-rc3`, device-tested on
+T10/T20/T21/T23/T30/T31/T40/T41) on top of the original `main` line; see [Branches and releases](#branches-and-releases).
 
 ## Status
 
@@ -42,23 +42,24 @@ Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC3 `v2026.11.07
 | T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Frequent Helix frame drops fixed (residual interrupt 0x100, kernel patch merged upstream); still open: a rare single Helix encode error (errno 5), no real WDR yet. |
 | T30 | Runs the open stack on the T30X lab camera (since 2026-11-03, gate SoC for RC3): H.264 at 2048x1536/1080p/720p + sub-stream, H.265 on the Radix encoder with vendor-equal CBR and live rate-control changes, OEM picture rate controller (bit-exact), calm first stream window, software rotation, ISP bypass graph (RAW). Device tests per issue (#208, #209, #216, #218, #228). |
 | T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
-| T40 | Runs the open stack (open-tx-isp driver + OpenIMP) from a flashed image on the T40XP test camera: H.264/H.265, day/night, AE/AWB and the tuning API with device tests (2026-10-31, image agg59: apitest all areas plus 28 cases PASS 270 / FAIL 0, 0 oops, image agg60). CPU load is vendor-like (ISP busy 1.6 % against 1.4 %, encoder 0.71 % against 0.77 / 0.84 %; #133, #149 closed). Open: ISP OSD picture of the Set calls (#141). |
+| T40 | Runs the open stack (open-tx-isp driver + OpenIMP) from a flashed image on the T40XP test camera (sc830ai): H.264/H.265, day/night, AE/AWB and the tuning API with device tests. Vendor-equal picture in a fair light-box comparison against the vendor stack (2026-11-07, #84): same brightness and white balance at the same exposure, luma and chroma noise vendor-equal, AE target and metering from the hardware statistics like the OEM (`ae_compensation` 40..200: Y 94..137 vs vendor 92..142, #232), night floor per tuning bank; streamer CPU 0.34 % vs 2.26 % on the vendor stack. Only the sc830ai board is device-tested. |
 | T41 | Runs from a flashed image with H.264 and H.265 on the test cameras, with day/night and AE/AWB; the API coverage is strict (every vendor function has a case). Open items are tracked in the GitHub issues (label `soc:T41`). |
 
 ### Completeness
 
-Vendor IMP/SU functions per SoC on 2026-10-29 (from the "All areas" coverage summary of [FEATURE_MATRIX](docs/FEATURE_MATRIX.md#coverage-summary)). "Works" = device-tested or vendor no-op (a round trip counts as working); "implemented" = exists but not device-tested; "gaps" = cache-only, stub, error or missing; "?" = not determined yet.
+Vendor IMP/SU functions per SoC on 2026-11-07, RC3 `v2026.11.07-rc3` (from the "All areas" coverage summary of [FEATURE_MATRIX](docs/FEATURE_MATRIX.md#coverage-summary); rendered: https://lu-fi.github.io/openimp/feature-matrix.html). "Works" = device-tested or vendor no-op (a round trip counts as working); "implemented" = exists but not device-tested; gaps = error, missing, stub or cache-only. All streamer-used functions work on every gate SoC (RC3 gate).
 
 | SoC | Vendor functions | Works | Implemented, not device-tested | Gaps | ? | Status |
 |---|--:|--:|--:|--:|--:|---|
-| T10 | 333 | 272 (81.7 %) | 26 | 31 | 4 | release |
-| T20 | 333 | 273 (82.0 %) | 27 | 29 | 4 | release |
-| T21 | 333 | 288 (86.5 %) | 26 | 16 | 3 | release |
-| T23 | 457 | 391 (85.6 %) | 40 | 17 | 9 | release |
-| T31 | 406 | 348 (85.7 %) | 34 | 7 | 17 | release |
-| T30 | 354 | 0 (0.0 %) | 44 | 21 | 289 | experimental |
-| T40 | 402 | 330 (82.1 %) | 27 | 18 | 28 | experimental |
-| T41 | 449 | 341 (75.9 %) | 50 | 58 | 0 | experimental |
+| T10 | 329 | 304 (92.4 %) | 25 | 0 | 0 | RC3 gate |
+| T20 | 329 | 304 (92.4 %) | 25 | 0 | 0 | RC3 gate |
+| T21 | 333 | 308 (92.5 %) | 25 | 0 | 0 | RC3 gate |
+| T23 | 457 | 419 (91.7 %) | 33 | 5 | 0 | RC3 gate |
+| T30 | 350 | 286 (81.7 %) | 44 | 19 | 1 | RC3 gate |
+| T31 | 406 | 365 (89.9 %) | 34 | 7 | 0 | RC3 gate |
+| T40 | 389 | 349 (89.7 %) | 28 | 12 | 0 | RC3 gate |
+| T41 | 427 | 392 (91.8 %) | 32 | 3 | 0 | RC3 gate |
+| T32, T33 | – | – | – | – | – | planned (QEMU) |
 
 The counts follow `next` and are refreshed by hand after each merge round (the generated source is the FEATURE_MATRIX). Release notes: [docs/releases/RC3.md](docs/releases/RC3.md) (RC3), [docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md) (RC2), [docs/RELEASE-v2026.10.11-rc1.md](docs/RELEASE-v2026.10.11-rc1.md) (RC1).
 
