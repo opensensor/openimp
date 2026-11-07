@@ -32,7 +32,7 @@ T10/T20/T21/T23/T31/T41) on top of the original `main` line; see [Branches and r
 
 ## Status
 
-Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC3 `v2026.11.07-rc3` (OpenIMP and open-tx-isp tag `v2026.11.07-rc3`, timps v1.12.0; RC3 gate green): release note [docs/releases/RC3.md](docs/releases/RC3.md), [GitHub release](https://github.com/Lu-Fi/openimp/releases/tag/v2026.11.07-rc3), rendered matrix [docs/feature-matrix.html](docs/feature-matrix.html).** Previous: **RC2 `v2026.10.25-rc2`** ([docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md)), **RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** RC3 gate SoCs: T10, T20, T21, T23, T30, T31, T40, T41 (T32/T33 planned). The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 application restarts). Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
+Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC3 `v2026.11.07-rc3` (OpenIMP and open-tx-isp tag `v2026.11.07-rc3`, timps v1.12.0; RC3 gate green): release note [docs/releases/RC3.md](docs/releases/RC3.md), [GitHub release](https://github.com/Lu-Fi/openimp/releases/tag/v2026.11.07-rc3), rendered feature matrix: **[https://lu-fi.github.io/openimp/feature-matrix.html](https://lu-fi.github.io/openimp/feature-matrix.html)**.** Previous: **RC2 `v2026.10.25-rc2`** ([docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md)), **RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** RC3 gate SoCs: T10, T20, T21, T23, T30, T31, T40, T41 (T32/T33 planned). The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 application restarts). Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
 
 | SoC | Status |
 |---|---|
@@ -158,7 +158,7 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 ## Documentation
 
 - [Wiki](https://github.com/opensensor/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
-- [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://htmlpreview.github.io/?https://github.com/opensensor/openimp/blob/aperto/docs/feature-matrix.html)): what works on which SoC.
+- [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://lu-fi.github.io/openimp/feature-matrix.html)): what works on which SoC.
 - [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
 - [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for application authors.
 - [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): performance and resources, open stack versus vendor stack, per SoC, with sources and caveats.
