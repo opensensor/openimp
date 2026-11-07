@@ -3098,6 +3098,74 @@
    "milestone": "RC3"
   },
   {
+   "number": 220,
+   "title": "[T10] Driver/module review: performance, memory, load, binary size",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/220",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T10",
+    "type:gap"
+   ],
+   "created": "2026-11-06T15:31:26Z",
+   "closed": "2026-11-07T06:42:23Z",
+   "milestone": null
+  },
+  {
+   "number": 221,
+   "title": "[T20] Driver/module review: performance, memory, load, binary size",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/221",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T20",
+    "type:gap"
+   ],
+   "created": "2026-11-06T15:57:23Z",
+   "closed": "2026-11-07T06:42:25Z",
+   "milestone": null
+  },
+  {
+   "number": 222,
+   "title": "[T21] Driver/module review: performance, memory, load, binary size",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/222",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T21",
+    "type:gap"
+   ],
+   "created": "2026-11-06T16:03:41Z",
+   "closed": "2026-11-07T06:42:27Z",
+   "milestone": null
+  },
+  {
+   "number": 223,
+   "title": "[T31] Driver/module review: performance, memory, load, binary size",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/223",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T31",
+    "type:gap"
+   ],
+   "created": "2026-11-06T16:13:48Z",
+   "closed": "2026-11-07T06:42:29Z",
+   "milestone": null
+  },
+  {
    "number": 224,
    "title": "[T23] Driver/module review: performance, memory, load, binary size",
    "state": "open",
@@ -3112,6 +3180,22 @@
    ],
    "created": "2026-11-06T16:16:49Z",
    "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 225,
+   "title": "[T40] AE exposure split depends on the path; OEM split (IT on the highest rung, analog before ISP dgain) (#84)",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/225",
+   "labels": [
+    "area:ISP",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "soc:T40",
+    "type:gap"
+   ],
+   "created": "2026-11-06T16:41:19Z",
+   "closed": "2026-11-07T05:31:52Z",
    "milestone": null
   },
   {
@@ -3147,6 +3231,40 @@
    "milestone": null
   },
   {
+   "number": 228,
+   "title": "T30 H.265 CBR: live bitrate change has no effect, stream stays at ~361 kbit/s",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/228",
+   "labels": [
+    "area:Encoder",
+    "prio:release-gate",
+    "repo:openimp",
+    "severity:critical",
+    "soc:T30",
+    "type:bug"
+   ],
+   "created": "2026-11-07T00:20:22Z",
+   "closed": "2026-11-07T01:12:31Z",
+   "milestone": "RC3"
+  },
+  {
+   "number": 229,
+   "title": "T23 .30: kernel oops in xburst_cop2_restore (MXU2 context restore) after 18 h",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/229",
+   "labels": [
+    "area:System",
+    "prio:release-gate",
+    "repo:openimp",
+    "severity:critical",
+    "soc:T23",
+    "type:bug"
+   ],
+   "created": "2026-11-07T00:22:25Z",
+   "closed": "2026-11-07T01:01:59Z",
+   "milestone": "RC3"
+  },
+  {
    "number": 230,
    "title": "[All] Fair vendor-vs-open comparison pass on every SoC (light box)",
    "state": "open",
@@ -3161,6 +3279,39 @@
    "created": "2026-11-07T00:38:19Z",
    "closed": null,
    "milestone": "Release 1"
+  },
+  {
+   "number": 231,
+   "title": "[All] Opus review of kernel merges T23/T31/T10-T21 (2026-11-07)",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/231",
+   "labels": [
+    "area:Driver",
+    "prio:release-gate",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "type:wip"
+   ],
+   "created": "2026-11-07T07:41:21Z",
+   "closed": "2026-11-07T09:22:06Z",
+   "milestone": "RC3"
+  },
+  {
+   "number": 232,
+   "title": "[T40] ae_compensation acts much stronger than the vendor (comp 40..200: open Y 40..240, vendor 93..141)",
+   "state": "closed",
+   "url": "https://github.com/Lu-Fi/openimp/issues/232",
+   "labels": [
+    "area:AE-AWB",
+    "prio:streamer",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "soc:T40",
+    "type:gap"
+   ],
+   "created": "2026-11-07T08:18:19Z",
+   "closed": "2026-11-07T12:56:30Z",
+   "milestone": "RC3"
   },
   {
    "number": 233,
