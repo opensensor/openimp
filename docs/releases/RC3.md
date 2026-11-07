@@ -1,6 +1,6 @@
-# RC3 release note (DRAFT, not tagged, not published)
+# RC3 release note (v2026.11.07-rc3)
 
-RC3 is the third release candidate of the open camera stack (OpenIMP libimp + open-tx-isp kernel driver). It is cut when the RC3 gate of `docs/status/release.yaml` is green: (a) every vendor function that a streamer (timps, prudynt, raptor) calls works on every gate SoC (T10, T20, T21, T23, T30, T31, T40, T41; API cell `dev`, `dev+`, `run`, `rt`, a matched vendor `no-op`, or `nohw` by user decision), (b) no open issue with severity critical or high, and (c) no open issue in the RC3 milestone. State on 2026-11-07: **gate green**, 2017 of 2017 streamer-function cells work, 0 blocking issues. RC3 opens the Release 1 window: the image built from the RC3 tag must then run 14 days without an unplanned reset on at least one camera per gate SoC. Issue numbers refer to https://github.com/Lu-Fi/openimp/issues. Full details: `CHANGELOG.md` of both repositories, `docs/FEATURE_MATRIX.md`, `docs/OPENIMP_BEYOND_VENDOR.md`.
+RC3 is the third release candidate of the open camera stack (OpenIMP libimp + open-tx-isp kernel driver). It is cut when the RC3 gate of `docs/status/release.yaml` is green: (a) every vendor function that a streamer (timps, prudynt, raptor) calls works on every gate SoC (T10, T20, T21, T23, T30, T31, T40, T41; API cell `dev`, `dev+`, `run`, `rt`, a matched vendor `no-op`, or `nohw` by decision), (b) no open issue with severity critical or high, and (c) no open issue in the RC3 milestone. State on 2026-11-07: **gate green**, 2017 of 2017 streamer-function cells work, 0 blocking issues. RC3 opens the Release 1 window: the image built from the RC3 tag must then run 14 days without an unplanned reset on at least one camera per gate SoC. Issue numbers refer to https://github.com/Lu-Fi/openimp/issues. Full details: `CHANGELOG.md` of both repositories, `docs/FEATURE_MATRIX.md`, `docs/OPENIMP_BEYOND_VENDOR.md`.
 
 ## Changes since RC2 (v2026.10.25-rc2)
 
@@ -70,7 +70,7 @@ RC3 is the third release candidate of the open camera stack (OpenIMP libimp + op
 - T23: the open AWB runs on every 4th ISP interrupt, the vendor on every interrupt (#233; needs a light-box proof).
 - T30: picture quality (SSIM) against the vendor not measured; FixQP and SMART not run on the device; run-time frame-rate / GOP changes host-tested only; the start-QP map is fitted on the SC4236 only; DMIC rows count as `nohw` (no DMIC on the lab board, not verified on hardware).
 - T40: only the sc830ai board is device-tested; at comp 200 the open analog gain stops at 4095 (vendor 5247); AO / AEC rows still in progress; on 7 of 37 shipped T40 bins `t40_gamma_ev=1` changes the picture with the exposure (vendor behaviour).
-- #94 (T31L) and #108 (T23) were closed after a 3 h debug-kernel stress without a reset (user rule 2026-11-07); their causes stay unexplained and a recurrence re-opens them.
+- #94 (T31L) and #108 (T23) were closed after a 3 h debug-kernel stress without a reset (rule 2026-11-07); their causes stay unexplained and a recurrence re-opens them.
 - T32 and T33 are planned / QEMU only and not part of RC3.
 - Some API cells count at the evidence level "API round trip" (`rt`), e.g. `DMIC_*` on T31/T40/T41.
 
@@ -84,7 +84,7 @@ RC3 is the third release candidate of the open camera stack (OpenIMP libimp + op
 
 | Component | Version |
 |---|---|
-| OpenIMP | `next` commit `<RC3 commit>`, tag `<RC3 tag>` (docs pass on top of 52c530d2) |
-| open-tx-isp | `next` commit `<RC3 commit>`, tag `<RC3 tag>` (docs pass on top of 57e45ea8) |
-| timps | v1.12.0 (branch dev/t30, f7811f7, local) |
-| thingino firmware | `aperto`, sync branch `claude/aperto-sync-1107` (pending) |
+| OpenIMP | tag `v2026.11.07-rc3` |
+| open-tx-isp | tag `v2026.11.07-rc3` (728ee0d8) |
+| timps | v1.12.0 (tag on Lu-Fi/timps, 6c75a83) |
+| thingino firmware | `aperto` (packages openimp / open-tx-isp pinned to `v2026.11.07-rc3`) |
