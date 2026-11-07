@@ -10,6 +10,14 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 
 
+## 2026-11-07: final docs pass before RC3 (device results of #216 and #228, reset issues closed, matrix re-judged)
+
+- T30 first stream window (#216, closed): device proof b46 on the T30X lab camera with the defaults (`OPENIMP_T30_START_QP` auto, `OPENIMP_T30_BLACK_START`, `OPENIMP_T30_START_FLOOR`). Peak in the first 2 s, CBR 2000 kbit/s: 1080p15 1787 (vendor stack 2671), 1080p25 1522 (vendor 2475), 2048x1536 15 fps 1295; 2048x1536 25 fps 1000 / 4000: 900 / 3047; 640x360 15 fps 256: 308 (vendor 282); VBR 2048x1536 25 fps 2000: 2393 (vendor VBR 1080p25: 17830). Without the start floor 1080p15 goes back to 3570. Extra beyond vendor, documented in `docs/OPENIMP_BEYOND_VENDOR.md`.
+- T30 H.265 live rate control (#228, closed): vendor reference b49/b51 (stock module and libimp, same live calls, H.265 1080p25, 10 s windows), open / vendor: CBR 2000 2075 / 2081, live 1000 1063 / 1043, live 3000 first 10 s 2854 / 3088, then 3109-3114 / 3115-3121, VBR max 2000 1525 / 1349.
+- T23 reset of 2026-11-05 (#229, closed): caused by our own rotation test, whose test library ran the MXU2 selftest on a T23N (no MXU2); the kernel's coprocessor-2 handler then faults in `xburst_cop2_restore`. Fixed by "openimp_mxu2_select never probes on T23" (2026-11-06); normal T23 images contain no MXU2 code. Rule: never execute MXU2 instructions on T23.
+- Unexplained resets #94 (T31L) and #108 (T23) closed by the user rule of 2026-11-07 (3 h of stress without a reset): debug kernel with stack-overflow and IRQ preempt/stack-end checks, day/night toggle every 10 s plus fork load, about 1000 switches per camera, no reset, no oops. The stress continues to 24 h; a reset re-opens the issue.
+- Matrix (3 symbols moved): T30 H.264 ✅ -> ✅+; T23 and T31 long-term stability ⚠️ -> ✅. Cell texts updated for the T30 and T40 results of 2026-11-06/07 and for the T10/T20/T21/T31 driver reviews (#220-#223, #231). Release note draft: `docs/releases/RC3.md` (not tagged).
+
 ## 2026-11-07, T30: ISP bypass graph device-proven (#218, T30X lab camera)
 
 - With `OPENIMP_T30_BYPASS_GRAPH=1` (default off) the vendor sample order runs on the T30X: `SetISPBypass(DISABLE)` 0, RAW channel 10/10 frames 2048x1536 BG12, 6291456 bytes each (12-bit data MSB-aligned in 16 bits: the core DMA writer runs in the SDK RAW16 format; frames differ, mean 485 / std 593 / max 4092 after >>4), `ENABLE` 0, then a new NV12 channel 25/25 with a normal picture.
@@ -34,7 +42,7 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 - `OPENIMP_T30_START_QP` knots re-fitted to the converged QPs of b45 (`src/t30/t30_start_qp.h`): large class 42/41/39/26 at 0.0127/0.0254/0.0509/0.1017 bpp, small class 34/32/29/26 at 0.0099/0.0386/0.0643/0.0868. b45 showed the old map 4-5 QP off at 2048x1536 25 fps 1000 kbit/s (46 vs 42) and 4000 (35 vs 40) and the small-class floor at 1080p 512 kbit/s (38 vs 33); all b45 points are now within 1 QP.
 - `auto` applies to VBR and SMART again (user decision 2026-11-06 after b45: VBR 2048x1536 25 fps started at 41 gave 3160 kbit/s in the first 0.5 s, at the vendor 26 89432; the vendor stack itself bursts 9x in VBR at 1080p25). Documented as an extra.
 - New `OPENIMP_T30_START_FLOOR` (default on, `0` off): the OEM controller's own min QP is the start QP for the first GOP after a controller start (channel start, live IDR after the black start, rate-control change), then the application's again. b45: after the (live) IDR the vendor controller lowered the P QP by 3 per picture while the live picture was still changing (2048x1536 15 fps P41/38/35 = 14/32/98 KB), which moved the burst behind the black start instead of removing it. New `EPRC30_GetMinQp`/`EPRC30_SetMinQp` (`src/eprc/eprc_t30.c`, controller bytes 64/65; the vendor-exact paths are unchanged, `OPENIMP_T30_START_FLOOR=0` in the bit-exact host test).
-- Host tests updated (`tests/t30/helix_encoder_test.c`). Device proof b46 pending.
+- Host tests updated (`tests/t30/helix_encoder_test.c`). Device proof b46: see the 2026-11-07 docs-pass entry.
 
 ## 2026-11-06 (late): T30 first window - start QP auto for CBR only, black start (#216, branch `claude/t30-start-qp-3`)
 

@@ -1388,7 +1388,7 @@
   {
    "number": 84,
    "title": "[T40] One full vendor-vs-open comparison pass (chart, day, night, CPU)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/84",
    "labels": [
     "area:Docs",
@@ -1553,7 +1553,7 @@
   {
    "number": 94,
    "title": "[T31] T31L watchdog reboot after 52 h without a kernel trace",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/94",
    "labels": [
     "area:Driver",
@@ -1805,7 +1805,7 @@
   {
    "number": 108,
    "title": "T23: unexplained reboot on the agg47 image (~4.6 h after flash)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/108",
    "labels": [
     "area:Driver",
@@ -2978,7 +2978,7 @@
   {
    "number": 204,
    "title": "[T40] #85 leftovers: lifted twin sources, AE classes C/D, vendor gamma and WDR EV updates",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/204",
    "labels": [
     "area:Driver",
@@ -3012,7 +3012,7 @@
   {
    "number": 208,
    "title": "[T30] H.265 / HEVC encoder (hardware supports it, OpenIMP T30 encodes H.264 and JPEG only)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/208",
    "labels": [
     "area:Encoder",
@@ -3029,7 +3029,7 @@
   {
    "number": 213,
    "title": "[T40] Open stack noise worse than vendor at equal brightness: chroma temporal noise 1.9x, SNR 2-4 dB lower (#84)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/213",
    "labels": [
     "area:ISP",
@@ -3046,7 +3046,7 @@
   {
    "number": 216,
    "title": "[T30] CBR first-second overshoot with the OEM controller: A/B against the vendor lib",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/216",
    "labels": [],
    "created": "2026-11-06T04:56:55Z",
@@ -3066,7 +3066,7 @@
   {
    "number": 218,
    "title": "[T30] ISP bypass graph (RAW channel on the core DMA writer): branches claude/t30-bypass-graph (OpenIMP 1c7c3b61, open-tx-isp 7cb3c761) unmerged",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/218",
    "labels": [
     "area:ISP",
@@ -3083,7 +3083,7 @@
   {
    "number": 219,
    "title": "[All] Independent Opus code review of eprc T30, FS rotation and T40 AE fix (review 2026-11-06)",
-   "state": "open",
+   "state": "closed",
    "url": "https://github.com/Lu-Fi/openimp/issues/219",
    "labels": [
     "area:Encoder",
@@ -3096,6 +3096,105 @@
    "created": "2026-11-06T07:27:11Z",
    "closed": null,
    "milestone": "RC3"
+  },
+  {
+   "number": 224,
+   "title": "[T23] Driver/module review: performance, memory, load, binary size",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/224",
+   "labels": [
+    "area:ISP",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T23",
+    "type:gap"
+   ],
+   "created": "2026-11-06T16:16:49Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 226,
+   "title": "[T40] Night IR picture 1.7x brighter and 11 % clipped vs vendor at 2.6x less exposure (#84)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/226",
+   "labels": [
+    "area:ISP",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "soc:T40",
+    "type:gap"
+   ],
+   "created": "2026-11-06T16:41:34Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 227,
+   "title": "[T40] Lens shading weaker than vendor: flat-field corner ratio 0.44 vs 0.59-0.63 (#84)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/227",
+   "labels": [
+    "area:ISP",
+    "repo:open-tx-isp",
+    "severity:medium",
+    "soc:T40",
+    "type:gap"
+   ],
+   "created": "2026-11-06T16:41:36Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 230,
+   "title": "[All] Fair vendor-vs-open comparison pass on every SoC (light box)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/230",
+   "labels": [
+    "area:ISP",
+    "prio:release-gate",
+    "repo:openimp",
+    "severity:medium",
+    "type:wip"
+   ],
+   "created": "2026-11-07T00:38:19Z",
+   "closed": null,
+   "milestone": "Release 1"
+  },
+  {
+   "number": 233,
+   "title": "[T23] AWB runs on every 4th ISP IRQ, vendor on every IRQ",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/233",
+   "labels": [
+    "area:AE-AWB",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T23",
+    "type:gap"
+   ],
+   "created": "2026-11-07T09:22:15Z",
+   "closed": null,
+   "milestone": null
+  },
+  {
+   "number": 234,
+   "title": "[T32] Host oracle harness from Matt's recovered C + first real functions (planned)",
+   "state": "open",
+   "url": "https://github.com/Lu-Fi/openimp/issues/234",
+   "labels": [
+    "area:Driver",
+    "prio:long-term",
+    "repo:open-tx-isp",
+    "severity:low",
+    "soc:T32",
+    "type:wip"
+   ],
+   "created": "2026-11-07T12:48:16Z",
+   "closed": null,
+   "milestone": null
   }
  ]
 }
