@@ -71,6 +71,9 @@ VIDEO_CFG again on the live controller without clearing it, as rcInit does. Proo
 --h265-reconf` runs rcInit a second time on the vendor controller; `tests/eprc/eprc_t30_h265_reconf_vectors.txt`
 (12 changes, 3520 decisions incl. block and QP-map CRC) 0 differ; a fresh controller instead gives 450 differences.
 `IMP_Encoder_RequestIDR` works as before.
+`IMP_Encoder_SetChnAttrRcMode` on an H.265 channel reads the H.265 attribute layout (CBR: `staticTime` before
+`outBitRate`, `flucLvl` last; VBR/SMART: `flucLvl` in place of H.264's `gopRelation`) as the vendor branch does
+(`src/t40/codec_rc_helix.h`, #228; before, a live CBR change took `staticTime` as the bit rate).
 
 ## Not ported (vendor has it, no streamer on T30 reaches it)
 

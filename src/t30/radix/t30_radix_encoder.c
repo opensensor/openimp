@@ -190,6 +190,8 @@ static void radix_eprc_params(const HWEncoderParams *hp, uint32_t w,
         p->static_time = hp->static_time;
         p->change_pos = hp->change_pos;
         p->quality = hp->quality_level;
+        /* IMPEncoderAttrH265CBR/VBR flucLvl (i265e_set_param 3) */
+        p->fluct_lvl = hp->fluct_level;
     } else {
         /* i265e_param_default */
         p->frm_qp_step = 3u;
@@ -339,6 +341,7 @@ static void radix_rc_fields(HWEncoderParams *dst, const HWEncoderParams *src)
     dst->frm_qp_step = src->frm_qp_step;
     dst->gop_qp_step = src->gop_qp_step;
     dst->bias_level = src->bias_level;
+    dst->fluct_level = src->fluct_level;
 }
 
 int OpenIMP_T30_RadixUpdateParams(T30RadixEncoder *e,

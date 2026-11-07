@@ -10,6 +10,12 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 
 
+## 2026-11-07: T30 H.265 live rate-control change reads the H.265 attribute (#228, branch `claude/t30-hevc-live-br`)
+
+- `AL_Codec_Encode_SetRcParam` (`src/t40/codec-t40.c`, T23/T30) read every `IMP_Encoder_SetChnAttrRcMode` attribute in the H.264 layout. `IMPEncoderAttrH265CBR` has `staticTime` before `outBitRate` (word 3, H.264: word 2), so a live CBR change on an H.265 channel took `staticTime` (timps: 2) as 2 kbit/s; the controller sat at its max QP (b47, 1080p25: 361 kbit/s for 1000, 3000 and VBR->CBR; VBR, same first nine words, worked: 1905). The QP steps, `iBiasLvl` and the CBR flags were shifted the same way.
+- New `src/t40/codec_rc_helix.h`: the attribute in the codec's own layout, as the vendor libimp 1.0.5 `IMP_Encoder_SetChnAttrRcMode` (0xc102c, Ghidra) reads it for `i265e_set_param` 3: H.265 CBR maxQp, minQp, staticTime, outBitRate, iBiasLvl, frmQPStep, gopQPStep, flucLvl; VBR/SMART words 1..10 with flucLvl (no gopRelation). `staticTime` and `flucLvl` now reach the Radix controller (new `HWEncoderParams.fluct_level`, 0x88; `EprcParams.fluct_lvl`). H.264 is unchanged.
+- Host test `tests/t30/codec_rc_helix_test.c` (fails on the old mapping: 1000 kbit/s -> 2000 bit/s). Device proof pending (`audit/issue228/devproof.sh`).
+
 ## 2026-11-06: T10/T20 software rotation envelope (timps review)
 
 - T10/T20 builds (`PLATFORM_T20`) were missing from the rotation guards in `src/framesource/framesource_tseries.c`: `OpenIMP_FS_RotateLimits` reported 4096x4096 align 2, and `IMP_FrameSource_SetChnRotate` applied neither the 16-pixel alignment nor the 704x576 pixel cap there. T20 now takes the same envelope as T21: 704x576 pixels (`OPENIMP_FS_ROTATE_MAX_PIXELS` overrides), sides multiples of 16, every channel.

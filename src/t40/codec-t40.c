@@ -34,6 +34,9 @@
 #include "codec_frame_ts.h"
 #include "fifo.h"
 #include "hw_encoder.h"
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+#include "codec_rc_helix.h"
+#endif
 
 #include "al_avpu.h"
 
@@ -14557,21 +14560,19 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
     enc->avpu.fps_den = enc->fps_cache.frmRateDen;
     enc->avpu.gop_length = enc->gop_cache.gopLength;
 
+#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
+    /* vendor IMP_Encoder_SetChnAttrRcMode: the H.265 attribute in its own
+     * layout (src/t40/codec_rc_helix.h, #228) */
+    codec_rc_helix_from_attr(&enc->hw_params, &src->attrRcMode,
+                             codec_param_read_codec_type(enc->codec_param) ==
+                                 IMP_ENC_TYPE_HEVC);
+    *(uint32_t *)(enc->codec_param + 0x6c) = enc->hw_params.rc_mode;
+#else
     switch (src->attrRcMode.rcMode) {
     case IMP_ENC_RC_MODE_CBR:
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_CBR;
         enc->hw_params.rc_mode = HW_RC_MODE_CBR;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-        enc->hw_params.bitrate =
-            src->attrRcMode.attrH264Cbr.outBitRate * 1000u;
-        enc->hw_params.min_qp =
-            clamp_qp_u32(src->attrRcMode.attrH264Cbr.minQp);
-        enc->hw_params.max_qp =
-            clamp_qp_u32(src->attrRcMode.attrH264Cbr.maxQp);
-        enc->hw_params.qp =
-            (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
-        codec_store_rc_extras(&enc->hw_params, &src->attrRcMode);
-#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         enc->hw_params.bitrate = src->attrRcMode.attrH264Cbr.uTargetBitRate;
         enc->hw_params.qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iInitialQP);
         enc->hw_params.min_qp = clamp_qp_u32(src->attrRcMode.attrH264Cbr.iMinQP);
@@ -14592,25 +14593,11 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 #endif
         break;
     case IMP_ENC_RC_MODE_VBR:
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-    case IMP_ENC_RC_MODE_SMART:
-#else
     case IMP_ENC_RC_MODE_CAPPED_VBR:
     case IMP_ENC_RC_MODE_CAPPED_QUALITY:
-#endif
         *(uint32_t *)(enc->codec_param + 0x6c) = HW_RC_MODE_VBR;
         enc->hw_params.rc_mode = HW_RC_MODE_VBR;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-        enc->hw_params.bitrate =
-            src->attrRcMode.attrH264Vbr.maxBitRate * 1000u;
-        enc->hw_params.min_qp =
-            clamp_qp_u32(src->attrRcMode.attrH264Vbr.minQp);
-        enc->hw_params.max_qp =
-            clamp_qp_u32(src->attrRcMode.attrH264Vbr.maxQp);
-        enc->hw_params.qp =
-            (enc->hw_params.min_qp + enc->hw_params.max_qp) / 2u;
-        codec_store_rc_extras(&enc->hw_params, &src->attrRcMode);
-#elif defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
+#if defined(PLATFORM_T31) || defined(PLATFORM_T40) || defined(PLATFORM_T41)
         enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uTargetBitRate;
         if (enc->hw_params.bitrate == 0)
             enc->hw_params.bitrate = src->attrRcMode.attrH264Vbr.uMaxBitRate;
@@ -14644,11 +14631,9 @@ int AL_Codec_Encode_SetRcParam(void *codec, void *rcAttr)
 #endif
         enc->hw_params.min_qp = enc->hw_params.qp;
         enc->hw_params.max_qp = enc->hw_params.qp;
-#if defined(PLATFORM_T23) || defined(PLATFORM_T30)
-        codec_store_rc_extras(&enc->hw_params, &src->attrRcMode);
-#endif
         break;
     }
+#endif
 
 #if defined(PLATFORM_T23) || defined(PLATFORM_T30)
     /* SetChnAttrRcMode at run time: the OEM clamps these extras with

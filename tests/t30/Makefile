@@ -368,7 +368,8 @@ check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test 
 	fs_lifecycle_test_t21 fs_lifecycle_test_t20 fs_lifecycle_test_t23 fs_lifecycle_test_t30 \
 	system_test rc_readback_test_t21 rc_readback_test_t20 rc_readback_test_t23 \
 	p2_gap_test_t21 p2_gap_test_t20 osd_attach_test isp_gap_test_t21 isp_gap_test_t20 \
-	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test radix_cmdlist_test radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test
+	p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test radix_cmdlist_test radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test codec_rc_helix_test
+	./codec_rc_helix_test
 	./radix_cmdlist_test
 	./radix_cabac_test
 	./radix_hevc_test
@@ -423,6 +424,12 @@ check: p2_t30_enc_test isp_t1x_test_t20 isp_t1x_test_t21 isp_t31_movestate_test 
 	./isp_gap_test_t30
 	./dmic_t30_test
 	./check_exports.sh
+
+# T30 SetChnAttrRcMode on an H.265 channel: the H.265 attribute layout (#228,
+# src/t40/codec_rc_helix.h).
+codec_rc_helix_test: codec_rc_helix_test.c $(ROOT)/src/t40/codec_rc_helix.h $(ROOT)/src/hw_encoder.h
+	$(CC) $(CFLAGS) -DPLATFORM_T30 '-D_Static_assert(c,m)=' -I$(ROOT)/include \
+		-I$(ROOT)/src -o $@ codec_rc_helix_test.c
 
 # GetChnAttrRcMode read-back of T21, T20 and T23 (src/t40/p2_rc_readback.h).
 rc_readback_test_t21: rc_readback_test.c $(ROOT)/src/t40/p2_rc_readback.h
@@ -489,7 +496,7 @@ dmic_t30_test: dmic_t30_test.c $(ROOT)/src/t31/openimp_t31_dmic.c
 		-o $@ dmic_t30_test.c -pthread -ldl
 
 clean:
-	$(RM) p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test radix_smoke radix_hevc_headers.265 hevc_diff hevc_cfg_diff
+	$(RM) codec_rc_helix_test p2_t30_enc_test radix_cmdlist_test radix_diff radix_cabac_test radix_hevc_test radix_hevc_chan_test radix_encoder_test radix_smoke radix_hevc_headers.265 hevc_diff hevc_cfg_diff
 	$(RM) p2_gap_test_t30 osd_attach_test_t30 isp_gap_test_t30 dmic_t30_test
 	$(RM) isp_t31_movestate_test isp_t20_movestate_test isp_t21_movestate_test isp_t30_movestate_test isp_t31_awbzone_test isp_t1x_test_t20 isp_t1x_test_t21 p2_t1x_test_t20 p2_t1x_test_t21
 	$(RM) descriptor_test annexb_test level_test helix_encoder_test \
