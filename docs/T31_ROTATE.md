@@ -344,6 +344,12 @@ Copy back or spare (`OPENIMP_FS_ROTATE_SPARES`, default 0):
 - Without a free spare the frame is copied back. That happens when the
   consumers hold all spares, when the largest free rmem block would drop
   below 1 MiB, or when the allocation fails.
+- Limits (review #219 B3): the spare goes back at the first release after
+  DQBUF. With more than one consumer of the same record, a consumer that
+  still holds it then sees the unrotated capture buffer with the rotated
+  size. `VBMLockFrame`/`VBMUnLockFrame` look records up by virt address and
+  do not find a spare-backed record. Use spares with a single consumer per
+  channel only.
 - It saves the memcpy, 0.25-1.0 ms per 704x576 frame. One spare was enough
   for the test client (100/100 frames).
 - It is off by default because a spare costs one more frame of rmem. It is

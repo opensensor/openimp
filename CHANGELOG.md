@@ -10,11 +10,15 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 
 
+## 2026-11-07: rotate spares limits documented (#219 B3)
+
+- docs/T31_ROTATE.md: the opt-in `OPENIMP_FS_ROTATE_SPARES` mode is for one consumer per channel (the spare goes back at the first release; `VBMLockFrame` looks records up by virt address and does not see spare-backed records).
+
 ## 2026-11-07: T30 H.265 live rate-control change reads the H.265 attribute (#228, branch `claude/t30-hevc-live-br`)
 
 - `AL_Codec_Encode_SetRcParam` (`src/t40/codec-t40.c`, T23/T30) read every `IMP_Encoder_SetChnAttrRcMode` attribute in the H.264 layout. `IMPEncoderAttrH265CBR` has `staticTime` before `outBitRate` (word 3, H.264: word 2), so a live CBR change on an H.265 channel took `staticTime` (timps: 2) as 2 kbit/s; the controller sat at its max QP (b47, 1080p25: 361 kbit/s for 1000, 3000 and VBR->CBR; VBR, same first nine words, worked: 1905). The QP steps, `iBiasLvl` and the CBR flags were shifted the same way.
 - New `src/t40/codec_rc_helix.h`: the attribute in the codec's own layout, as the vendor libimp 1.0.5 `IMP_Encoder_SetChnAttrRcMode` (0xc102c, Ghidra) reads it for `i265e_set_param` 3: H.265 CBR maxQp, minQp, staticTime, outBitRate, iBiasLvl, frmQPStep, gopQPStep, flucLvl; VBR/SMART words 1..10 with flucLvl (no gopRelation). `staticTime` and `flucLvl` now reach the Radix controller (new `HWEncoderParams.fluct_level`, 0x88; `EprcParams.fluct_lvl`). H.264 is unchanged.
-- Host test `tests/t30/codec_rc_helix_test.c` (fails on the old mapping: 1000 kbit/s -> 2000 bit/s). Device proof pending (`audit/issue228/devproof.sh`).
+- Host test `tests/t30/codec_rc_helix_test.c` (fails on the old mapping: 1000 kbit/s -> 2000 bit/s). Device proof T30X 2026-11-07: live 1000 -> 1046, 3000 -> 2476, cbr again -> 3085 kbit/s (before: 361 for every CBR case).
 
 ## 2026-11-06: T10/T20 software rotation envelope (timps review)
 
