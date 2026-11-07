@@ -175,7 +175,7 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 
 ## Reporting problems
 
-Open an issue at [opensensor/openimp](https://github.com/opensensor/openimp/issues) (library, encoder, application integration) or [opensensor/open-tx-isp](https://github.com/opensensor/open-tx-isp/issues) (kernel driver, ISP, memory). Please include the SoC and sensor, the revisions of open-tx-isp, OpenIMP and the camera application, `dmesg`, the application log (including the `rmem peak` and "effective rate control" lines), the stream set and the `rmem`/`ispmem` values. Do not post addresses, credentials or location names. Details: [Troubleshooting](https://github.com/opensensor/openimp/wiki/Troubleshooting#reporting-a-problem).
+Open an issue at [opensensor/openimp](https://github.com/opensensor/openimp/issues) (library, encoder, application integration) or [opensensor/open-tx-isp](https://github.com/opensensor/open-tx-isp/issues) (kernel driver, ISP, memory). Please include the SoC and sensor, the revisions of open-tx-isp, OpenIMP and the camera application, `dmesg`, the application log (including the `rmem peak` and "effective rate control" lines), the stream set and the `rmem`/`ispmem` values. Do not post addresses, credentials or location names. Details: [Troubleshooting](https://github.com/Lu-Fi/openimp/wiki/Troubleshooting#reporting-a-problem).
 
 ## Credits
 
