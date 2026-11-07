@@ -10,6 +10,12 @@ Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of
 
 
 
+## 2026-11-07, T30: ISP bypass graph device-proven (#218, T30X lab camera)
+
+- With `OPENIMP_T30_BYPASS_GRAPH=1` (default off) the vendor sample order runs on the T30X: `SetISPBypass(DISABLE)` 0, RAW channel 10/10 frames 2048x1536 BG12, 6291456 bytes each (12-bit data MSB-aligned in 16 bits: the core DMA writer runs in the SDK RAW16 format; frames differ, mean 485 / std 593 / max 4092 after >>4), `ENABLE` 0, then a new NV12 channel 25/25 with a normal picture.
+- timps (ch0 H.265 + ch1 H.264) decodes clean before and after the bypass run; 0 oopses.
+- Needs the open-tx-isp fix of the same day (direct raw writer in the ISP interrupt); without the variable `DISABLE` stays refused (-1). The T30 cell stays `rt` (as T23/T41).
+
 ## 2026-11-07: rotate spares limits documented (#219 B3)
 
 - docs/T31_ROTATE.md: the opt-in `OPENIMP_FS_ROTATE_SPARES` mode is for one consumer per channel (the spare goes back at the first release; `VBMLockFrame` looks records up by virt address and does not see spare-backed records).
