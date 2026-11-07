@@ -1,6 +1,8 @@
 # T41 temporal-image investigation (2026-09-08)
 
-Status: the reported visual flicker is **not resolved**. Successful decoding
+Status on 2026-09-08 (historic page): the reported visual flicker was **not resolved** then. Later T41 AE, defog
+and night work (2026-10-24 defog fix and default on, see `CHANGELOG.md`) and the current T41 cells are in
+[FEATURE_MATRIX.md](FEATURE_MATRIX.md). Successful decoding
 and timestamp checks do not establish temporal image quality.
 
 ## Rapid brightness flicker: ISP control defect

@@ -1,8 +1,8 @@
-# T30 H.265 (HEVC): Radix encoder (work in progress, #208)
+# T30 H.265 (HEVC): Radix encoder (#208, closed)
 
 Status 2026-11-06 (device-proven in b41, see the b41 results below): `IMP_Encoder_CreateChn(PT_H265)` on T30 encodes on Radix by default; `OPENIMP_T30_H265=0` turns it off (CreateChn returns -1 as before). The libimp exports `int OpenIMP_Cap_H265` (1 = H.265 available, cleared by a constructor when the env is 0) for streamers; the channel encodes on Radix (`src/t30/radix/t30_radix_encoder.c`). Proven in the QEMU T30 machine
 with synthetic pictures; on a T30X (run b40) Radix runs, VPS/SPS/PPS are byte-equal to the vendor and IDR pictures are
-correct; the P-picture drift seen there had two causes that are fixed since (below), the re-run is pending. This page
+correct; the P-picture drift seen there had two causes that are fixed since (below); the re-run b41 on the T30X lab camera proved them (vendor-equal CBR within 0.1-2.4 %), and the live rate-control change on H.265 is vendor-equal since #228 (closed, b49/b51). This page
 describes the hardware path and what of it is in the tree. Only the real T30 build contains it (not T20/T21/T23).
 
 ## Hardware and kernel

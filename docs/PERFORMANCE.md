@@ -237,8 +237,13 @@ Same `tools/encload` binary on both stacks (H.264 1080p20 CBR 2 Mbit/s, GOP 40 o
 | ISP kernel threads, day / night | 2.2 / 3.0 % | 3.57 / 3.55 % | same | same |
 | ISP event thread per frame | 2.3-3.1 ms (was 4.55 at the start of #133) | not measured | 2026-10-29/30 | audit/issue-133c |
 | idle (no stream), day / night | busy 1.9 / 0.6 %, timps 1.63 / 0.29 % | busy 2.6 / 1.4 %, timpsd 2.01 / 2.33 % | 0 RTSP clients, 2026-10-30 | audit/cpu/T40_2026-10-30.md |
+| streamer process CPU | 0.34 % | 2.26 % | #84 fair light-box pass, same streamer build on both stacks, 2026-11-07 | matrix row 'CPU load (documented figures)', T40 (#84) |
 
 The 1 ms polling loop of the T40 frame wait cost 33 probes per frame (4 context switches each); after the fix frame_source_wait is 1 per frame and encoder_poll 615 us per frame. Open: a blocking DQBUF in open-tx-isp for full parity (#149 part 2). Different streamers in the idle rows (open timps vs vendor timpsd).
+
+### 3.8 T30 (T30X lab camera, SC4236)
+
+**not measured**: no CPU, RAM or latency A/B on the T30X yet (the lab camera exists since 2026-11-03; the device batches b1-b51 measured function, bitrate and picture, see `docs/T30_STATUS.md`). Bitrate figures that are measured: first-2 s peak 1787 kbit/s open vs 2671 vendor at 1080p15 CBR 2000 (#216), H.265 CBR within 0.1-2.4 % of the vendor (#208).
 
 ## 4. Not comparable / caveats
 
@@ -294,6 +299,7 @@ The 1 ms polling loop of the T40 frame wait cost 33 probes per frame (4 context 
 
 | Missing cell | What would be needed |
 | --- | --- |
+| T30 CPU, RSS, MemFree and snapshot latency (open and vendor) | One A/B run on the T30X lab camera (runtime module swap), same scene and viewer set. |
 | Vendor column for T10, T21, T23, T31, T41 | One A/B image pair per SoC (same camera, same scene, same timps revision) as in `W:Testing`. |
 | Streamer RSS and thread count for T10, T21, T23, T31, T41 (open and vendor) | The same A/B runs, recording RSS/threads. |
 | Time to first image and snapshot latency for T10, T21, T23, T31, T41 | Same runs; snapshot latency as "average of 10". |

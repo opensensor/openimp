@@ -4,9 +4,17 @@ The T40 implementation is a clean, OEM-free `libimp.so` for the
 T40XP/GC4653 Raptor pipeline. It is maintained under `src/t40/`; the existing
 flat and ported T31 builds remain unchanged.
 
-## Current live gate
+## Current state (RC3, 2026-11-07)
 
-The validated camera is a Wyze Cam v3 Pro running Thingino with the stock
+The gate camera is the Eufy T40XP (sc830ai) with the open driver (open-tx-isp `tx-isp-t40`) and OpenIMP,
+flashed from a full image. AE and AWB run in C in the open driver (AE target, metering and exposure split as
+the OEM, #225, #232; AWB and chroma noise vendor-equal, #213); the picture is vendor-equal in the fair light-box
+pass (#84). T40 is an RC3 gate SoC (217/217 streamer-used function cells work); only the sc830ai board is
+device-tested. Details: the T40 column of [FEATURE_MATRIX.md](FEATURE_MATRIX.md) and [releases/RC3.md](releases/RC3.md).
+
+## First live gate (external contributor, 2026-07, stock driver)
+
+The camera of this section was a Wyze Cam v3 Pro running Thingino with the stock
 `tx_isp_t40` and `sensor_gc4653_t40` kernel modules. RVD, RIC, and RSD run
 with only the OpenIMP library mapped; `tx_isp_t40_recovered` is not loaded.
 The T40 userspace implementation does not contain a GC4653 register table,
@@ -66,9 +74,9 @@ maintained `libaudioProcess-neo`; logging uses the target's
 
 - Extended decoder-clean and reconnect soak testing remains part of the
   encoder gate.
-- AE/AWB and image-quality processing run in the stock ISP firmware using the
-  selected sensor tuning blob. OpenIMP forwards tuning requests without
-  duplicating sensor policy.
+- With the stock `tx_isp_t40` driver (section "First live gate") AE/AWB and image-quality processing run in the
+  stock ISP firmware using the selected sensor tuning blob, and OpenIMP forwards tuning requests without
+  duplicating sensor policy. With the open driver (current gate) AE/AWB run in C in open-tx-isp.
 - DMIC (21 calls, `src/t31/openimp_t31_dmic.c`, 2026-10-27): rebuilt from the vendor 1.3.1 `dmic.c` (OSS3 `/dev/dsp` ioctls 0x73
   SET_PARAM, 0x6a/0x6b stream on/off, 0x69 GET_STREAM with a 16-byte stream struct, 0x68/0x67 AEC, 0x57 gain). No DMIC hardware on
   the test boards (the Eufy T8416 and the Wyze Cam v3 Pro dts only carry the generic `dmic-pc` pinmux group), so apitest `dmic`

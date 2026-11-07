@@ -1,6 +1,6 @@
 # Reset diagnostics: how to capture the cause of an unplanned reboot
 
-Status 2026-10-31. Written so nobody has to repeat this research. Evidence: camera runs on T31L/T31X (Cinnado, Wuuk) and T23N (Galayou), the U-Boot/kernel sources of the firmware build, the Ingenic docs archive.
+Status 2026-10-31, update 2026-11-07: the unexplained resets #94 (T31L) and #108 (T23) were closed after a 3 h debug-kernel stress without a reset (rule of 2026-11-07; their causes stay unexplained and a recurrence re-opens them; later resets during power outages were power-on resets). The T23 reset of 2026-11-05 (#229, closed) was our own rotation test running the MXU2 selftest on a T23N (no MXU2); OpenIMP never probes MXU2 on T23 since 2026-11-06. Written so nobody has to repeat this research. Evidence: camera runs on T31L/T31X (Cinnado, Wuuk) and T23N (Galayou), the U-Boot/kernel sources of the firmware build, the Ingenic docs archive.
 
 ## The problem
 An unplanned reset (watchdog) leaves no panic text: the kernel messages never reach the remote syslog (the forwarder is a user-space process; after a panic the machine restarts within seconds). The boot log only shows `CPU0 RESET ERROR PC:`, which is the CP0 ErrorEPC. `801A5Exx` / `801A8Exx` = `__delay` in the restart path = a planned reboot or a panic (panic=2), NOT a hang.

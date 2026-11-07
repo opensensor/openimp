@@ -3,12 +3,20 @@
 **Where to read what**
 
 - **This file**: release-oriented summary per area (what changed against the vendor stack and against the original upstream line, [opensensor/openimp](https://github.com/opensensor/openimp)), followed by the condensed OpenIMP-only log by date.
-- **Full campaign log**: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md): every change of OpenIMP, open-tx-isp and the thingino integration since 2026-09-30, per session, with device-test evidence and numbers. The same text is on the wiki page *Changelog*.
+- **Full campaign log**: [docs/OPEN_STACK_CHANGELOG.md](docs/OPEN_STACK_CHANGELOG.md): every change of OpenIMP, open-tx-isp and the thingino integration since 2026-09-30, per session, with device-test evidence and numbers (condensed for 2026-10-25 to 2026-11-07). The wiki page *Changelog* carries the per-day log of both repositories up to the newest release.
 - **Current state per feature and SoC**: [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) (HTML view: [docs/feature-matrix.html](docs/feature-matrix.html)); what goes beyond the vendor: [docs/OPENIMP_BEYOND_VENDOR.md](docs/OPENIMP_BEYOND_VENDOR.md).
 
-Release plan: `next` goes to `aperto` (fast-forward only) after the long soak of the release candidate and is tagged `vYYYY.MM.DD`; until then dates are the reference. The first release covers T10, T20, T21, T23 and T31; T10 has not been re-tested on the open stack today ("not re-tested"); T41 is not part of the first release. Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
+Release plan: `next` goes to `aperto` (fast-forward only) and is tagged `vYYYY.MM.DD[-rcN]` in both repositories (same tag). Tags so far: RC1 `v2026.10.11-rc1`, RC2 `v2026.10.25-rc2`, RC3 `v2026.11.07-rc3` (2026-11-07, RC3 gate green). Gate SoCs of RC3 and Release 1: T10, T20, T21, T23, T30, T31, T40 and T41; T32 and T33 are planned (QEMU only). Release 1 needs 14 days without an unplanned reset on the image built from the RC3 tag (at least one camera per gate SoC). Branch names (`claude/...`) are historic: the topic branches were merged into `next` and deleted. Cameras are anonymised: cam-A (T31), cam-B (T23), cam-C (T20), cam-D (T21), cam-E (T10), cam-F (T41); cam-G and cam-H are further T23 cameras, cam-I a second T20, cam-J a second T21.
 
 
+
+## 2026-11-07: RC3 `v2026.11.07-rc3` released; docs brought to the released state (doc audit)
+
+- RC3 is tagged `v2026.11.07-rc3` in OpenIMP and open-tx-isp and released on GitHub (Lu-Fi and opensensor); RC3 gate green (2017 of 2017 streamer-function cells, 0 blocking issues). Gate SoCs: T10, T20, T21, T23, T30, T31, T40, T41; T32/T33 planned (QEMU).
+- thingino-firmware: the Lu-Fi `aperto` branch pins OpenIMP and open-tx-isp to the tag `v2026.11.07-rc3` and timps to v1.12.0; the upstream pull request is themactep/thingino-firmware#1945. README: the old "pinned by commit SHA" text is replaced; the wiki link points to https://github.com/Lu-Fi/openimp/wiki.
+- `docs/status/release.yaml`: `rc3_tag: v2026.11.07-rc3`; the Release 1 counter runs once `release_image` names the image built from that tag and the soak sampler logs it.
+- Docs corrected after the RC3 doc audit: matrix intro (RC3 tagged), T30 notes that still said "no T30 camera" (T30_STATUS.md with a device section for 2026-11-03..07, T30_HEVC.md, OPENIMP_SOC_DIFFS.md, history.md), T40_STATUS.md (open driver on the Eufy T40XP is the gate), T41_STATUS.md, OPENIMP_BEYOND_VENDOR.md (T30 CSC presets on the device, `SU_Base_SetWkupMode` RTC check on the T41 camera, T23 AWB objects, dropped T41 AddSensor reclaim), RESET_DIAGNOSTICS.md (#94/#108/#229), PERFORMANCE.md (T40 streamer CPU, T30 not measured), OPEN_STACK_CHANGELOG.md (condensed section 2026-10-25..11-07), new index `docs/releases/README.md`.
+- Matrix row 21 'Rotation 90°/270°': T10, T20, T21 — -> 🔧 (the OpenIMP software rotation for sub streams up to 704x576 exists since 2026-10-05; the cell said "coerced to 0"; full path host-tested only, device test pending).
 
 ## 2026-11-07: final docs pass before RC3 (device results of #216 and #228, reset issues closed, matrix re-judged)
 

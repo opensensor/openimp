@@ -1,6 +1,6 @@
 # OpenIMP vs vendor libimp: API-level differences per SoC (input for timps `USE_OPENIMP`)
 
-As of: 2026-10-03 21:08 (local time), with a status note of 2026-10-04 below. Audience: timps maintainers. Cameras as in the changelog (cam-A T31, cam-B T23,
+**Historic page.** As of: 2026-10-03 21:08 (local time), with a status note of 2026-10-04 below; the tables were not rewritten after that. For the current state (RC3 `v2026.11.07-rc3`, 2026-11-07) use [FEATURE_MATRIX.md](FEATURE_MATRIX.md) and [OPENIMP_BEYOND_VENDOR.md](OPENIMP_BEYOND_VENDOR.md); the T30 and T40 sections below are updated. Audience: timps maintainers. Cameras as in the changelog (cam-A T31, cam-B T23,
 cam-C T20, cam-D T21, cam-E T10, cam-F T41).
 
 **Status note 2026-10-04 (read first).** This page is a snapshot of the proposal made on 2026-10-03; the tables and the
@@ -122,10 +122,14 @@ The differences are in behaviour, not in which calls exist.
 | rotation 90/270 | sub-stream via native encoder | [=] main stream above 704x576 refused (software rotation) | device-tested | `rotate_caps.h` unchanged |
 | H.265 | vendor returns 0, empty channel that never encodes (no HEVC hardware) | **[+]** `CreateChn(PT_H265)` returns -1 with a clear log line (beyond vendor) | built, host-tested (`claude/h265-reject`) | check the `CreateChn` return value, fall back to H.264 |
 
-## T30 (no test camera)
+## T30 (T30X lab camera since 2026-11-03)
 
 OpenIMP builds T30 with the T21/T23 encoder header branch and the generic ISP CID pass-through; real motion
-detection was ported for T30 alongside T20/T21. Nothing is device-tested: **no `USE_OPENIMP` change for T30.**
+detection was ported for T30 alongside T20/T21. Until 2026-11-03 nothing was device-tested. Since then the T30X lab
+camera (SC4236) runs the open stack: H.264, H.265 on Radix (capability marker `OpenIMP_Cap_H265`, `OPENIMP_T30_H265=0`
+off), software rotation through `SetChnRotate` (beyond vendor, check `OpenIMP_Cap_FsRotate` / `OpenIMP_FS_RotateLimits`),
+the calm first stream window (extra, default on) and the optional bypass graph are device-tested; see
+[T30_STATUS.md](T30_STATUS.md) and the T30 column of [FEATURE_MATRIX.md](FEATURE_MATRIX.md).
 
 ## T31 (cam-A)
 
@@ -141,9 +145,11 @@ T31 already has the full classic ISP cap set in timps. OpenIMP is mostly vendor 
 | JPEG, rotation, OSD, AEC | vendor | [+] HW JPEG default, `SetChnRotate` 90/270, IPU OSD, real AEC (`EnableAec` errors when it cannot run) | device-tested | unchanged calls; check `IMP_AI_EnableAec` return |
 | live encoder keys (`ENC_LIVE_KEYS` bitrate, min/max QP, i_bias) | live | [=] | device-tested | unchanged |
 
-## T40 (no test camera)
+## T40 (Eufy T40XP test camera, sc830ai)
 
-Shares the T40/T41 code path (`src/t40/`). No device evidence: **no `USE_OPENIMP` change for T40.**
+Shares the T40/T41 code path (`src/t40/`). Device-tested on the Eufy T40XP with the open driver since 2026-10
+(at the time of this page there was no T40 camera); vendor-equal picture in the fair light-box pass (#84,
+2026-11-07). Current state: the T40 column of [FEATURE_MATRIX.md](FEATURE_MATRIX.md) and [T40_STATUS.md](T40_STATUS.md).
 
 ## T41 (cam-F)
 

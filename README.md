@@ -22,7 +22,7 @@
 
 OpenIMP is an open replacement for Ingenic's closed `libimp.so` (the IMP video,
 encoder, OSD, IVS and audio API). Together with
-[open-tx-isp](https://github.com/opensensor/open-tx-isp) (the open ISP kernel driver) and a
+[open-tx-isp](https://github.com/opensensor/open-tx-isp) (the open ISP kernel driver) and
 a camera application it forms an open camera stack
 for Ingenic T10, T20, T21, T23, T30, T31, T40 and T41 SoCs. The public API is the
 vendor IMP API, so existing camera applications link against it unchanged.
@@ -32,18 +32,18 @@ T10/T20/T21/T23/T30/T31/T40/T41) on top of the original `main` line; see [Branch
 
 ## Status
 
-Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC3 `v2026.11.07-rc3` (OpenIMP and open-tx-isp tag `v2026.11.07-rc3`, timps v1.12.0; RC3 gate green): release note [docs/releases/RC3.md](docs/releases/RC3.md), [GitHub release](https://github.com/Lu-Fi/openimp/releases/tag/v2026.11.07-rc3), rendered feature matrix: **[https://lu-fi.github.io/openimp/feature-matrix.html](https://lu-fi.github.io/openimp/feature-matrix.html)**.** Previous: **RC2 `v2026.10.25-rc2`** ([docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md)), **RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** RC3 gate SoCs: T10, T20, T21, T23, T30, T31, T40, T41 (T32/T33 planned). The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 application restarts). Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below dates from 2026-10-04; the matrix is newer.
+Open stack = open-tx-isp + OpenIMP. **Newest release candidate: RC3 `v2026.11.07-rc3` (OpenIMP and open-tx-isp tag `v2026.11.07-rc3`, timps v1.12.0; RC3 gate green): release note [docs/releases/RC3.md](docs/releases/RC3.md), [GitHub release](https://github.com/Lu-Fi/openimp/releases/tag/v2026.11.07-rc3), rendered feature matrix: **[https://lu-fi.github.io/openimp/feature-matrix.html](https://lu-fi.github.io/openimp/feature-matrix.html)**.** Previous: **RC2 `v2026.10.25-rc2`** ([docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md)), **RC1 v2026.10.11-rc1: openimp fe9307c (agg-35 687a68e4 + docs), open-tx-isp 191be6c5 (agg-35 6e464ac7 + docs).** RC3 gate SoCs: T10, T20, T21, T23, T30, T31, T40, T41 (T32/T33 planned). The agg-35 soak of 2026-10-10/11 on 10 cameras was clean (0 oopses, 0 unexplained reboots, 0 application restarts). Release notes and known issues: [CHANGELOG.md](CHANGELOG.md). The per-SoC table below is a short summary as of RC3 (2026-11-07); the authoritative per-feature state is the matrix.
 
 | SoC | Status |
 |---|---|
-| T10 | Runs the open stack from a flashed image (H.264, hardware JPEG/MJPEG, second stream, OSD, motion detection, day/night). Image controls and AE/AWB quality only partly documented. |
-| T20 | Fully open from a flashed image; long soaks (1 h 44 min at 25 fps) without errors; OEM rate controller default, A/B against the vendor stack measured. |
-| T21 | Fully open from a flashed image; vendor-identical rate controller, reference-buffer sharing on. |
-| T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Frequent Helix frame drops fixed (residual interrupt 0x100, kernel patch merged upstream); still open: a rare single Helix encode error (errno 5), no real WDR yet. |
+| T10 | Runs the open stack from a flashed image (H.264, hardware JPEG/MJPEG, second stream, OSD, motion detection, day/night, image controls, AE/AWB); RC3 gate: all 228 streamer-used function cells work, OEM rate controller and `SetChnRcTrigLevel` checked against the vendor library. |
+| T20 | Fully open from a flashed image; RC3 gate (228/228 streamer-used function cells work); OEM rate controller default with macroblock rate control, A/B against the vendor stack measured. |
+| T21 | Fully open from a flashed image; RC3 gate (252/252 streamer-used function cells work); vendor-identical rate controller, reference-buffer sharing on. |
+| T23 | Fully open, native Helix H.264 encoder, no vendor helper (2 h 34 min soak). Frequent Helix frame drops fixed (residual interrupt 0x100, kernel patch merged upstream); the rare single Helix encode error (errno 5) has not recurred since the kernel fix (0 errors in 6 days, provisionally closed); software rotation 90/270 up to 1280x720 (beyond vendor); no real WDR yet. RC3 gate. |
 | T30 | Runs the open stack on the T30X lab camera (since 2026-11-03, gate SoC for RC3): H.264 at 2048x1536/1080p/720p + sub-stream, H.265 on the Radix encoder with vendor-equal CBR and live rate-control changes, OEM picture rate controller (bit-exact), calm first stream window, software rotation, ISP bypass graph (RAW). Device tests per issue (#208, #209, #216, #218, #228). |
-| T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; 2 h 53 min soak without errors. |
+| T31 | Reference SoC. H.264, HEVC, hardware JPEG, OSD, rotation, AEC; RC3 gate; optional ISP bypass graph (default off). |
 | T40 | Runs the open stack (open-tx-isp driver + OpenIMP) from a flashed image on the T40XP test camera (sc830ai): H.264/H.265, day/night, AE/AWB and the tuning API with device tests. Vendor-equal picture in a fair light-box comparison against the vendor stack (2026-11-07, #84): same brightness and white balance at the same exposure, luma and chroma noise vendor-equal, AE target and metering from the hardware statistics like the OEM (`ae_compensation` 40..200: Y 94..137 vs vendor 92..142, #232), night floor per tuning bank; streamer CPU 0.34 % vs 2.26 % on the vendor stack. Only the sc830ai board is device-tested. |
-| T41 | Runs from a flashed image with H.264 and H.265 on the test cameras, with day/night and AE/AWB; the API coverage is strict (every vendor function has a case). Open items are tracked in the GitHub issues (label `soc:T41`). |
+| T41 | Runs from a flashed image with H.264 and H.265 on the test cameras, with day/night and AE/AWB; RC3 gate (all 253 streamer-used function cells work); the API coverage is strict (every vendor function has a case). Open items are tracked in the GitHub issues (label `soc:T41`). |
 
 ### Completeness
 
@@ -61,7 +61,7 @@ Vendor IMP/SU functions per SoC on 2026-11-07, RC3 `v2026.11.07-rc3` (from the "
 | T41 | 427 | 392 (91.8 %) | 32 | 3 | 0 | RC3 gate |
 | T32, T33 | – | – | – | – | – | planned (QEMU) |
 
-The counts follow `next` and are refreshed by hand after each merge round (the generated source is the FEATURE_MATRIX). Release notes: [docs/releases/RC3.md](docs/releases/RC3.md) (RC3), [docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md) (RC2), [docs/RELEASE-v2026.10.11-rc1.md](docs/RELEASE-v2026.10.11-rc1.md) (RC1).
+The counts follow `next` and are refreshed by hand after each merge round (the generated source is the FEATURE_MATRIX). Release notes (index: [docs/releases/](docs/releases/README.md)): [docs/releases/RC3.md](docs/releases/RC3.md) (RC3), [docs/RELEASE_NOTES_RC2.md](docs/RELEASE_NOTES_RC2.md) (RC2), [docs/RELEASE-v2026.10.11-rc1.md](docs/RELEASE-v2026.10.11-rc1.md) (RC1).
 
 Details per feature and SoC: [FEATURE_MATRIX](docs/FEATURE_MATRIX.md).
 History: [CHANGELOG.md](CHANGELOG.md) and the full
@@ -115,15 +115,16 @@ make t31                    # or t20 t21 t23 t30 t40 t41; equivalent: ./build-fo
 The packages `openimp` (this repository) and `open-tx-isp` (kernel driver) are in the upstream
 [thingino-firmware](https://github.com/themactep/thingino-firmware) branch `aperto`
 ([#1756](https://github.com/themactep/thingino-firmware/pull/1756)), selected with
-`BR2_PACKAGE_THINGINO_ISP_OPEN` (menu "ISP stack") and pinned by commit SHA to the `aperto`
-branches of the opensensor repositories. Both replace the proprietary `libimp.so` and `tx-isp-<soc>.ko`; the
+`BR2_PACKAGE_THINGINO_ISP_OPEN` (menu "ISP stack"). The Lu-Fi `aperto` branch of thingino-firmware pins
+both packages to the tag `v2026.11.07-rc3` (sources `Lu-Fi/openimp` and `Lu-Fi/open-tx-isp`) and timps to v1.12.0;
+the upstream pull request for RC3 is [#1945](https://github.com/themactep/thingino-firmware/pull/1945) (until it is merged, the upstream `aperto` branch pins `v2026.10.25-rc2`). Both replace the proprietary `libimp.so` and `tx-isp-<soc>.ko`; the
 SDK sensor, audio and AVPU modules stay; T23 runs fully on OpenIMP without any vendor helper. The
 kernel VPU/rmem stability patches
 ([#1748](https://github.com/themactep/thingino-firmware/pull/1748),
 [#1752](https://github.com/themactep/thingino-firmware/pull/1752)) and the optional boot guard
 `BR2_PACKAGE_THINGINO_ISP_GUARD` ([#1749](https://github.com/themactep/thingino-firmware/pull/1749),
 default off) are merged there as well. The camera application is built with `USE_OPENIMP=1` to enable
-features that exist only in OpenIMP. Once the first date tag exists on `aperto`, thingino's `aperto` branch will pin that tag instead of a SHA.
+features that exist only in OpenIMP. thingino pins a release tag, not a commit SHA.
 
 ## Branches and releases
 
@@ -158,7 +159,7 @@ loaded at runtime from `libaudioProcess-neo`. Acoustic echo cancellation uses th
 
 ## Documentation
 
-- [Wiki](https://github.com/opensensor/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
+- [Wiki](https://github.com/Lu-Fi/openimp/wiki): build and install, module parameters, `OPENIMP_*` variables, memory sizing, troubleshooting, release scheme (one wiki for OpenIMP and open-tx-isp).
 - [`docs/FEATURE_MATRIX.md`](docs/FEATURE_MATRIX.md) (also as [`feature-matrix.html`](docs/feature-matrix.html), [rendered](https://lu-fi.github.io/openimp/feature-matrix.html)): what works on which SoC.
 - [`docs/OPEN_STACK_CHANGELOG.md`](docs/OPEN_STACK_CHANGELOG.md) and [`CHANGELOG.md`](CHANGELOG.md): history of the open stack.
 - [`docs/OPENIMP_BEYOND_VENDOR.md`](docs/OPENIMP_BEYOND_VENDOR.md) and [`docs/OPENIMP_SOC_DIFFS.md`](docs/OPENIMP_SOC_DIFFS.md): differences to the vendor stack, for application authors.

@@ -1,6 +1,6 @@
 # T41 status
 
-The T41 target is an in-progress port of the shared T4 OpenIMP implementation.
+The T41 target is a port of the shared T4 OpenIMP implementation and an RC3 gate SoC (RC3 `v2026.11.07-rc3`: all 253 streamer-used function cells work; current state: the T41 column of [FEATURE_MATRIX.md](FEATURE_MATRIX.md)).
 It is intentionally kept in the same encoder and FrameSource sources as T40;
 platform branches represent measured public or kernel ABI differences.
 

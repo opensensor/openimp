@@ -833,14 +833,14 @@ features:
   vendor: software rotation (32×32 tiles)
   cells:
     T10:
-      sym: —
-      text: coerced to 0 ("unsupported on this SoC")
+      sym: 🔧
+      text: 'OpenIMP extension (beyond vendor: the vendor T10/T20/T21 libimp has no `IMP_FrameSource_SetChnRotate`): software rotation 90/270 on the FrameSource thread, the T31 path of `docs/T31_ROTATE.md`; sub streams only, at most 704x576 pixels, width and height multiples of 16 (a larger channel is refused with -1 and stays unrotated); T10 and T20 have the same envelope as T21 since 2026-11-06. The MXU2 rotate kernel is timed on the T20X and T10L; the full path is host-tested only, the device test is pending. The extension exists since 2026-10-05; this cell said "coerced to 0" until 2026-11-07.'
     T20:
-      sym: —
-      text: coerced to 0 ("unsupported on this SoC")
+      sym: 🔧
+      text: 'OpenIMP extension (beyond vendor: the vendor T10/T20/T21 libimp has no `IMP_FrameSource_SetChnRotate`): software rotation 90/270 on the FrameSource thread, the T31 path of `docs/T31_ROTATE.md`; sub streams only, at most 704x576 pixels, width and height multiples of 16 (a larger channel is refused with -1 and stays unrotated); T10 and T20 have the same envelope as T21 since 2026-11-06. The MXU2 rotate kernel is timed on the T20X and T10L; the full path is host-tested only, the device test is pending. The extension exists since 2026-10-05; this cell said "coerced to 0" until 2026-11-07.'
     T21:
-      sym: —
-      text: coerced to 0 ("unsupported on this SoC")
+      sym: 🔧
+      text: 'OpenIMP extension (beyond vendor: the vendor T10/T20/T21 libimp has no `IMP_FrameSource_SetChnRotate`): software rotation 90/270 on the FrameSource thread, the T31 path of `docs/T31_ROTATE.md`; sub streams only, at most 704x576 pixels, width and height multiples of 16 (a larger channel is refused with -1 and stays unrotated); T10 and T20 have the same envelope as T21 since 2026-11-06. The MXU2 rotate kernel is timed on the T20X and T10L; the full path is host-tested only, the device test is pending. The extension exists since 2026-10-05; this cell said "coerced to 0" until 2026-11-07.'
     T23:
       sym: ✅
       text: '`IMP_FrameSource_SetChnRotate` 90/270 (beyond vendor: the T23 libimp has none): the T31/T21 software rotation on the FrameSource thread, before OSD, IVS and the encoders; sizes multiples of 16, at most 704x576 (sub stream). Device-tested 2026-11-05 on two T23N (sc1a4t, sc2336p) with a test client, not under timps yet: 352x640 and 576x704 H.264 + JPEG correctly oriented, 0 decode errors, 15/15 fps; 3-4 ms per 640x352 frame, 6.5 ms per 704x576 (C path, the T23 has no MXU); banded C kernel 2026-11-06 (both cams, rottest): 2.2 ms per 640x352, 3.9-4.0 ms per 704x576 [claude/rotate-speed]. Before this, sub-stream rotation on T23 was timps'' own software path (unbound `IMP_Encoder_Yuv*`), not the native encoder; IMP_Encoder_YuvSetCrop implemented (host-tested only, timps does not call it) [claude/t23-fs-rotate]'

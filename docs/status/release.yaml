@@ -57,7 +57,9 @@ gates:
     requires: rc3
     # The 14-day counter starts only when RC3 is published (user decision 2026-10-26): set rc3_tag to the
     # published tag and release_image to the image tag built from it; until then Release 1 shows "not started".
-    rc3_tag: null
+    # RC3 was published on 2026-11-07 (tag v2026.11.07-rc3 in both repositories). release_image is set once the
+    # image built from that tag runs on the fleet and the soak sampler logs it (docs/status/soak.json "image").
+    rc3_tag: v2026.11.07-rc3
     release_image: null
     rules:
       - id: release1.rc3

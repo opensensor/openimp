@@ -1,13 +1,32 @@
 # T30/T30X status
 
-OpenIMP has a source-only H.264 path for the legacy Ingenic T30 Helix block.
+OpenIMP has its own source-built H.264 path for the legacy Ingenic T30 Helix block
+and an H.265 path on the Radix block ([T30_HEVC.md](T30_HEVC.md)).
 It uses the compatible 3.10.14 ISP, sensor, FrameSource, reserved-memory, and
 `/dev/soc_vpu` interfaces, but it neither links nor loads the OEM `libimp.so`
 for video.
 
-## Verified live gate
+## Device results on the T30X lab camera (2026-11-03 to 2026-11-07)
 
-The current test device is a Wyze VDB1 with a T30X and SC4236 sensor. The
+Since 2026-11-03 the lab has a T30X camera (Jooan, SC4236, remote); T30 is an RC3 gate SoC and all 230
+streamer-used function cells work. Method: runtime module swap to the open stack (no flash), audit batches
+b1-b51, vendor stack on the same board as reference. Results (details and numbers: `CHANGELOG.md`,
+[FEATURE_MATRIX.md](FEATURE_MATRIX.md), [releases/RC3.md](releases/RC3.md)):
+
+- H.264 at 2048x1536, 1080p and 720p plus a 640x360 sub-stream; heights that are not a multiple of 16 encode again (#209).
+- H.265 on the Radix encoder, vendor-equal CBR (within 0.1-2.4 %), 2048x1536 where the vendor delivers nothing (#208); live rate-control change on H.265 vendor-equal (#228).
+- OEM picture rate controller (eprc T30 revision, bit-exact against the stock library) (#210); calm first stream window (extra beyond vendor, default on) (#216).
+- Software rotation through `SetChnRotate` (beyond vendor, MXU2) (#212); encoder ROI and super-frame as the vendor (#16, #19).
+- ISP bypass graph device-proven: RAW 2048x1536 12-bit in 16 bits, then NV12 again (`OPENIMP_T30_BYPASS_GRAPH=1`, default off) (#218).
+- `IMP_FrameSource_GetFrame` compact NV12 like the vendor (#202); `GetAFMetrices` like the vendor; WaitFrame, RawDRC, antifog, mirror, picture controls and the CSC presets (extra, opt-in) reach the driver.
+- API coverage on 2026-11-07 (matrix "All areas"): 286 of 350 vendor functions work, 44 implemented but not device-tested, 19 gaps, 1 unknown.
+- Not covered yet: picture quality (SSIM) against the vendor, FixQP and SMART on the device, run-time frame-rate / GOP changes (host-tested only); DMIC rows count as `nohw` (no DMIC on the lab board).
+
+The sections below are dated; they record the state before the lab camera where they say so.
+
+## Verified live gate (external contributor, before 2026-11-03)
+
+The test device of this section is a Wyze VDB1 with a T30X and SC4236 sensor. The
 sensor name describes the test fixture, not encoder policy: OpenIMP contains
 no SC4236 register table, gain LUT, tuning data, or fixed sensor dimensions.
 Sensor configuration and image processing remain owned by the loaded ISP
@@ -75,7 +94,7 @@ by offline decoding, separately from the network-path observation.
 
 `build-t30.sh` checks the exports of `libimp.so` against the T30 1.0.5 vendor
 library (`tests/t30/fixtures/t30_vendor_1.0.5_imp_exports.txt`, 334 names).
-Gap work of 2026-10-10 (no T30 camera, vendor libimp 1.0.5 disassembled and
+Gap work of 2026-10-10 (no T30 camera in the lab at that time, vendor libimp 1.0.5 disassembled and
 compared with T21 1.0.33 and T31 1.1.6): 317 of 334 names are exported (was
 271), audio 68 of 68. None of the 63 names that were missing is imported by
 any of the applications using the IMP API that were checked.
@@ -95,18 +114,19 @@ any of the applications using the IMP API that were checked.
   `SetChnHSkipBlackEnhance`, `Get/SetChnHSkip` (the IDR period is not handed
   to the Helix encoder), `SetPoolSize`, `SetChnRcTrigLevel`,
   `ISP_Tuning_SetTemperDnsCtl`, `SetAFThreshold`.
-- Still missing (17 names): `Decoder_*` (8) and `Encoder_Get/SetChnCrop`,
+- Still missing on 2026-10-10 (17 names): `Decoder_*` (8) and `Encoder_Get/SetChnCrop`,
   `ISP_Tuning_SetISPLDC` (need a T30 device or driver work);
   `Encoder_Enable/DisableAllNCUDenoise`, `PadFrame`, `SetPadFrameAttr`,
   `Get/SetRencFirstFrameMult` (not worth it: closed-encoder or chip-specific).
 
-Nothing in this list has run on a T30 camera. Wishlist for a T30 tester: the
-tuning controls above against the open T30 driver, a DMIC capture, and
-`Encoder_SetChnHSkip` with the IDR period.
+On 2026-10-10 nothing in this list had run on a T30 camera. Since 2026-11-03 the
+T30X lab camera runs these calls (see the device section at the top); the current
+per-function state, including the 19 remaining T30 gaps, is the "API coverage per
+function" section of [FEATURE_MATRIX.md](FEATURE_MATRIX.md).
 
 ## API run in QEMU and static audit (2026-11-01)
 
-Still no T30 camera. Method: (1) the T30 1.0.5 vendor `libimp.so` was
+At that time still no T30 camera in the lab. Method: (1) the T30 1.0.5 vendor `libimp.so` was
 disassembled and compared with OpenIMP's T30 build call site by call site
 (tuning transport and control id, return paths); (2) `tools/apitest` now builds
 for T30 and was run in the QEMU T30 machine (sc4236 sensor model, the open
@@ -140,7 +160,10 @@ channel (about one run in seven) ended in a fatal oops in the ISP interrupt path
 initialisation both times; both are driver bugs found by this run, not
 analysed here.
 
-Differences between OpenIMP and the 1.0.5 vendor library that remain:
+Differences between OpenIMP and the 1.0.5 vendor library that remained on 2026-11-01 (since then
+`SetISPBypass` is a real bypass graph, device-proven with `OPENIMP_T30_BYPASS_GRAPH=1` (#218), `WaitFrame`
+and `Get/SetRawDRC` reach the driver as the vendor (device-tested), and `GetAFMetrices` behaves like the
+vendor library without a driver call):
 `SetDPStrength` (the vendor scales driver table 83 with `isp_table_tuning_ratio`,
 OpenIMP sends the DPC ratio control; sinter and temper strength use the tables since
 2026-11-03), `SetISPBypass` (stub), `WaitFrame` (stub: wiring the vendor
@@ -153,7 +176,7 @@ FrameSource format with 0xc05c56c3/0x405c56c4 (0x5c bytes); OpenIMP uses the
 
 ## Tuning controls served (2026-11-03, #177)
 
-QEMU T30 only, no camera. The open driver (`tx-isp-t30`) now serves the controls the
+At that time QEMU T30 only (the lab camera arrived the same day). The open driver (`tx-isp-t30`) now serves the controls the
 lifted switch had lost (`driver/t30/tx_isp_t30_tuning_ctl.h`, one arm per control id, the
 behaviour of the stock tuning code): apitest `isp` area 25 PASS / 0 FAIL (before 8 / 17),
 the cases `fwfreeze`, `hilight`, `expr`, `gamma`, `aeroi`, `aecomp`, `aestrategy`,
@@ -188,7 +211,8 @@ binary is available.
 
 ## Help wanted: T30 testers
 
-We have no T30 camera in the lab. If you own a T30/T30X camera running Thingino
+The lab has one T30X board (SC4236) since 2026-11-03. Other T30 boards and sensors are
+not tested; if you own a T30/T30X camera running Thingino
 with the vendor stack, you can test OpenIMP without flashing anything: the test
 kit in `tools/testkit/t30/` (see its `README.md`) runs the vendor API test
 against the vendor and the OpenIMP `libimp.so`, a short H.264 encode, and packs
