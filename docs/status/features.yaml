@@ -45,8 +45,8 @@ features:
       sym: ✅
       text: exposure readback live, ~45 empty CIDs wired up, unknown CIDs return -EINVAL
     T30:
-      sym: 🔧
-      text: open-tx-isp T30 core builds against a T30 kernel and had a hardware bring-up earlier (open-tx-isp README); the T30 contributor ran the ISP + FrameSource path live (`docs/T30_STATUS.md`); not run by us (no T30 camera)
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): the open stack brings up the SC4236 and streams on every batch b16-b51 with 0 oopses: first picture Y 99.3 / U 126.2 / V 128.4 against the vendor stack 100.7 / 127.8 / 128.5 in the same scene (b26), 102.1 vs 101.3 (b29); timps H.265 1920x1080 + H.264 640x360 20 s decode with 0 errors and 1920x1080 JPEG snapshots of the real scene (b47 a1); #218 default graph before/after the bypass clean. Earlier: open-tx-isp T30 core builds against a T30 kernel and had a hardware bring-up earlier (open-tx-isp README); the T30 contributor ran the ISP + FrameSource path live (`docs/T30_STATUS.md`); not run by us (no T30 camera)"
       issues:
       - 100
     T31:
@@ -90,7 +90,7 @@ features:
       text: '2026-11-02 (#189 pass 5, T23 test camera, full OTA of a new image; vendor-compared triage of the lifted entries): 22 reachable lifted functions triaged (3 fixed, 19 dead because the hand-written layer replaces them or nothing dispatches them); `ispcore_core_ops_ioctl` is now a hand-written event walk with a host test. Default image: apitest all areas PASS 420 / FAIL 11 (the image before, same session: 399 / 32; no function worse, 11 remaining FAILs were FAILs before: 10 second-sensor getters and `SetScalerLv`), 6 of 6 module reload cycles, 3 RTSP pulls, 6 day/night switches, 0 oopses. No visible effect expected or seen for the event walk (no sender of these events in the live code). The two other fixes (`jz_isp_ccm`, `tisp_ae_mean_update`) are reached only with the bring-up parameter `source_core_start=0`; that mode resets the camera within seconds on this tree and on its parent alike (cause not explained, pre-existing), so they have no camera-verified effect. Earlier: 10x stop/start incl. kill -9, 10x reload, 0 oops; 2 out-of-bounds writes (2 KB/18 KB) fixed'
     T30:
       sym: 🔧
-      text: '2026-11-01, QEMU only (no T30 camera, no cell moves above QEMU level): the audit fixed three driver faults in the QEMU T30 machine: `GetSensorRegister` no longer oopses (#174), the second FrameSource channel start no longer oopses in the ISP interrupt (the multi-scaler push FIFO is cleared at stream-off like the vendor, 45 cycles clean, #175) and the ISP init interrupt window is gated (#176). The issues are closed on QEMU evidence (their done-when is QEMU-based); a T30 camera has not confirmed them. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? not documented'
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): process stop/start is device-tested: 38 back-to-back FrameSource runs of 39 PASS / 0 FAIL (b17 soak1-38), three H.265 channel restarts in one process (b41), timps start/stop (b47 a3); the one-way module swap (rmmod of the vendor sensor and ISP module, insmod of the open module) ran in every batch with 0 oopses. Not yet exercised: rmmod/insmod of the open module itself (every batch restores by reboot), and kill -9 under load. One silent reset in b32 after 7 picture runs on a test module did not reproduce in the b33 A/B (both up). Earlier: 2026-11-01, QEMU only (no T30 camera, no cell moves above QEMU level): the audit fixed three driver faults in the QEMU T30 machine: `GetSensorRegister` no longer oopses (#174), the second FrameSource channel start no longer oopses in the ISP interrupt (the multi-scaler push FIFO is cleared at stream-off like the vendor, 45 cycles clean, #175) and the ISP init interrupt window is gated (#176). The issues are closed on QEMU evidence (their done-when is QEMU-based); a T30 camera has not confirmed them. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? not documented"
     T31:
       sym: ✅+
       text: 10x reload with kill -9; vmalloc leak of 252 KB/cycle fixed; residual drift ~45 KB/cycle
@@ -166,8 +166,10 @@ features:
       sym: ✅
       text: 'lifted vendor AE is the default (all-14/15); night test on cam-B: switches to night, AE regulates (IT 1200/1436 lines, analog gain 133/160), gain reported; backlight/highlight/AE comp act'
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177, no T30 camera): the open driver serves `GetExpr`, `GetEVAttr`, `GetAeStrategy`, `AE_GetROI`, the AE histogram and the AE weights, and `SetAeStrategy` has the vendor polarity (it was inverted): apitest isp area 25 PASS / 0 FAIL in the QEMU T30 machine; no picture or timing claim. Earlier: AE calls exported (shared T-series ISP code), no test result for T30'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): AE vendor-equal at the same scene: sensor gain 0x3e08/09 1f/1e and 1916 exposure lines against 1f/1e and 1915 on the vendor stack (b24-b29, `[I2C]` lines of the picture runs), ISP digital gain 0x1ea-0x1f7 vs 0x215-0x21a, base Y 99.3 vs 100.7 (b26); AE converges at the first picture since the Iridix fix (b26/b29). The GetEVAttr ev item (open-tx-isp ec7bf1ff, #202) is not device-proven yet. Earlier: 2026-11-03, QEMU only (#177, no T30 camera): the open driver serves `GetExpr`, `GetEVAttr`, `GetAeStrategy`, `AE_GetROI`, the AE histogram and the AE weights, and `SetAeStrategy` has the vendor polarity (it was inverted): apitest isp area 25 PASS / 0 FAIL in the QEMU T30 machine; no picture or timing claim. Earlier: AE calls exported (shared T-series ISP code), no test result for T30"
+      issues:
+      - 202
     T31:
       sym: ✅
       text: '2026-10-27: AE step device proof (#95, T31X sc4336p, agg47 image with the fix, real room-light step, EV sampled at about 4 Hz): light off (EV x45) within 5 % of the final value after 2.1 s, light on after 3.5 s (the simulation said 4-6 s, 20-42 s before the fix); no vendor T31 camera for an A/B. Earlier: 2026-10-21: the AE minimum EV step is now as in the OEM (a ratio between 1 and 1+s is raised to 1+s; the old clamp made the AE converge at 0.4 % per frame, `.25` shed-door finding), merged in next (`5336ad24`, host test `t31_ae_step_host_test`); the device re-check of the shed door brightness jump (90th percentile 255 for 30 s) is still open. Earlier (history): reference SoC; 2 h 53 soak without errors'
@@ -209,8 +211,8 @@ features:
       sym: ✅
       text: 'device-tested with the lifted vendor AE: backlight 10 luma 68→112, highlight 10 →48, AE comp works (decided: lifted vendor AE becomes the default after a pending night-switch test in the dark) [claude/t23-matrix-gaps]'
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `Get/SetAeComp` round trip (128 -> 108 -> 128, frames flow) and `Get/SetHiLightDepress` read back 3, 6, 10; no picture effect measurable in the QEMU scene; `Get/SetBacklightComp` was not part of this round. Earlier: `SetAeComp` exported, no test result for T30'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): AE compensation acts like the vendor: comp 60/200 gives Y 72.0/176.3 against 71.0/176.0 on the vendor stack (b26 picture runs); timps ae_compensation 40/128/200 gives JPEG Y 77.6/108.3/174.8 (b47 a1); highlight depress 0/255 Y 104.9/65.1 vs 106.3/58.5 (b29). Backlight compensation is not a T30 vendor symbol. Earlier: 2026-11-03, QEMU only (#177): `Get/SetAeComp` round trip (128 -> 108 -> 128, frames flow) and `Get/SetHiLightDepress` read back 3, 6, 10; no picture effect measurable in the QEMU scene; `Get/SetBacklightComp` was not part of this round. Earlier: `SetAeComp` exported, no test result for T30"
     T31:
       sym: ✅
       text: 'device-tested: ae_comp (Y +13/−21), backlight (Y +19), highlight (Y −13) Re-tested 2026-10-10: OEM formula, luma 55 / 100 / 160 for 0 / 128 / 255; the AE is slow (about 6 s dead time, 25 to 30 s to settle), tests need at least 30 s settle'
@@ -253,8 +255,8 @@ features:
       sym: ✅
       text: MaxAgain/MaxDgain, IT max, SetSensorFPS, additional ISP digital-gain stage; t23tune passed
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `Get/SetMaxAgain`/`MaxDgain` read back, `Get/SetIntegrationTime` reads back (the exposure effect needs a camera: the sensor model''s frames do not depend on it), `SetSensorFPS` is served (the lifted fps callback was read as one byte and the fps id table was wrong, both fixed; first fps change used to jump to address 0). Earlier: 2026-10-27: Movestate (`Enable/DisableMovestate`) runs the vendor 1.0.5 logic and the driver serves the SYSTEM_TAB block: QEMU T30 exposure ceiling 1916 -> 1149 -> 1916, frames flow, no oops; QEMU only, no T30 camera. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? max-gain calls exported, no test result for T30'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `Get/SetMaxAgain` / `MaxDgain` caps 130/125 as the vendor and read back 32 after a low set on both stacks (b26 maxagain-low / maxdgain-low), `Get/SetSensorFPS` device-tested (API cell dev); timps max_again 64/160 accepted (b47 a1). There is no IT-max setter on T30 (vendor API has none). Earlier: 2026-11-03, QEMU only (#177): `Get/SetMaxAgain`/`MaxDgain` read back, `Get/SetIntegrationTime` reads back (the exposure effect needs a camera: the sensor model's frames do not depend on it), `SetSensorFPS` is served (the lifted fps callback was read as one byte and the fps id table was wrong, both fixed; first fps change used to jump to address 0). Earlier: 2026-10-27: Movestate (`Enable/DisableMovestate`) runs the vendor 1.0.5 logic and the driver serves the SYSTEM_TAB block: QEMU T30 exposure ceiling 1916 -> 1149 -> 1916, frames flow, no oops; QEMU only, no T30 camera. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? max-gain calls exported, no test result for T30"
     T31:
       sym: ✅
       text: '2026-10-27: Movestate runs the vendor library logic (API cell rt, T31); `SetISPBypass(ENABLE)` is a no-op like the vendor and prudynt''s startup order keeps the frames flowing (#119). Earlier: EXPR setter, AE ROI, histogram edges'
@@ -291,7 +293,7 @@ features:
       text: 'device-tested: vendor AE 50/60/off IT 720/900/971; HLIL 720/600/711'
     T30:
       sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `GetAntiFlickerAttr` answers and reads back the mode set (V4L2 0x980918 get; before: -1). Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported, no test result'
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `Get/SetAntiFlickerAttr` round trip PASS on the device (API cell dev) and the exposure sits on the same 50 Hz step as the vendor (1916 vs 1915 lines, b24-b29); timps anti_flicker 1/2 accepted (b47 a1, no Y change). The 50/60 Hz banding effect under a flickering light was not measured. Earlier: 2026-11-03, QEMU only (#177): `GetAntiFlickerAttr` answers and reads back the mode set (V4L2 0x980918 get; before: -1). Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported, no test result"
     T31:
       sym: ✅
       text: 'device-tested with 22 ms IT cap: IT 1000/900/750 lines off/50/60 Hz, gain compensates; daylight test pending'
@@ -328,8 +330,10 @@ features:
       - 231
       - 233
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `GetWB`, `GetWB_Statis`, `Awb_Get/SetRgbCoefft`, the AWB histogram and the AWB weights are served (apitest isp area PASS); WB mode and gains are read from the firmware. Earlier: AWB calls exported (6 of 8 vendor names), no test result'
+      sym: ⚠️
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): AWB runs and manual WB acts (b-high gives U 163 on the open stack, b26/b32), but the presets have no effect on the open stack: daylight..warm-fluorescent read r=b=128 and U/V stay at 128 (b26/b27/b29 picture runs), while the vendor presets change the picture (incandescent U 168.7 / V 93.8). Auto gains differ from the vendor in the dark scene (#202 open). Earlier: 2026-11-03, QEMU only (#177): `GetWB`, `GetWB_Statis`, `Awb_Get/SetRgbCoefft`, the AWB histogram and the AWB weights are served (apitest isp area PASS); WB mode and gains are read from the firmware. Earlier: AWB calls exported (6 of 8 vendor names), no test result"
+      issues:
+      - 202
     T31:
       sym: ✅
       text: '2026-10-24: the AWB statistics sweeps run through the MXU2 vector unit by default in next (`t31_awb_impl=2`, chosen after a load-time self-test against the C code; `t31_awb_impl=0/1` switches it off): bit-exact against the C implementation, device-tested on a T31X (.21) and a T31L (.29), about 2.4 times faster sweeps (96 sweeps: 1229 us in C, 504 us with MXU2). Earlier (history): device-tested: manual R/B gains + presets 3/4/7 read back; chroma follows (Cb/Cr), auto restores'
@@ -414,8 +418,8 @@ features:
       sym: ✅+
       text: oops (wait queue) fixed, night mono, bank error → block bypass, user bypass persists
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `SetISPRunningMode(NIGHT)` is accepted and read back (the day/night switch flag is set for the core as in the stock code); IR cut and the sensor side are other rows. Earlier: not documented'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `SetISPRunningMode(NIGHT)` gives a mono picture U = V = 128.00 on both stacks (b26: open Y 85.9, vendor 84.6; b29: 83.0 vs 85.2); day back to colour; the day/night reload runs from frame end as the vendor (open-tx-isp 7f2f3080). Earlier: 2026-11-03, QEMU only (#177): `SetISPRunningMode(NIGHT)` is accepted and read back (the day/night switch flag is set for the core as in the stock code); IR cut and the sensor side are other rows. Earlier: not documented"
     T31:
       sym: ✅
       text: 13 switches in the 4.5 h soak
@@ -488,8 +492,8 @@ features:
       issues:
       - 105
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): brightness and saturation read back what was set (they read 0), contrast round trip PASS; the customer mid-node scaling and the contrast curve of the stock code are applied. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported where the vendor has them (no hue call in the T30 vendor list), no test result'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): brightness/contrast/saturation/sharpness change the picture like the vendor stack in the same run (b26: brightness 30/225 Y 0.4/249.3 vs 0.4/249.5, contrast 30/225 Y 119.0/93.6 vs 119.2/95.8, saturation 0 U=V 125.85 vs 125.82, sharpness 0/255 H 13.1/37.6 vs 10.4/27.6). Hue: the T30 vendor has no hue API. Earlier: 2026-11-03, QEMU only (#177): brightness and saturation read back what was set (they read 0), contrast round trip PASS; the customer mid-node scaling and the contrast curve of the stock code are applied. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? exported where the vendor has them (no hue call in the T30 vendor list), no test result"
     T31:
       sym: ✅
       text: defaults 0x80
@@ -527,8 +531,8 @@ features:
       sym: ✅
       text: flip, Bayer re-sync, LSC flip locked
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `Get/SetISPHflip`/`Vflip` are served (V4L2 0x980914/15, before: ENOSYS), toggle 0 -> 1 -> 0 reads back and frames flow; the vendor''s temper-denoise detour around the flip is not replicated. Earlier: `Get/SetISPHflip`/`Vflip` and (2026-10-10, host test) `Get/SetISPHVflip` exported, no device result'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): H/V/HV mirror apply and read back like the vendor (b20, b26: hflip h1 v0, vflip h0 v1, hvflip h1 v1 on both stacks); timps hflip/vflip accepted and the snapshot changes (b47 a1). Earlier: 2026-11-03, QEMU only (#177): `Get/SetISPHflip`/`Vflip` are served (V4L2 0x980914/15, before: ENOSYS), toggle 0 -> 1 -> 0 reads back and frames flow; the vendor's temper-denoise detour around the flip is not replicated. Earlier: `Get/SetISPHflip`/`Vflip` and (2026-10-10, host test) `Get/SetISPHVflip` exported, no device result"
     T31:
       sym: ✅
       text: sc4336p vflip no longer reports an error [-all-13]; MSCA flip takes effect only at the next channel start, as with the vendor
@@ -562,8 +566,10 @@ features:
       sym: ✅+
       text: dynamic ADR lifted from the vendor module (44/44 emulator-identical, claude/t23-adr-defog); DRC strength 0/255 visibly effective on cam-B; sc2336 has no WDR mode
     T30:
-      sym: '?'
-      text: '`Get/SetRawDRC` exported; `Get/SetWDRAttr` exported since 2026-10-10 (V4L2 control 0x8000169, host test), no device result'
+      sym: ⚠️
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): RawDRC acts through Iridix on the device: off / manual255 Y 94.2 / 123.5 (vendor 96.4 / 112.4, b26), timps drc_strength 0/128/255 JPEG Y 96.7/109.6/125.4 (b47 a1); `SetWDRAttr` returns -1 on the linear SC4236 on both stacks (vendor-equal). Deviation: the unlimit strength reads 221-247 on the open stack against 149-154 on the vendor (b26, b29), and the Iridix base strength is above the vendor (0x3c4 0x43 vs 0x1c, b29). Earlier: `Get/SetRawDRC` exported; `Get/SetWDRAttr` exported since 2026-10-10 (V4L2 control 0x8000169, host test), no device result"
+      issues:
+      - 202
     T31:
       sym: ✅
       text: WDR buffer lazy; AE1 (short frame) stub = vendor no-op without WDR sensor
@@ -601,8 +607,8 @@ features:
       issues:
       - 106
     T30:
-      sym: '?'
-      text: '`SetAntiFogAttr` exported since 2026-10-10 (control 0x8000163, host test), no device result'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `SetAntiFogAttr` PASS on both stacks with set 0 (b17, b21, b22); small picture effect, timps defog_strength accepted (b47 a1, Y 108.0/108.4). Earlier: `SetAntiFogAttr` exported since 2026-10-10 (control 0x8000163, host test), no device result"
     T31:
       sym: ✅
       text: 'device-tested: defog 255 (Y −10, laplacian +193). 2026-11-04 (open-tx-isp c8e3d4d3): the 29 defog tables now come from the active tuning-bin bank like the vendor (`tiziano_defog_load_bank`), device-proven on the T31X light-box camera; fleet image agg67 still has the old tables'
@@ -644,8 +650,8 @@ features:
       issues:
       - 106
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `Set/GetSinterStrength` and `Set/GetTemperStrength` scale the driver tables 109 and 132 through control 0x8000161 as the vendor 1.0.5 (the driver serves the table get and set; before: control ids the driver refused); round trip rc 0 in two cycles, no picture effect shown in QEMU. Earlier: Sinter/Temper strength exported; `SetTemperDnsCtl` exported since 2026-10-10 (cache-only like the T30 `SetTemperDnsAttr`)'
+      sym: ⚠️
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `SetSinterStrength` device-tested (b19, API cell dev); temper strength is accepted (timps temper_strength 0/128/255, b47) but gives no measurable change in this scene. Deviation: the vendor stack runs Temper on at the base (ISP 0x2c0 = 0x83), the open stack does not (0x02, b26/b27); Temper default-on was declined by the user for RC3 (2026-11-05). Earlier: 2026-11-03, QEMU only (#177): `Set/GetSinterStrength` and `Set/GetTemperStrength` scale the driver tables 109 and 132 through control 0x8000161 as the vendor 1.0.5 (the driver serves the table get and set; before: control ids the driver refused); round trip rc 0 in two cycles, no picture effect shown in QEMU. Earlier: Sinter/Temper strength exported; `SetTemperDnsCtl` exported since 2026-10-10 (cache-only like the T30 `SetTemperDnsAttr`)"
     T31:
       sym: ✅
       text: '2026-10-24: `isp_memopt=1` showed vertical noise stripes at night (left image quarter, column bands 2.5-3.5 against 1.3-1.8; temporal column stripe 0.161 against the vendor 0.103) because the MDNS stride was 0; the OEM memopt tuning patch applied at bin load (`e603e17c`, `claude/t31-memopt-mdns`, in next) brings it to the vendor level on .25 (noise 1.18 against 1.20, stripe 0.099 against 0.103, 10 min soak clean); night luma stays 8 % below the vendor (no ISP digital gain), edge energy +19 %. Earlier (history): vendor-identical: SDNS H-S regs 0→0, 255→15 (OEM cap 16); temper 0: temporal std 4.60 vs 1.64; sinter effect small by OEM design'
@@ -689,8 +695,8 @@ features:
       issues:
       - 106
     T30:
-      sym: '?'
-      text: '`SetDPStrength` exported since 2026-10-10 (DPC ratio control, host test), no device result'
+      sym: 🔧
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): timps dpc_strength 0/128/255 is accepted on the device (b47 a1) but gives no measurable change in the test scene (Y 108.3-108.4); `SetDPStrength` stays host-tested in the API table. Earlier: `SetDPStrength` exported since 2026-10-10 (DPC ratio control, host test), no device result"
     T31:
       sym: ✅
       text: 'vendor-identical: m1/m3 thresholds 0→(d1000,f5), 255→(d5,f1191); impulses −6 % (defect pixels only)'
@@ -728,8 +734,8 @@ features:
       sym: ✅
       text: 'device-tested: B/W, vivid, negative work; invalid values give EINVAL (claude/t23-t31-scene-colorfx, not yet in an aggregate)'
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): `Get/SetSceneMode` and `Get/SetColorfxMode` are sent like the vendor (V4L2 0x9a091a / 0x98091f, as on T31); the scene value is stored (the stock handler is a no-op, no picture effect), the colour effect sets the firmware colour mode and reads back; the effect is not proven in a picture (the sensor model shows none). Earlier: `Get/SetColorfxMode`, `Get/SetSceneMode` exported, no test result'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): colour effects act like the vendor: BW U = V = 126.39 (b32; vendor 126.76/126.76 in b29), sepia/negative/vivid change the picture on both stacks (b27/b29); timps colorfx 1 accepted (b47); scene night/landscape read 0 and change nothing on both stacks (stock handler is a no-op, vendor-equal). Earlier: 2026-11-03, QEMU only (#177): `Get/SetSceneMode` and `Get/SetColorfxMode` are sent like the vendor (V4L2 0x9a091a / 0x98091f, as on T31); the scene value is stored (the stock handler is a no-op, no picture effect), the colour effect sets the firmware colour mode and reads back; the effect is not proven in a picture (the sensor model shows none). Earlier: `Get/SetColorfxMode`, `Get/SetSceneMode` exported, no test result"
     T31:
       sym: ✅
       text: 'device-tested: as T23 (claude/t23-t31-scene-colorfx, not yet in an aggregate)'
@@ -799,7 +805,7 @@ features:
       text: '2026-10-27: `GetAutoZoom` works and crop off restores the whole sensor picture instead of the top-left corner (T23 camera, runtime ko swap: zoom shows the centre half, crop off layout distance 0.000). Earlier: front crop via vendor path (960x540 crop ok); MASK -EINVAL as vendor (no stock handler); the 2026-10-06 crop hang is fixed in agg-34 and device-tested on 2026-10-09: crop off unlocks the window and restores the full sensor window, a locked window that does not fit is dropped (with a warning) instead of stalling the MSCA, the lock is released at the last close of the ISP device (a streamer restart without crop gets the full frame), module parameter `fcrop_upscale_pct` (default 0) lets the geometry check tolerate a measured upscale (T23 upscales up to 2.0; at 2.2 the MSCA stalled briefly, the crop was dropped, no reboot); flip, day/night, fast changes with many streamer restarts, corner windows, sub-stream and a reboot with a persisted crop all passed; `SetAutoZoom` as the stock control (host/build-tested only) Front crop vs flip (device-tested 2026-10-10): the window is in sensor space before the flip; the streamer mirrors it on both axes; with image hflip/vflip both the sensor (reg 0x3221) and the MSCA (0xd050) flip, `shvflip=1` only flips the LSC mesh. A streamer detects the safe crop path by `/sys/module/tx_isp_t23/parameters/fcrop_upscale_pct` (present only in fixed drivers).'
     T30:
       sym: 🔧
-      text: '2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? no front-crop/scaler-level call in the T30 vendor export list'
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): FrameSource channel crop works on both stacks (fs1-crop b26); CSC presets (OpenIMP extension, beyond vendor) change the picture (b26/b32: coef0 306/262/218/186), but after a user matrix Get reports mode 0 (read-back incomplete); `SetFrontCrop` is library-cache only on T30 (no vendor API, picture unchanged). Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? no front-crop/scaler-level call in the T30 vendor export list"
     T31:
       sym: ✅
       text: '2026-10-27: AutoZoom (#124) was a test misuse (the crop window is cut from the scaled picture and must keep the channel size): 2x zoom with a centre crop works, detail 5.27 -> 2.18, T31 camera 0 FAIL. Earlier: Update 2026-10-24, evening (open-tx-isp `claude/t31-crop`, merged): the front crop accepts enlarging up to 2.0x per axis by default (`fcrop_upscale_pct` default 100, was 0 = no enlarging), as the vendor enlarges; beyond 2.0x it is refused with -EINVAL (2.5x hangs the MSCA, so better than the vendor). Device (T31L, sc2336, 1080p main): 960x540 accepted, zoom visible, 80 s hold at 117 IRQ/s, snapshots 200; 600x338 and 768x432 refused; off restores 1920x1080; 0 oopses. Not tested: decoding the encoded main stream and a T31X with the new default. Older text: BLC get, CSC presets 0–4 + user matrix, scaler level (tested on cam-A); front crop: the crash is fixed (enabling a window smaller than a channel''s scaler output stalled every MSCA output until reboot; the kernel now refuses such a window with -EINVAL and logs it without a hang, a main stream larger than the window drops the crop with a warning, the crop survives idle off/on, a restart and a flip, disabling restores the full frame; module parameter `fcrop_upscale_pct`, default 0) and, device-tested on 2026-10-10, a valid window zooms both streams (**proven**) Front crop vs flip (device-tested 2026-10-10): the window is in sensor space before the flip; the streamer mirrors it on both axes. Front crop is effective (picture effect proven on both streams in daylight, 2026-10-10); `/sys/module/tx_isp_t31/parameters/fcrop_upscale_pct` exists only in fixed drivers. The vendor does no transform (T23/T31 stock).'
@@ -955,8 +961,8 @@ features:
       sym: ✅
       text: HW JPEG 29 ms/job; q75 = IJG tables, size matches libjpeg (scene-driven)
     T30:
-      sym: 🔧
-      text: JPEG on the Helix VPU (`src/t30/helix_jpeg.c`), host test `helix_jpeg_test`; no device result documented
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): JPEG on the Helix VPU works on the device: timps snapshots 1920x1080 baseline JPEG of the real scene for every control step (b47 a1, Y 77.6-174.8 as the controls move); JPEG next to the H.264 main in one group 360 frames in 15 s (timps b35 row C). Earlier: JPEG on the Helix VPU (`src/t30/helix_jpeg.c`), host test `helix_jpeg_test`; no device result documented"
     T31:
       sym: ✅
       text: HW JPEG, own MJPEG channel ok (24 B/5 s, before 0 bytes)
@@ -1114,8 +1120,8 @@ features:
       issues:
       - 127
     T30:
-      sym: '?'
-      text: OSD calls exported (T23 services, shared), no test result for T30
+      sym: 🔧
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): the OSD API runs on the device (apitest osd area, API cells dev) and timps with OSD on keeps 358 frames in 15 s (b35 row B); the overlay itself was not checked in the picture. Earlier: OSD calls exported (T23 services, shared), no test result for T30"
     T31:
       sym: ✅
       text: 'IPU OSD; lines/rectangles; rotation: no OSD clamp in timps'
@@ -1150,8 +1156,10 @@ features:
       sym: ✅
       text: motion active again after sub-stream idle (WebUI grid)
     T30:
-      sym: '?'
-      text: IVS calls exported (T31 IVS code), no test result for T30
+      sym: 🔧
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): the IVS move/base-move API passes on the device when the ivs area runs alone (46 PASS / 0 FAIL, API cells dev); it fails after the encoder area in the same process (state leak, open); no real motion test with a moving scene. Earlier: IVS calls exported (T31 IVS code), no test result for T30"
+      issues:
+      - 19
     T31:
       sym: ✅+
       text: 'sub-stream default: ~85 % less IVS CPU (compared with vendor libimp)'
@@ -1187,8 +1195,8 @@ features:
       sym: ✅
       text: frames also recycled for callback pools
     T30:
-      sym: 🔧
-      text: "2026-11-07 (#218 closed, T30X lab camera): optional ISP bypass graph (`OPENIMP_T30_BYPASS_GRAPH=1`, default off) in the vendor sample order: RAW channel 10/10 frames 2048x1536 BG12 (12-bit data MSB-aligned in 16 bits), then a new NV12 channel 25/25 with a normal picture; the default graph decodes clean before and after, 0 oopses. Earlier: FrameSource ran as the source of the contributor's H.264 gate; host test `fs_lifecycle_test`; not run by us. 2026-11-03, QEMU only (no T30 camera): the format ioctl is the 0x5c-byte form of the vendor libimp (#178), the apitest `fs` area passes 39/0 against the open driver in the QEMU T30 machine, 6 driver reload cycles with the second-channel start clean under `slub_debug`"
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): FrameSource area 39 PASS / 0 FAIL on the device in every batch b16-b29 and in 38 back-to-back runs (b17); 2048x1536 ch0 without scaler works (#201, the vendor returns -1 there); compact NV12 for heights not divisible by 16 (night U=V=128.00, b26); bypass graph RAW 10/10 + NV12 25/25 (#218). Earlier: 2026-11-07 (#218 closed, T30X lab camera): optional ISP bypass graph (`OPENIMP_T30_BYPASS_GRAPH=1`, default off) in the vendor sample order: RAW channel 10/10 frames 2048x1536 BG12 (12-bit data MSB-aligned in 16 bits), then a new NV12 channel 25/25 with a normal picture; the default graph decodes clean before and after, 0 oopses. Earlier: FrameSource ran as the source of the contributor's H.264 gate; host test `fs_lifecycle_test`; not run by us. 2026-11-03, QEMU only (no T30 camera): the format ioctl is the 0x5c-byte form of the vendor libimp (#178), the apitest `fs` area passes 39/0 against the open driver in the QEMU T30 machine, 6 driver reload cycles with the second-channel start clean under `slub_debug`"
       issues:
       - 218
     T31:
@@ -1228,8 +1236,8 @@ features:
       sym: ✅
       text: 'microphone in the RTSP stream (AAC 16 kHz), real room-noise signal (mean -64 dB, peak -46 dB; T31 reference -57/-43 dB); no speech test; 2026-10-10 AEC test: `IMP_AI` enable/`GetFrame`, `SetVol`/`SetGain`, mono 16 kHz recorded the played signal back (device-tested)'
     T30:
-      sym: '?'
-      text: AI exported (T21 /dev/dsp path, 68 of 68 vendor audio names), no test result
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): apitest audio area on the device: open 88 PASS / 0 FAIL / 4 SKIP, vendor 82 / 2 (b27); AI enable, channel, volume, gain, AGC/NS/HPF and GetFrame/PollingFrame device-tested (API cells dev); no recording-quality comparison. Earlier: AI exported (T21 /dev/dsp path, 68 of 68 vendor audio names), no test result"
     T31:
       sym: ✅
       text: '2026-10-31: #131 closed by decision: there is no DMIC hardware, so on the T31 the DMIC functions stay an API round trip only (no capture claim). Earlier: 2026-10-27: `IMP_DMIC_*` (20 vendor functions) run as an API round trip (argument checks, clamps, return codes of the vendor); the test board has no DMIC, so capture, gain effect and AEC are not proven; this does not change the microphone (AI) result. Earlier: device-tested: AAC 16 kHz mono 32 kbit/s in RTSP + fMP4, volume/gain/mute work, gain clamp 31; also PCMU 8 kHz via RTSP (not in fMP4); 2026-10-10 AEC test: `IMP_AI` enable/`GetFrame`, `SetVol`/`SetGain`, mono 16 kHz recorded the played signal back (device-tested)'
@@ -1269,8 +1277,8 @@ features:
       sym: ✅
       text: '`IMP_AO` enable/`SendFrame`, speaker playback of a known signal at several volumes and `SetVol`, recorded back by the microphone (2026-10-10 AEC test, device-tested)'
     T30:
-      sym: '?'
-      text: AO exported, no test result
+      sym: 🔧
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): the AO API runs on the device silently (muted, -30 dB, zero frames; API cells rt, b27/b29 AO=1); audible playback not checked. Earlier: AO exported, no test result"
     T31:
       sym: ✅
       text: volume/mute work, whole OSS fragments (tested on cam-A); `IMP_AO` enable/`SendFrame`, speaker playback of a known signal at several volumes and `SetVol`, recorded back by the microphone (2026-10-10 AEC test, device-tested)
@@ -1306,8 +1314,8 @@ features:
       sym: ✅
       text: 'device-tested 2026-10-10: OpenIMP AECM (WebRTC), mono 16 kHz, `EnableAec` returns 0; ERLE 19 dB on a speech segment against the room noise floor; was 🔧'
     T30:
-      sym: '?'
-      text: AEC code is built in (`openimp_aec.c`), no test result
+      sym: 🔧
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `AI_EnableAec` / `DisableAec` / AEC reference frame calls run on the device (API cells rt, b27; the vendor stack fails AI_EnableAec); echo cancellation itself not measured. Earlier: AEC code is built in (`openimp_aec.c`), no test result"
     T31:
       sym: ✅+
       text: 'real AECM: echo −18 dB, ERLE 44 dB (loopback); before: fake success'
@@ -1697,8 +1705,8 @@ features:
       issues:
       - 122
     T30:
-      sym: 🔧
-      text: '2026-11-03, QEMU only (#177): the apitest isp area runs 25 PASS / 0 FAIL (before 8 / 17): the getters of anti-flicker, WB, exposure, EV, AE strategy/ROI, histograms, weights, RGB coefficients, max gain, gamma, brightness/saturation are served; 6 module reload cycles with the area and the strength test, 0 oopses, no slab reports. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? getters exported (shared code), no test result'
+      sym: ✅
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): apitest isp area 48 PASS / 0 FAIL on both stacks (b26 isp/visp), gate cases t30pass + t30pass2 48 / 0 (b28): the getters of exposure, gains, WB, histograms, weights, AE ROI, gamma, BCSH and running mode are served on the device. Earlier: 2026-11-03, QEMU only (#177): the apitest isp area runs 25 PASS / 0 FAIL (before 8 / 17): the getters of anti-flicker, WB, exposure, EV, AE strategy/ROI, histograms, weights, RGB coefficients, max gain, gamma, brightness/saturation are served; 6 module reload cycles with the area and the strength test, 0 oopses, no slab reports. Earlier: 2026-10-25: reaches the driver in QEMU (T30 image, sc4236 model; reload/controls clean after six driver fixes), no T30 camera. Earlier: ? getters exported (shared code), no test result"
     T31:
       sym: ✅
       text: '2026-10-27: `GetSensorRegister` clears the value field before the ioctl and the driver forwards the register events, so the sc2336 chip id reads 0xcb3a instead of 0x0404 (#113); `GetWdr_OutputMode` on a linear sensor returns the default mode 0 instead of -1 (#118), `SetISPCustomMode(DISABLE)` without a custom bin is a no-op returning 0 (#117); device-tested on the T31 camera (apitest `wdr`/`wdrout`/`custom` PASS) after a runtime ko swap. Earlier: SensorAttr, WaitFrame per frame, isp-w02 counter'
@@ -1774,8 +1782,8 @@ features:
       sym: ✅
       text: 'on the native Helix encoder (default backend), the same registers the vendor 1.3.0 encoder programs; device-tested 2026-10-10: QP map shows the window (relative QP acts inside -12/+13 of the slice QP, like T21), bit rate +10 % at delta -15 and -4 % at +20/absolute 51, 9 streams valid in VA-API and strict ffmpeg; OPENIMP_T23_ROI=0 switches it off'
     T30:
-      sym: '?'
-      text: ROI calls (4 vendor names) exported, no test result for T30
+      sym: 🔧
+      text: "2026-11-07 re-judge on device evidence (T30X lab camera, runtime module swap to the open stack, audit batches bNN): `Get/SetChnROI` (8 slots) and SuperFrameCfg PASS on the device with the vendor read-back (b10, API cell dev); the QP effect of a region in the stream was not measured. Earlier: ROI calls (4 vendor names) exported, no test result for T30"
     T31:
       sym: ✅+
       text: 'beyond vendor: `IMP_Encoder_Set/GetChnRoiAttr` through the AVPU macroblock QP table (H.264 only), device-tested: delta -10 gives 2.7x the bit rate, a relative -20 is clamped to -19, absolute 51 blurs the region, 0 decoder errors in 20 VA-API checks; 2026-10-10: 20 phases valid in VA-API and strict ffmpeg (`-err_detect`); known deviation: under FixQP 42 an absolute 5 or relative -25 window drives the P-frames to QP about 14 almost frame-wide (bit rate about x4, stream valid); `OPENIMP_T31_ROI=0` refuses the call'
