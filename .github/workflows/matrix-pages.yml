@@ -32,6 +32,8 @@ concurrency:
 
 jobs:
   build:
+    # GitHub Pages is only enabled on the Lu-Fi fork; skip on mirrors (e.g. opensensor/openimp)
+    if: github.repository == 'Lu-Fi/openimp'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
